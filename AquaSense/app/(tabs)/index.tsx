@@ -6,8 +6,20 @@ import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Link } from 'expo-router';
+import { testFirestoreConnection } from '@/services/firestore/testDb';
 
 export default function HomeScreen() {
+  const handleTest = async () => {
+    try {
+      await testFirestoreConnection();
+      console.log('Firestore funcionando!');
+      alert('Documento salvo no Firestore com sucesso!');
+    } catch (error) {
+      console.log('Erro ao testar Firestore:', error);
+      alert('Erro ao salvar no Firestore. Vê o console.');
+    }
+  };
+
   return (
     <ParallaxScrollView
       headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
@@ -17,10 +29,12 @@ export default function HomeScreen() {
           style={styles.reactLogo}
         />
       }>
+      
       <ThemedView style={styles.titleContainer}>
         <ThemedText type="title">Welcome!</ThemedText>
         <HelloWave />
       </ThemedView>
+
       <ThemedView style={styles.stepContainer}>
         <ThemedText type="subtitle">Step 1: Try it</ThemedText>
         <ThemedText>
@@ -36,6 +50,7 @@ export default function HomeScreen() {
           to open developer tools.
         </ThemedText>
       </ThemedView>
+
       <ThemedView style={styles.stepContainer}>
         <Link href="/modal">
           <Link.Trigger>
@@ -64,6 +79,15 @@ export default function HomeScreen() {
           {`Tap the Explore tab to learn more about what's included in this starter app.`}
         </ThemedText>
       </ThemedView>
+
+      {/* TESTE DO FIRESTORE */}
+      <ThemedView style={styles.stepContainer}>
+        <ThemedText type="subtitle">Teste do Firestore</ThemedText>
+        <ThemedText onPress={handleTest} style={styles.testButton}>
+          Clique aqui para testar a conexão com o Firestore
+        </ThemedText>
+      </ThemedView>
+
       <ThemedView style={styles.stepContainer}>
         <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
         <ThemedText>
@@ -74,6 +98,7 @@ export default function HomeScreen() {
           <ThemedText type="defaultSemiBold">app-example</ThemedText>.
         </ThemedText>
       </ThemedView>
+
     </ParallaxScrollView>
   );
 }
@@ -94,5 +119,9 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     position: 'absolute',
+  },
+  testButton: {
+    padding: 12,
+    borderRadius: 8,
   },
 });
