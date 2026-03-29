@@ -6,12 +6,12 @@ import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Link } from 'expo-router';
-import { testFirestoreConnection } from '@/services/firestore/testDb';
+import { testSalvarUsuario } from '@/services/firestore/testDb';
 
 export default function HomeScreen() {
   const handleTest = async () => {
     try {
-      await testFirestoreConnection();
+      await testSalvarUsuario();
       console.log('Firestore funcionando!');
       alert('Documento salvo no Firestore com sucesso!');
     } catch (error) {
