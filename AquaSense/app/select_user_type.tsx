@@ -179,6 +179,52 @@ function ProfileRow({ profile, fontFamily, onSelect, onInfo }: ProfileRowProps) 
     );
 }
 
+type InfoModalProps = {
+    profile: ProfileType | null;
+    fontFamily?: string | undefined;
+    onClose: () => void;
+};
+
+function InfoModal({ profile, fontFamily, onClose }: InfoModalProps) {
+    return (
+        <Modal
+            visible={!!profile}
+            transparent
+            animationType="fade"
+            onRequestClose={onClose}
+        >
+            <Pressable style={styles.modalOverLay} onPress={onClose}>
+                <Pressable
+                    style={styles.modalCard}
+                    onPress={(e) => e.stopPropagation()}
+                >
+                    {profile && (
+                        <>
+                            <Text style={[styles.modalTitle, { fontFamily }]}>
+                                {profile.label}
+                            </Text>
+                            <View style={styles.modalDivider} /> 
+                            <Text style={[styles.modalDescription, { fontFamily }]}>
+                                {profile.description}
+                            </Text>
+                            <TouchableOpacity
+                                style={styles.modalButton}
+                                onPress={onClose}
+                                activeOpacity={0.8}
+                            >
+                                <Text style={[styles.modalButtonText, { fontFamily }]}>
+                                    Entendi
+                                </Text>
+                            </TouchableOpacity>
+                        </>
+                    )}
+                </Pressable>
+            </Pressable>
+        </Modal>
+    );
+}
+
+
 
 
 
