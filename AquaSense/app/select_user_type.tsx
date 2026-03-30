@@ -240,13 +240,13 @@ const styles = StyleSheet.create({
     },
     logoSection: {
         alignItems: "center",
-        paddingTop: 8,
-        marginBottom: 4,
+        paddingTop: 40,
+        marginBottom: 12,
     },
     logoImage: {
-        width: 220,
-        height: 220,
-        marginBottom: 28,
+        width: 300,
+        height: 300,
+        marginBottom: 0,
     },
     supportText: {
         fontSize: 14,
@@ -255,6 +255,7 @@ const styles = StyleSheet.create({
         letterSpacing: 0.3,
         lineHeight: 22,
         maxWidth: 260,
+        marginTop: -20,
     },
     profileSection: {
         flex: 1,
@@ -268,7 +269,9 @@ const styles = StyleSheet.create({
         gap: 14,
     },
     profileButton: {
-        flex: 1,
+        width: "85%",
+        alignSelf: "center",
+        marginLeft: 20,
         backgroundColor: "rgba(255, 255, 255, 0.92)",
         borderRadius: 50,
         paddingVertical: 17,
@@ -278,7 +281,7 @@ const styles = StyleSheet.create({
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.10,
-        shadowRadius: 4,
+        shadowRadius: 6,
         elevation: 3,
     },
     profileButtonText: {
@@ -289,10 +292,11 @@ const styles = StyleSheet.create({
     infoIconButton: {
         alignItems: "center",
         justifyContent: "center",
+        marginLeft: 3,
     },
     infoIconCircle: {
-        width: 28,
-        height: 28,
+        width: 18,
+        height: 18,
         borderRadius: 14,
         borderWidth: 1.5,
         borderColor: "rgba(255, 255, 255, 0.80)",
