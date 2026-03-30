@@ -57,3 +57,92 @@ const PROFILES: ProfileType[] = [
     },
 ];
 
+// Componente principal da tela de seleção de perfil. 
+// Aqui ficam concentradas a navegação, o controle do modal
+// e a renderização da estrutura central da interface.
+export default function SelectUserType() {
+    const router = useRouter();
+    const [activeInfo, setActiveInfo] = useState<ProfileType | null>(null);
+
+    // Carrega a fonte personalizada para o aplicativo.
+    const [fontsLoaded] = useFonts({
+        Questrial_400Regular,
+    });
+    const questrial = fontsLoaded ? "Questrial_400Regular" : undefined;
+
+    return (
+<>
+<Stack.Screen options={{ headerShown: false }} />
+  <SafeAreaView style={styles.safeArea}>
+    <StatusBar
+      barStyle="light-content"
+      translucent
+      backgroundColor="transparent"
+    />
+
+    <LinearGradient
+      colors={["#004d48", "#3ff3e7"]}
+      start={{ x: 0.5, y: 0 }}
+      end={{ x: 0.5, y: 1 }}
+      style={StyleSheet.absoluteFillObject}
+    />
+
+    <ScrollView
+      contentContainerStyle={styles.scrollContent}
+      showsVerticalScrollIndicator={false}
+      bounces={false}
+      
+    > 
+      <View style={styles.logoSection}>
+        <Image
+          source={require("../assets/images/aquasense-logo.png")}
+          style={styles.logoImage}
+          resizeMode="contain"
+          tintColor="#FFFFFF"
+        />
+
+        <Text style={[styles.supportText, { fontFamily: questrial }]}>
+          Selecione o perfil que melhor representa você
+        </Text>
+      </View>
+        
+      <View style={styles.profileSection}>
+        {PROFILES.map((profile) => (
+          <ProfileRow
+            key={profile.id}
+            profile={profile}
+            fontFamily={questrial}
+            onSelect={() => router.push(profile.route as any)}
+            onInfo={() => setActiveInfo(profile)}
+          />
+        ))}
+      </View>
+
+      <View style={styles.footer}>
+        <Text style={[styles.footerText, { fontFamily: questrial }]}>
+          Já tem uma conta?{" "}
+        </Text>
+        <TouchableOpacity
+          onPress={() => router.push("/login" as any)}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.footerLink, { fontFamily: questrial }]}>
+            Entrar
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
+
+    {/* Modal controlado pelo estado `activeInfo`.
+    Quando um perfil é selecionado no ícone de informação,
+    seu conteúdo é exibido aqui. */}
+    <InfoModal
+      profile={activeInfo}
+      fontFamily={questrial}
+      onClose={() => setActiveInfo(null)}
+    />
+  </SafeAreaView>
+</>
+    );
+}
+
