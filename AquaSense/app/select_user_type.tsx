@@ -24,6 +24,7 @@ const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 // Define o formato de cada perfil exibido na tela.
 type ProfileType = {
     id: string;
+    label: string;
     route: string;
     description: string;
 
@@ -161,12 +162,12 @@ function ProfileRow({ profile, fontFamily, onSelect, onInfo }: ProfileRowProps) 
                 onPress={onSelect}
                 activeOpacity={0.82}
             >
-                <Text style={[StyleSheet.profileButtonText, { fontFamily }]}>
+                <Text style={[styles.profileButtonText, { fontFamily }]}>
                     {profile.label}
                 </Text>
             </TouchableOpacity>
             <TouchableOpacity
-                style={StyleSheet.infoIconButton}
+                style={styles.infoIconButton}
                 onPress={onInfo}
                 hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
                 activeOpacity={0.7}
@@ -223,6 +224,158 @@ function InfoModal({ profile, fontFamily, onClose }: InfoModalProps) {
         </Modal>
     );
 }
+
+const styles = StyleSheet.create({
+    safeArea: {
+        flex: 1,
+        backgroundColor: "#004d48",
+    },
+    scrollContent: {
+        flexGrow: 1,
+        minHeight: SCREEN_HEIGHT,
+        paddingHorizontal: 36,
+        paddingTop: Platform.OS === "android" ? 56 : 44,
+        paddingBottom: 48,
+        justifyContent: "space-between",
+    },
+    logoSection: {
+        alignItems: "center",
+        paddingTop: 8,
+        marginBottom: 4,
+    },
+    logoImage: {
+        width: 220,
+        height: 220,
+        marginBottom: 28,
+    },
+    supportText: {
+        fontSize: 14,
+        color: "rgba(255, 255, 255, 0.78)",
+        textAlign: "center",
+        letterSpacing: 0.3,
+        lineHeight: 22,
+        maxWidth: 260,
+    },
+    profileSection: {
+        flex: 1,
+        justifyContent: "center",
+        gap: 14,
+        paddingVertical: 20,
+    },
+    profileRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 14,
+    },
+    profileButton: {
+        flex: 1,
+        backgroundColor: "rgba(255, 255, 255, 0.92)",
+        borderRadius: 50,
+        paddingVertical: 17,
+        paddingHorizontal: 20,
+        alignItems: "center",
+        justifyContent: "center",
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.10,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    profileButtonText: {
+        fontSize: 15,
+        color: "#6b7a7a",
+        letterSpacing: 0.3,
+    },
+    infoIconButton: {
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    infoIconCircle: {
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        borderWidth: 1.5,
+        borderColor: "rgba(255, 255, 255, 0.80)",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    infoIconText: {
+        color: "#FFFFFF",
+        fontSize: 13,
+        fontWeight: "700",
+        fontStyle: "italic",
+        lineHeight: 16,
+        includeFontPadding: false,
+    },
+    footer: {
+        flexDirection: "row",
+        justifyContent: "center",
+        alignItems: "center",
+        paddingTop: 8,
+    },
+    footerText: {
+        fontSize: 14,
+        color: "rgba(255, 255, 255, 0.72)",
+    },
+    footerLink: {
+        fontSize: 14,
+        fontWeight: "700",
+        color: "#FFFFFF",
+        textDecorationLine: "underline",
+    },
+    modalOverLay: {
+        flex: 1,
+        backgroundColor: "rgba(0, 0, 0, 0.5)",
+        alignItems: "center",
+        justifyContent: "center",
+        paddingHorizontal: 28,
+    },
+    modalCard: {
+        width: "100%",
+        backgroundColor: "#FFFFFF",
+        borderRadius: 20,
+        padding: 28,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.18,
+        shadowRadius: 20,
+        elevation: 12,
+    },
+    modalTitle: {
+        fontSize: 17,
+        color: "#004d48",
+        textAlign: "center",
+        marginBottom: 14,
+        fontWeight: "600",
+    },
+    modalDivider: {
+        height: 1,
+        backgroundColor: "#e0f2f1",
+        marginBottom: 16,
+    },
+    modalDescription: {
+        fontSize: 15,
+        color: "#555",
+        textAlign: "center",
+        lineHeight: 24,
+        marginBottom: 24,
+    },
+    modalButton: {
+        backgroundColor: "#004d48",
+        borderRadius: 50,
+        paddingVertical: 14,
+        alignItems: "center",
+
+    },
+    modalButtonText: {
+        fontSize: 15,
+        color: "#FFFFFF",
+        fontWeight: "600",
+        letterSpacing: 0.3,
+    },
+});
+
+
 
 
 
