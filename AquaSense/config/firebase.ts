@@ -10,17 +10,16 @@ import { getFirestore } from "firebase/firestore";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyCa7sATArPxmfdoYCo50gIcH9VkEIbMqMM",
-  authDomain: "aquasense-b0ad9.firebaseapp.com",
-  projectId: "aquasense-b0ad9",
-  storageBucket: "aquasense-b0ad9.firebasestorage.app",
-  messagingSenderId: "651608124721",
-  appId: "1:651608124721:web:efdab8325b7edfe4fd5410"
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
 };
 
 // Initialize Firebase
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
 export const db = getFirestore(app);
-
 export default app;
