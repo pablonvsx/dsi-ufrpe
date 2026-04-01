@@ -34,7 +34,7 @@ const PROFILES: ProfileType[] = [
     {
         id: "comum",
         label:"Usuário Comum",
-        route: "/cadastro-comum",
+        route: "/register_common",
         description: "Registra observações visuais sobre a qualidade da água, como cor, odor e presença de lixo ou contaminantes. Ideal para cidadãos que querem contribuir com sua comunidade.",
     },
     {

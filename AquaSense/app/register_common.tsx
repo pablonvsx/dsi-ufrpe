@@ -27,8 +27,8 @@ import {
     validateCity,
     validatePassword,
     validateConfirmPassword,
-} from "@/utils/validators.ts";
-import { pernambucoCities } from "@/utils/pernambucoCities.ts";
+} from "@/utils/validators";
+import { pernambucoCities } from "@/utils/pernambucoCities";
 
 // Types
 interface FormErrors {
