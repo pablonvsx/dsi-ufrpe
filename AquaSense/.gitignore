@@ -3,6 +3,9 @@
 # dependencies
 node_modules/
 
+# google maps config
+.env
+
 # Expo
 .expo/
 dist/
