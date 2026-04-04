@@ -26,7 +26,7 @@ function buildVerificationEmailHtml({ nome, verificationLink }) {
                   <h1 style="color:#ffffff; margin:0; font-size:24px;
                              letter-spacing:2px;">AQUASENSE</h1>
                   <p style="color:rgba(255,255,255,0.8); margin:8px 0 0;
-                            font-size:13px;">Monitoramento Inteligente da Água</p>
+                            font-size:13px;">Monitoramento Hídrico Colaborativo</p>
                 </td>
               </tr>
 

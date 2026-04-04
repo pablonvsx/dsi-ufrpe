@@ -22,7 +22,7 @@ export async function sendVerificationEmail(
   // AbortController para timeout manual — fetch nativo do React Native
   // não tem opção de timeout, então controlamos manualmente.
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 segundos
+  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 segundos
 
   try {
     const response = await fetch(`${API_URL}/send-verification-email`, {
