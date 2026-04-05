@@ -29,7 +29,7 @@ export default function AwaitingVerification() {
 
             if (isVerified) {
                 // E-mail confirmado — vai para a tela principal
-                router.replace("/map"); 
+                router.replace("/login" as any); 
             } else {
                 Alert.alert(
                     "E-mail ainda não verificado",
@@ -45,7 +45,7 @@ export default function AwaitingVerification() {
 
     async function handleLogout() {
         await signOut(auth);
-        router.replace("/map"); // troca pela sua rota de login
+        router.replace("/login" as any); // troca pela sua rota de login
     }
 
     return (

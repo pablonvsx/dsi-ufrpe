@@ -6,7 +6,7 @@ import { Redirect } from "expo-router";
  */
 
 export default function Index() {
-   return <Redirect href="/select_user_type" />;
+   return <Redirect href={"/login" as any} />;
     // return <Redirect href="/(tabs)" />;
     //Descomente a linha acima para redirecionar para a tela inicial das abas
 
