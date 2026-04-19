@@ -6,6 +6,7 @@ import macroData from '../assets/map_layers/macro_rh_aquasense.json';
 import mesoData from '../assets/map_layers/meso_rh_aquasense.json';
 import microData from '../assets/map_layers/micro_rh_aquasense.json';
 import municipiosData from '../assets/map_layers/municipios_pe.json';
+import riversData from '../assets/map_layers/rivers_aquasense.json';
 
 // Definição da interface para garantir a tipagem correta no React Native
 export interface GeoContexto {
@@ -14,6 +15,7 @@ export interface GeoContexto {
   mesoRH: string;
   microRH: string;
   municipio: string;
+  rio: string;
 }
 
 /**
@@ -43,6 +45,60 @@ const encontrarNomePoligono = (pt: any, geojsonData: any, chavesPropriedade: str
 };
 
 /**
+ * Função para buscar o rio mais próximo do ponto (dentro de 2km).
+ * @param pt Ponto gerado pelo Turf.js
+ * @param geojsonData A camada GeoJSON de rios
+ * @param distanciaMaximaKm Distância máxima em km (padrão: 2km = 2000m)
+ */
+const encontrarRioProximo = (pt: any, geojsonData: any, distanciaMaximaKm: number = 2): string => {
+  try {
+    if (!geojsonData || !geojsonData.features || geojsonData.features.length === 0) {
+      return "Sem curso d'água próximo";
+    }
+
+    let rioMaisProximo: any = null;
+    let distanciaMinima = Infinity;
+
+    for (const feature of geojsonData.features) {
+      try {
+        // Trata LineString e MultiLineString
+        let distancia = Infinity;
+        
+        if (feature.geometry.type === 'LineString') {
+          distancia = turf.pointToLineDistance(pt, feature, { units: 'kilometers' });
+        } else if (feature.geometry.type === 'MultiLineString') {
+          // Para MultiLineString, precisa testar cada linha
+          for (const line of feature.geometry.coordinates) {
+            const lineFeature = turf.lineString(line);
+            const dist = turf.pointToLineDistance(pt, lineFeature, { units: 'kilometers' });
+            distancia = Math.min(distancia, dist);
+          }
+        }
+
+        if (distancia < distanciaMinima) {
+          distanciaMinima = distancia;
+          rioMaisProximo = feature;
+        }
+      } catch (featureError) {
+        // Continua para o próximo feature se houver erro
+        continue;
+      }
+    }
+
+    // Se encontrou um rio dentro da distância máxima, retorna o nome
+    if (rioMaisProximo && distanciaMinima <= distanciaMaximaKm) {
+      const nomeRio = rioMaisProximo.properties?.NORIOCOMP || rioMaisProximo.properties?.nome || "Rio desconhecido";
+      return String(nomeRio);
+    }
+
+    return "Sem curso d'água próximo";
+  } catch (error) {
+    console.error("Erro ao processar camada de rios:", error);
+    return "Sem curso d'água próximo";
+  }
+};
+
+/**
  * Retorna o contexto geográfico completo de uma coordenada consultando todas as camadas locais.
  */
 export function obterContextoGeografico(latitude: number, longitude: number): GeoContexto {
@@ -55,5 +111,6 @@ export function obterContextoGeografico(latitude: number, longitude: number): Ge
     mesoRH: encontrarNomePoligono(pt, mesoData, ['nm_mesoRH']),
     microRH: encontrarNomePoligono(pt, microData, ['nm_microRH']),
     municipio: encontrarNomePoligono(pt, municipiosData, ['NM_MUN']),
+    rio: encontrarRioProximo(pt, riversData)
   };
 }

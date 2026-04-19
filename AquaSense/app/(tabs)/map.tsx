@@ -1,5 +1,5 @@
 // AquaSense/app/(tabs)/map.tsx
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { StyleSheet, View, TouchableOpacity, Text, ScrollView, Modal } from 'react-native';
 import MapView, { Marker, Geojson, PROVIDER_GOOGLE, MapTypes } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,7 +29,8 @@ export default function MapaScreen() {
   
   const [mapTypeVisible, setMapTypeVisible] = useState(false);
   const [layersVisible, setLayersVisible] = useState(false);
-  const [tipoMapa, setTipoMapa] = useState<MapTypes>('satellite');
+  const [tipoMapa, setTipoMapa] = useState<string>('satellite');
+  const [modoInteligencia, setModoInteligencia] = useState(false);
   
   // Novos estados para o teste de Contexto Geográfico
   const [pontoSelecionado, setPontoSelecionado] = useState<{latitude: number, longitude: number} | null>(null);
@@ -44,8 +45,38 @@ export default function MapaScreen() {
     rivers: false,
   });
 
+  // Effect para carregar a localização do dispositivo ao abrir o mapa
+  useEffect(() => {
+    const loadUserLocation = async () => {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        console.log('Permissão de localização negada');
+        return;
+      }
+
+      try {
+        let location = await Location.getCurrentPositionAsync({});
+        if (mapRef.current) {
+          mapRef.current.animateToRegion({
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+            latitudeDelta: 0.05,
+            longitudeDelta: 0.05,
+          }, 1000);
+        }
+      } catch (error) {
+        console.log('Erro ao obter localização:', error);
+      }
+    };
+
+    loadUserLocation();
+  }, []);
+
   // Função disparada ao tocar no mapa
   const handleMapPress = (e: any) => {
+    // Só ativa inteligência territorial se estiver em modo inteligência
+    if (!modoInteligencia) return;
+    
     const { latitude, longitude } = e.nativeEvent.coordinate;
     
     // 1. Salva a coordenada para desenhar o marcador
@@ -99,7 +130,7 @@ export default function MapaScreen() {
   };
 
   // Separar macro RH por região
-  const macroRegions = [...new Set((macroData as any).features.map((f: any) => f.properties?.nm_macroRH))].filter(Boolean);
+  const macroRegions = [...new Set((macroData as any).features.map((f: any) => f.properties?.nm_macroRH))].filter(Boolean) as string[];
   const macroSubsets = macroRegions.map((region, idx) => ({
     region,
     data: {
@@ -110,7 +141,7 @@ export default function MapaScreen() {
   }));
 
   // Separar meso RH por região
-  const mesoRegions = [...new Set((mesoData as any).features.map((f: any) => f.properties?.nm_mesoRH))].filter(Boolean);
+  const mesoRegions = [...new Set((mesoData as any).features.map((f: any) => f.properties?.nm_mesoRH))].filter(Boolean) as string[];
   const mesoSubsets = mesoRegions.map((region, idx) => ({
     region,
     data: {
@@ -121,7 +152,7 @@ export default function MapaScreen() {
   }));
 
   // Separar micro RH por região
-  const microRegions = [...new Set((microData as any).features.map((f: any) => f.properties?.nm_microRH))].filter(Boolean);
+  const microRegions = [...new Set((microData as any).features.map((f: any) => f.properties?.nm_microRH))].filter(Boolean) as string[];
   const microSubsets = microRegions.map((region, idx) => ({
     region,
     data: {
@@ -138,7 +169,7 @@ export default function MapaScreen() {
         style={styles.mapa}
         provider={PROVIDER_GOOGLE}
         initialRegion={REGIAO_INICIAL}
-        mapType={tipoMapa}
+        mapType={tipoMapa as any}
         showsUserLocation={true}
         showsMyLocationButton={false}
         showsCompass={false}
@@ -148,15 +179,15 @@ export default function MapaScreen() {
         {visibilidade.biomas && biomasCaatinga.features.length > 0 && <Geojson geojson={biomasCaatinga as any} fillColor="rgba(210, 105, 30, 0.25)" strokeColor="rgba(210, 105, 30, 0.25)" strokeWidth={0.5} />}
         {visibilidade.biomas && biomasMataAtlantica.features.length > 0 && <Geojson geojson={biomasMataAtlantica as any} fillColor="rgba(34, 139, 34, 0.25)" strokeColor="rgba(34, 139, 34, 0.25)" strokeWidth={0.5} />}
         {cemadasRHAtiva === 'macro' && macroSubsets.map(subset => (
-          <Geojson key={subset.region} geojson={subset.data as any} fillColor={subset.color.fill} strokeColor={subset.color.stroke} strokeWidth={0.5} />
+          <Geojson key={String(subset.region)} geojson={subset.data as any} fillColor={subset.color.fill} strokeColor={subset.color.stroke} strokeWidth={0.5} />
         ))}
         {cemadasRHAtiva === 'meso' && mesoSubsets.map(subset => (
-          <Geojson key={subset.region} geojson={subset.data as any} fillColor={subset.color.fill} strokeColor={subset.color.stroke} strokeWidth={0.5} />
+          <Geojson key={String(subset.region)} geojson={subset.data as any} fillColor={subset.color.fill} strokeColor={subset.color.stroke} strokeWidth={0.5} />
         ))}
         {cemadasRHAtiva === 'micro' && microSubsets.map(subset => (
-          <Geojson key={subset.region} geojson={subset.data as any} fillColor={subset.color.fill} strokeColor={subset.color.stroke} strokeWidth={0.5} />
+          <Geojson key={String(subset.region)} geojson={subset.data as any} fillColor={subset.color.fill} strokeColor={subset.color.stroke} strokeWidth={0.5} />
         ))}
-        {visibilidade.municipios && <Geojson geojson={municipiosData as any} strokeColor="#FFFFFF" fillColor="rgba(255, 255, 255, 0.1)" strokeWidth={1} />}
+        {visibilidade.municipios && <Geojson geojson={municipiosData as any} strokeColor={(tipoMapa === 'standard' || tipoMapa === 'terrain') ? '#FF8C00' : '#FFFFFF'} fillColor="rgba(255, 255, 255, 0.1)" strokeWidth={1} />}
         {visibilidade.rivers && <Geojson geojson={riversData as any} strokeColor="#1E90FF" strokeWidth={1.5} />}
 
         {/* Camada fixa de Pernambuco - sempre por cima */}
@@ -187,6 +218,7 @@ export default function MapaScreen() {
           <Text style={styles.cardText}><Text style={styles.bold}>Mesobacia:</Text> {contextoExibicao.mesoRH}</Text>
           <Text style={styles.cardText}><Text style={styles.bold}>Macrobacia:</Text> {contextoExibicao.macroRH}</Text>
           <Text style={styles.cardText}><Text style={styles.bold}>Bioma:</Text> {contextoExibicao.bioma}</Text>
+          <Text style={styles.cardText}><Text style={styles.bold}>Corpo hídrico:</Text> {contextoExibicao.rio}</Text>
         </View>
       )}
 
@@ -197,6 +229,15 @@ export default function MapaScreen() {
         </TouchableOpacity>
         <TouchableOpacity style={[styles.botaoCircular, { marginTop: 12 }]} onPress={() => setLayersVisible(true)}>
           <Ionicons name="layers" size={24} color="#004d48" />
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.botaoCircular, { marginTop: 12 }, modoInteligencia && styles.botaoCircularAtivo]} onPress={() => {
+          setModoInteligencia(!modoInteligencia);
+          if (modoInteligencia) {
+            setContextoExibicao(null);
+            setPontoSelecionado(null);
+          }
+        }}>
+          <Ionicons name="information-circle" size={26} color={modoInteligencia ? '#FFF' : '#004d48'} />
         </TouchableOpacity>
         <TouchableOpacity style={[styles.botaoCircular, { marginTop: 12 }]} onPress={resetNorth}>
           <Ionicons name="arrow-up" size={26} color="#004d48" />
@@ -215,7 +256,7 @@ export default function MapaScreen() {
               <TouchableOpacity 
                 key={mode} 
                 style={[styles.itemMenu, tipoMapa === mode && styles.itemAtivo]}
-                onPress={() => { setTipoMapa(mode as MapTypes); setMapTypeVisible(false); }}
+                onPress={() => { setTipoMapa(mode); setMapTypeVisible(false); }}
               >
                 <Text style={[styles.textoItem, tipoMapa === mode && styles.textoAtivo]}>{mode.toUpperCase()}</Text>
               </TouchableOpacity>
@@ -310,6 +351,7 @@ const styles = StyleSheet.create({
   // Controles de botões
   controlesDireita: { position: 'absolute', bottom: 40, left: 20 },
   botaoCircular: { backgroundColor: 'rgba(255, 255, 255, 0.92)', padding: 12, borderRadius: 30, elevation: 4, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4, alignItems: 'center', justifyContent: 'center' },
+  botaoCircularAtivo: { backgroundColor: '#004d48' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
   menuCard: { backgroundColor: 'rgba(255, 255, 255, 0.95)', width: '75%', borderRadius: BORDER_RADIUS, padding: 20, elevation: 4, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8 },
   menuBottom: { backgroundColor: 'rgba(255, 255, 255, 0.95)', width: '100%', borderTopLeftRadius: 25, borderTopRightRadius: 25, padding: 25, position: 'absolute', bottom: 0, maxHeight: '60%', elevation: 4, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8 },
