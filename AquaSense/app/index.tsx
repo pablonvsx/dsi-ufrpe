@@ -6,8 +6,8 @@ import { Redirect } from "expo-router";
  */
 
 export default function Index() {
-    //return <Redirect href="/select_user_type" />;
-    return <Redirect href="/(tabs)" />;
+    return <Redirect href="/select_user_type" />;
+    //return <Redirect href="/register_water_body" />;
     //Descomente a linha acima para redirecionar para a tela inicial das abas
 
 }

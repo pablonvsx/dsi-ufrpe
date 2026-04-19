@@ -3,5 +3,6 @@
 
 export * from "./user";
 export * from "./teams";
+export * from "./water_bodies";
 
 

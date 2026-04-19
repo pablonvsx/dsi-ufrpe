@@ -17,6 +17,11 @@ export default function RootLayout() {
         {/* Declare as telas explicitamente para o roteador não se perder */}
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="select_user_type" options={{ headerShown: false }} />
+        <Stack.Screen name="register_common" options={{ headerShown: false }} />
+        <Stack.Screen name="register_collaborator" options={{ headerShown: false }} />
+        <Stack.Screen name="register_technician" options={{ headerShown: false }} />
+        <Stack.Screen name="register_manager" options={{ headerShown: false }} />
+        <Stack.Screen name="register_water_body" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       </Stack>
       <StatusBar style="auto" />
