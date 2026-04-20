@@ -22,6 +22,7 @@ export default function RootLayout() {
         <Stack.Screen name="register_technician" options={{ headerShown: false }} />
         <Stack.Screen name="register_manager" options={{ headerShown: false }} />
         <Stack.Screen name="register_water_body" options={{ headerShown: false }} />
+        <Stack.Screen name="register_pou" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       </Stack>
       <StatusBar style="auto" />

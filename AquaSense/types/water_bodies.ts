@@ -43,3 +43,37 @@ export interface CorpoHidrico {
   dataCriacao: Date | any;  // O Firebase trabalha com "Timestamp", então usaremos `any` ou i
                             // importar o tipo do Firebase previne erros de tipagem
 }
+
+export interface PontoDeUso {
+  id?: string;
+  // Chave Estrangeira (Relacionamento)
+  // Opcional, pois o usuário pode cadastrar um ponto de uso num 
+  // riacho que ainda não tem cadastro oficial no app
+  corpoHidricoId?: string; 
+  nomeCorpoHidricoReferencia?: string; 
+
+  // Dados Específicos do Uso
+  tipoDeUso: TipoUsoAgua[] | TipoUsoAgua; // Novo formato: seleção múltipla (mantém compatibilidade com registros antigos)
+  nomeLocalPopular?: string; // Ex: "Prainha do rio", "Poço da pedra"
+  frequenciaUso?: "Diária" | "Semanal" | "Mensal" | "Apenas na Seca" | "Apenas na Chuva"; // Excelente dado para análise temporal!
+  descricao?: string; // Alterado pela gestão ou técnico. Texto oficial para o ponto de uso
+  // pode conter observações importantes para outros usuários.
+  
+  // Dados Espaciais Brutos
+  latitude: number;
+  longitude: number;
+
+  // Contexto Territorial (Sempre enriquecido pelo seu geoService)
+  bioma: string;
+  macroRH: string;
+  mesoRH: string;
+  microRH: string;
+  municipio: string;
+
+  // Metadados de Auditoria
+  cadastroValido: boolean;
+  criadoPor: string;
+  comentario?: string; // Campo para o usuario deixar uma observação ou comentário no cadastro (opcional)
+  validadoPor?: string;
+  dataCriacao: any; // serverTimestamp
+}

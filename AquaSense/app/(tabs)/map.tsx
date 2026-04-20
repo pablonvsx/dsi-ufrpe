@@ -1,21 +1,19 @@
 // AquaSense/app/(tabs)/map.tsx
 import React, { useState, useRef, useEffect } from 'react';
 import { StyleSheet, View, TouchableOpacity, Text, ScrollView, Modal } from 'react-native';
-import MapView, { Marker, Geojson, PROVIDER_GOOGLE, MapTypes } from 'react-native-maps';
+import MapView, { Marker, Geojson, PROVIDER_GOOGLE } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 
 // Importação do Serviço Geográfico
 import { obterContextoGeografico } from '../../services/geoService';
+import { db } from '../../config/firebase';
+import { CorpoHidrico, PontoDeUso } from '../../types/water_bodies';
 
 // Importação das camadas geoespaciais
 import stateData from '../../assets/map_layers/pe_aquasense.json';
-import biomasData from '../../assets/map_layers/biomas_aquasense.json';
-import macroData from '../../assets/map_layers/macro_rh_aquasense.json';
-import mesoData from '../../assets/map_layers/meso_rh_aquasense.json';
-import microData from '../../assets/map_layers/micro_rh_aquasense.json';
 import municipiosData from '../../assets/map_layers/municipios_pe.json';
-import riversData from '../../assets/map_layers/rivers_aquasense.json';
 
 const REGIAO_INICIAL = {
   latitude: -8.28,
@@ -23,6 +21,10 @@ const REGIAO_INICIAL = {
   latitudeDelta: 4.5,
   longitudeDelta: 4.5,
 };
+
+type DetalheMapa =
+  | { tipo: 'corpoHidrico'; dado: CorpoHidrico }
+  | { tipo: 'pontoDeUso'; dado: PontoDeUso };
 
 export default function MapaScreen() {
   const mapRef = useRef<MapView>(null);
@@ -35,15 +37,22 @@ export default function MapaScreen() {
   // Novos estados para o teste de Contexto Geográfico
   const [pontoSelecionado, setPontoSelecionado] = useState<{latitude: number, longitude: number} | null>(null);
   const [contextoExibicao, setContextoExibicao] = useState<any>(null);
-
-  // Estado para camadas RH (apenas 1 ativa por vez)
-  const [cemadasRHAtiva, setCemadasRHAtiva] = useState<'macro' | 'meso' | 'micro' | null>(null);
+  const [corposHidricosValidados, setCorposHidricosValidados] = useState<CorpoHidrico[]>([]);
+  const [pontosDeUsoValidados, setPontosDeUsoValidados] = useState<PontoDeUso[]>([]);
+  const [detalheSelecionado, setDetalheSelecionado] = useState<DetalheMapa | null>(null);
+  const [detalheModalVisible, setDetalheModalVisible] = useState(false);
 
   const [visibilidade, setVisibilidade] = useState({
     municipios: true,
-    biomas: false,
-    rivers: false,
+    corposHidricos: true,
+    pontosDeUso: true,
   });
+
+  const labelsCamadas: Record<keyof typeof visibilidade, string> = {
+    municipios: 'MUNICIPIOS',
+    corposHidricos: 'CORPOS HIDRICOS',
+    pontosDeUso: 'PONTOS DE USO',
+  };
 
   // Effect para carregar a localização do dispositivo ao abrir o mapa
   useEffect(() => {
@@ -70,6 +79,32 @@ export default function MapaScreen() {
     };
 
     loadUserLocation();
+  }, []);
+
+  useEffect(() => {
+    const carregarPontosValidados = async () => {
+      try {
+        const [corposSnapshot, pontosSnapshot] = await Promise.all([
+          getDocs(query(collection(db, 'corposHidricos'), where('cadastroValido', '==', true))),
+          getDocs(query(collection(db, 'pontosDeUso'), where('cadastroValido', '==', true))),
+        ]);
+
+        const corpos = corposSnapshot.docs
+          .map((doc) => ({ id: doc.id, ...doc.data() } as CorpoHidrico))
+          .filter((item) => typeof item.latitude === 'number' && typeof item.longitude === 'number');
+
+        const pontos = pontosSnapshot.docs
+          .map((doc) => ({ id: doc.id, ...doc.data() } as PontoDeUso))
+          .filter((item) => typeof item.latitude === 'number' && typeof item.longitude === 'number');
+
+        setCorposHidricosValidados(corpos);
+        setPontosDeUsoValidados(pontos);
+      } catch (error) {
+        console.log('Erro ao carregar pontos validados:', error);
+      }
+    };
+
+    carregarPontosValidados();
   }, []);
 
   // Função disparada ao tocar no mapa
@@ -106,61 +141,20 @@ export default function MapaScreen() {
     mapRef.current?.animateCamera({ heading: 0 }, { duration: 1000 });
   };
 
-  // Cores disponíveis para diferentes regiões
-  const colors = [
-    { fill: 'rgba(255, 99, 71, 0.45)', stroke: 'rgba(255, 99, 71, 0.45)' },    // Tomato
-    { fill: 'rgba(70, 130, 180, 0.45)', stroke: 'rgba(70, 130, 180, 0.45)' },  // Steel Blue
-    { fill: 'rgba(34, 139, 34, 0.45)', stroke: 'rgba(34, 139, 34, 0.45)' },    // Forest Green
-    { fill: 'rgba(184, 134, 11, 0.45)', stroke: 'rgba(184, 134, 11, 0.45)' },  // Dark Goldenrod
-    { fill: 'rgba(139, 69, 19, 0.45)', stroke: 'rgba(139, 69, 19, 0.45)' },    // Saddle Brown
-    { fill: 'rgba(47, 79, 79, 0.45)', stroke: 'rgba(47, 79, 79, 0.45)' },      // Dark Slate Gray
-    { fill: 'rgba(100, 149, 237, 0.45)', stroke: 'rgba(100, 149, 237, 0.45)' }, // Cornflower Blue
-    { fill: 'rgba(210, 105, 30, 0.45)', stroke: 'rgba(210, 105, 30, 0.45)' },  // Chocolate
-  ];
-
-  // Separar biomas por tipo
-  const biomasCaatinga = {
-    ...biomasData,
-    features: (biomasData as any).features.filter((feature: any) => feature.properties?.nm_bm === 'Caatinga')
+  const abrirDetalhes = (detalhe: DetalheMapa) => {
+    setDetalheSelecionado(detalhe);
+    setDetalheModalVisible(true);
   };
 
-  const biomasMataAtlantica = {
-    ...biomasData,
-    features: (biomasData as any).features.filter((feature: any) => feature.properties?.nm_bm === 'Mata Atlântica')
+  const fecharDetalhes = () => {
+    setDetalheModalVisible(false);
+    setDetalheSelecionado(null);
   };
 
-  // Separar macro RH por região
-  const macroRegions = [...new Set((macroData as any).features.map((f: any) => f.properties?.nm_macroRH))].filter(Boolean) as string[];
-  const macroSubsets = macroRegions.map((region, idx) => ({
-    region,
-    data: {
-      ...macroData,
-      features: (macroData as any).features.filter((feature: any) => feature.properties?.nm_macroRH === region)
-    },
-    color: colors[idx % colors.length]
-  }));
-
-  // Separar meso RH por região
-  const mesoRegions = [...new Set((mesoData as any).features.map((f: any) => f.properties?.nm_mesoRH))].filter(Boolean) as string[];
-  const mesoSubsets = mesoRegions.map((region, idx) => ({
-    region,
-    data: {
-      ...mesoData,
-      features: (mesoData as any).features.filter((feature: any) => feature.properties?.nm_mesoRH === region)
-    },
-    color: colors[idx % colors.length]
-  }));
-
-  // Separar micro RH por região
-  const microRegions = [...new Set((microData as any).features.map((f: any) => f.properties?.nm_microRH))].filter(Boolean) as string[];
-  const microSubsets = microRegions.map((region, idx) => ({
-    region,
-    data: {
-      ...microData,
-      features: (microData as any).features.filter((feature: any) => feature.properties?.nm_microRH === region)
-    },
-    color: colors[idx % colors.length]
-  }));
+  const formatarTiposUso = (tipo: PontoDeUso['tipoDeUso']) => {
+    if (Array.isArray(tipo)) return tipo.join(', ');
+    return tipo;
+  };
 
   return (
     <View style={styles.container}>
@@ -176,19 +170,36 @@ export default function MapaScreen() {
         onPress={handleMapPress}
       >
         {/* Camadas controláveis */}
-        {visibilidade.biomas && biomasCaatinga.features.length > 0 && <Geojson geojson={biomasCaatinga as any} fillColor="rgba(210, 105, 30, 0.25)" strokeColor="rgba(210, 105, 30, 0.25)" strokeWidth={0.5} />}
-        {visibilidade.biomas && biomasMataAtlantica.features.length > 0 && <Geojson geojson={biomasMataAtlantica as any} fillColor="rgba(34, 139, 34, 0.25)" strokeColor="rgba(34, 139, 34, 0.25)" strokeWidth={0.5} />}
-        {cemadasRHAtiva === 'macro' && macroSubsets.map(subset => (
-          <Geojson key={String(subset.region)} geojson={subset.data as any} fillColor={subset.color.fill} strokeColor={subset.color.stroke} strokeWidth={0.5} />
-        ))}
-        {cemadasRHAtiva === 'meso' && mesoSubsets.map(subset => (
-          <Geojson key={String(subset.region)} geojson={subset.data as any} fillColor={subset.color.fill} strokeColor={subset.color.stroke} strokeWidth={0.5} />
-        ))}
-        {cemadasRHAtiva === 'micro' && microSubsets.map(subset => (
-          <Geojson key={String(subset.region)} geojson={subset.data as any} fillColor={subset.color.fill} strokeColor={subset.color.stroke} strokeWidth={0.5} />
-        ))}
         {visibilidade.municipios && <Geojson geojson={municipiosData as any} strokeColor={(tipoMapa === 'standard' || tipoMapa === 'terrain') ? '#FF8C00' : '#FFFFFF'} fillColor="rgba(255, 255, 255, 0.1)" strokeWidth={1} />}
-        {visibilidade.rivers && <Geojson geojson={riversData as any} strokeColor="#1E90FF" strokeWidth={1.5} />}
+
+        {/* Marcadores de registros validados */}
+        {visibilidade.corposHidricos && corposHidricosValidados.map((item) => (
+          <Marker
+            key={`ch-${item.id ?? `${item.latitude}-${item.longitude}`}`}
+            coordinate={{ latitude: item.latitude, longitude: item.longitude }}
+            title={item.nome || 'Corpo hidrico'}
+            description={`Tipo: ${item.tipo}`}
+            onPress={() => abrirDetalhes({ tipo: 'corpoHidrico', dado: item })}
+          >
+            <View style={[styles.customMarker, styles.markerCorpoHidrico]}>
+              <Ionicons name="water" size={16} color="#FFFFFF" />
+            </View>
+          </Marker>
+        ))}
+
+        {visibilidade.pontosDeUso && pontosDeUsoValidados.map((item) => (
+          <Marker
+            key={`pu-${item.id ?? `${item.latitude}-${item.longitude}`}`}
+            coordinate={{ latitude: item.latitude, longitude: item.longitude }}
+            title={item.nomeLocalPopular || formatarTiposUso(item.tipoDeUso)}
+            description={`Uso: ${formatarTiposUso(item.tipoDeUso)}`}
+            onPress={() => abrirDetalhes({ tipo: 'pontoDeUso', dado: item })}
+          >
+            <View style={[styles.customMarker, styles.markerPontoDeUso]}>
+              <Ionicons name="location" size={16} color="#FFFFFF" />
+            </View>
+          </Marker>
+        ))}
 
         {/* Camada fixa de Pernambuco - sempre por cima */}
         <Geojson geojson={stateData as any} fillColor="rgba(255, 0, 0, 0)" strokeColor="#FF0000" strokeWidth={3} />
@@ -278,9 +289,9 @@ export default function MapaScreen() {
             <ScrollView showsVerticalScrollIndicator={false}>
               {/* Camadas Simples (com toggle) */}
               <Text style={styles.secaoTitulo}>Camadas Gerais</Text>
-              {Object.keys(visibilidade).map((key) => (
+              {(Object.keys(visibilidade) as Array<keyof typeof visibilidade>).map((key) => (
                 <View key={key} style={styles.toggleRow}>
-                  <Text style={styles.toggleLabel}>{key.toUpperCase()}</Text>
+                  <Text style={styles.toggleLabel}>{labelsCamadas[key]}</Text>
                   <TouchableOpacity 
                     style={[styles.toggle, visibilidade[key as keyof typeof visibilidade] && styles.toggleAtivo]}
                     onPress={() => setVisibilidade(p => ({...p, [key]: !p[key as keyof typeof visibilidade]}))}
@@ -289,25 +300,57 @@ export default function MapaScreen() {
                   </TouchableOpacity>
                 </View>
               ))}
-
-              {/* Camadas RH (exclusivas) */}
-              <Text style={[styles.secaoTitulo, { marginTop: 20 }]}>Regiões Hidrográficas</Text>
-              <Text style={styles.secaoDesc}>Apenas uma camada por vez</Text>
-              
-              {['macro', 'meso', 'micro'].map((layer) => (
-                <View key={layer} style={styles.toggleRow}>
-                  <Text style={styles.toggleLabel}>{layer === 'macro' ? 'MACRO RH' : layer === 'meso' ? 'MESO RH' : 'MICRO RH'}</Text>
-                  <TouchableOpacity 
-                    style={[styles.toggle, cemadasRHAtiva === layer && styles.toggleAtivo]}
-                    onPress={() => setCemadasRHAtiva(cemadasRHAtiva === layer ? null : (layer as 'macro' | 'meso' | 'micro'))}
-                  >
-                    <View style={[styles.toggleCircle, cemadasRHAtiva === layer && styles.toggleCircleAtivo]} />
-                  </TouchableOpacity>
-                </View>
-              ))}
             </ScrollView>
           </View>
         </View>
+      </Modal>
+
+      {/* MODAL: DETALHES DO PONTO */}
+      <Modal visible={detalheModalVisible} transparent animationType="fade" onRequestClose={fecharDetalhes}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={fecharDetalhes}>
+          <TouchableOpacity activeOpacity={1} style={styles.detailsCard} onPress={() => {}}>
+            <View style={styles.detailsHeader}>
+              <Text style={styles.detailsTitle}>
+                {detalheSelecionado?.tipo === 'corpoHidrico' ? 'Corpo Hidrico' : 'Ponto de Uso'}
+              </Text>
+              <TouchableOpacity onPress={fecharDetalhes}>
+                <Ionicons name="close" size={22} color="#004d48" />
+              </TouchableOpacity>
+            </View>
+
+            {detalheSelecionado?.tipo === 'corpoHidrico' && (
+              <View>
+                <Text style={styles.detailsLine}><Text style={styles.detailsLabel}>Nome:</Text> {detalheSelecionado.dado.nome}</Text>
+                <Text style={styles.detailsLine}><Text style={styles.detailsLabel}>Tipo:</Text> {detalheSelecionado.dado.tipo}</Text>
+                <Text style={styles.detailsLine}><Text style={styles.detailsLabel}>Municipio:</Text> {detalheSelecionado.dado.municipio}</Text>
+                <Text style={styles.detailsLine}><Text style={styles.detailsLabel}>Bioma:</Text> {detalheSelecionado.dado.bioma}</Text>
+                <Text style={styles.detailsLine}><Text style={styles.detailsLabel}>Macro RH:</Text> {detalheSelecionado.dado.macroRH}</Text>
+                <Text style={styles.detailsLine}><Text style={styles.detailsLabel}>Meso RH:</Text> {detalheSelecionado.dado.mesoRH}</Text>
+                <Text style={styles.detailsLine}><Text style={styles.detailsLabel}>Micro RH:</Text> {detalheSelecionado.dado.microRH}</Text>
+                {detalheSelecionado.dado.comentario && (
+                  <Text style={styles.detailsLine}><Text style={styles.detailsLabel}>Comentario:</Text> {detalheSelecionado.dado.comentario}</Text>
+                )}
+              </View>
+            )}
+
+            {detalheSelecionado?.tipo === 'pontoDeUso' && (
+              <View>
+                <Text style={styles.detailsLine}><Text style={styles.detailsLabel}>Tipos de uso:</Text> {formatarTiposUso(detalheSelecionado.dado.tipoDeUso)}</Text>
+                <Text style={styles.detailsLine}><Text style={styles.detailsLabel}>Nome local:</Text> {detalheSelecionado.dado.nomeLocalPopular || 'Nao informado'}</Text>
+                <Text style={styles.detailsLine}><Text style={styles.detailsLabel}>Referencia:</Text> {detalheSelecionado.dado.nomeCorpoHidricoReferencia || 'Nao informada'}</Text>
+                <Text style={styles.detailsLine}><Text style={styles.detailsLabel}>Frequencia:</Text> {detalheSelecionado.dado.frequenciaUso || 'Nao informada'}</Text>
+                <Text style={styles.detailsLine}><Text style={styles.detailsLabel}>Municipio:</Text> {detalheSelecionado.dado.municipio}</Text>
+                <Text style={styles.detailsLine}><Text style={styles.detailsLabel}>Bioma:</Text> {detalheSelecionado.dado.bioma}</Text>
+                <Text style={styles.detailsLine}><Text style={styles.detailsLabel}>Macro RH:</Text> {detalheSelecionado.dado.macroRH}</Text>
+                <Text style={styles.detailsLine}><Text style={styles.detailsLabel}>Meso RH:</Text> {detalheSelecionado.dado.mesoRH}</Text>
+                <Text style={styles.detailsLine}><Text style={styles.detailsLabel}>Micro RH:</Text> {detalheSelecionado.dado.microRH}</Text>
+                {detalheSelecionado.dado.comentario && (
+                  <Text style={styles.detailsLine}><Text style={styles.detailsLabel}>Comentario:</Text> {detalheSelecionado.dado.comentario}</Text>
+                )}
+              </View>
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
     </View>
   );
@@ -366,11 +409,67 @@ const styles = StyleSheet.create({
 
   // Estilos dos Toggles
   secaoTitulo: { fontSize: 14, fontWeight: '700', color: PRIMARY, marginBottom: 12, marginTop: 8, letterSpacing: 0.5 },
-  secaoDesc: { fontSize: 12, color: '#999', marginBottom: 12, marginTop: -8 },
   toggleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 12, backgroundColor: '#f9fafa', marginBottom: 8, borderRadius: 10, borderWidth: 1, borderColor: '#f0f0f0' },
   toggleLabel: { fontSize: 15, fontWeight: '600', color: '#333' },
   toggle: { width: 50, height: 28, backgroundColor: '#ddd', borderRadius: 14, padding: 2, justifyContent: 'center' },
   toggleAtivo: { backgroundColor: PRIMARY },
   toggleCircle: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#fff', alignSelf: 'flex-start' },
   toggleCircleAtivo: { alignSelf: 'flex-end' },
+
+  // Modal de detalhes de marcador
+  detailsCard: {
+    width: '88%',
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+    borderRadius: 18,
+    padding: 18,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+  },
+  detailsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e8eeee',
+    paddingBottom: 8,
+  },
+  detailsTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: PRIMARY,
+  },
+  detailsLine: {
+    fontSize: 14,
+    color: '#5f6f6f',
+    marginBottom: 6,
+  },
+  detailsLabel: {
+    fontWeight: '700',
+    color: PRIMARY,
+  },
+
+  // Marcadores customizados para diferenciar tipos de ponto
+  customMarker: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 5,
+  },
+  markerCorpoHidrico: {
+    backgroundColor: '#0B63CE',
+  },
+  markerPontoDeUso: {
+    backgroundColor: '#D35400',
+  },
 });

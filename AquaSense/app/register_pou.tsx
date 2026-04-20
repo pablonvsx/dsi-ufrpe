@@ -13,32 +13,18 @@ import {
     ActivityIndicator,
     Alert,
     StatusBar,
-    Image,
     Pressable,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { router } from "expo-router";
+import { router, Stack } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { Stack } from "expo-router";
 import { useFonts, Questrial_400Regular } from "@expo-google-fonts/questrial";
 import MapView, { Marker, Circle } from "react-native-maps";
 import * as Location from "expo-location";
 
-import { salvarCorpoHidrico } from "@/services/firestore/water_bodies";
+import { salvarPontoDeUso } from "@/services/firestore/water_bodies";
 import { obterContextoGeografico } from "@/services/geoService";
-import { TipoCorpoHidrico, TipoUsoAgua, CorpoHidrico } from "@/types/water_bodies";
-
-const TIPOS_CORPO_HIDRICO: TipoCorpoHidrico[] = [
-    "rio",
-    "riacho",
-    "lago",
-    "açude",
-    "barragem",
-    "cacimba",
-    "nascente",
-    "canal",
-    "outro",
-];
+import { PontoDeUso, TipoUsoAgua } from "@/types/water_bodies";
 
 const TIPOS_USO_AGUA: TipoUsoAgua[] = [
     "Abastecimento Humano",
@@ -49,7 +35,16 @@ const TIPOS_USO_AGUA: TipoUsoAgua[] = [
     "Lançamento de Efluentes",
 ];
 
-// Coordenadas padrão: Recife, PE
+type FrequenciaUso = NonNullable<PontoDeUso["frequenciaUso"]>;
+
+const FREQUENCIAS_USO: FrequenciaUso[] = [
+    "Diária",
+    "Semanal",
+    "Mensal",
+    "Apenas na Seca",
+    "Apenas na Chuva",
+];
+
 const DEFAULT_REGION = {
     latitude: -8.0476,
     longitude: -34.8770,
@@ -58,38 +53,38 @@ const DEFAULT_REGION = {
 };
 
 interface FormErrors {
-    nome?: string;
-    tipo?: string;
+    tiposDeUso?: string;
     latitude?: string;
     longitude?: string;
-    tiposDeUso?: string;
 }
 
 interface FormData {
-    nome: string;
-    tipo: TipoCorpoHidrico | "";
-    descricao: string;
+    tiposDeUso: TipoUsoAgua[];
+    nomeLocalPopular: string;
+    nomeCorpoHidricoReferencia: string;
+    frequenciaUso: FrequenciaUso | "";
+    comentario: string;
     latitude: string;
     longitude: string;
     municipio: string;
-    tiposDeUso: TipoUsoAgua[];
 }
 
-export default function RegisterWaterBody() {
+export default function RegisterPou() {
     const [formData, setFormData] = useState<FormData>({
-        nome: "",
-        tipo: "",
-        descricao: "",
+        tiposDeUso: [],
+        nomeLocalPopular: "",
+        nomeCorpoHidricoReferencia: "",
+        frequenciaUso: "",
+        comentario: "",
         latitude: "",
         longitude: "",
         municipio: "",
-        tiposDeUso: [],
     });
 
     const [errors, setErrors] = useState<FormErrors>({});
     const [loading, setLoading] = useState(false);
-    const [tipoModalVisible, setTipoModalVisible] = useState(false);
-    const [usoModalVisible, setUsoModalVisible] = useState(false);
+    const [tipoUsoModalVisible, setTipoUsoModalVisible] = useState(false);
+    const [frequenciaModalVisible, setFrequenciaModalVisible] = useState(false);
     const [mapModalVisible, setMapModalVisible] = useState(false);
     const [gettingLocation, setGettingLocation] = useState(false);
     const [mapRegion, setMapRegion] = useState(DEFAULT_REGION);
@@ -98,8 +93,6 @@ export default function RegisterWaterBody() {
         longitude: number;
     } | null>(null);
 
-    const nomeRef = useRef<TextInput>(null);
-    const descricaoRef = useRef<TextInput>(null);
     const latitudeRef = useRef<TextInput>(null);
     const longitudeRef = useRef<TextInput>(null);
     const mapViewRef = useRef<MapView>(null);
@@ -107,7 +100,6 @@ export default function RegisterWaterBody() {
     const [fontsLoaded] = useFonts({ Questrial_400Regular });
     const questrial = fontsLoaded ? "Questrial_400Regular" : undefined;
 
-    // Solicitar permissões de localização e obter localização inicial do dispositivo
     useEffect(() => {
         (async () => {
             try {
@@ -117,25 +109,21 @@ export default function RegisterWaterBody() {
                     return;
                 }
 
-                // Obter localização do dispositivo
                 const location = await Location.getCurrentPositionAsync({
                     accuracy: Location.Accuracy.High,
                 });
 
                 const { latitude, longitude } = location.coords;
                 const contextoGeo = obterContextoGeografico(latitude, longitude);
-                
-                setUserLocation({ latitude, longitude });
 
-                // Usar localização do usuário como região inicial do mapa
+                setUserLocation({ latitude, longitude });
                 setMapRegion({
                     latitude,
                     longitude,
                     latitudeDelta: 0.015,
                     longitudeDelta: 0.015,
                 });
-                
-                // Preencher municipio automaticamente
+
                 setFormData((prev) => ({
                     ...prev,
                     municipio: contextoGeo.municipio,
@@ -146,19 +134,20 @@ export default function RegisterWaterBody() {
         })();
     }, []);
 
-    // Fazer zoom para o usuário ao abrir o modal de mapa
     useEffect(() => {
         if (mapModalVisible && userLocation && mapViewRef.current) {
-            mapViewRef.current.animateToRegion({
-                latitude: userLocation.latitude,
-                longitude: userLocation.longitude,
-                latitudeDelta: 0.015,
-                longitudeDelta: 0.015,
-            }, 1000);
+            mapViewRef.current.animateToRegion(
+                {
+                    latitude: userLocation.latitude,
+                    longitude: userLocation.longitude,
+                    latitudeDelta: 0.015,
+                    longitudeDelta: 0.015,
+                },
+                1000
+            );
         }
     }, [mapModalVisible, userLocation]);
 
-    // Obter localização do usuário
     async function handleGetUserLocation() {
         setGettingLocation(true);
         try {
@@ -199,43 +188,42 @@ export default function RegisterWaterBody() {
         }
     }
 
-    // Confirmar localização do mapa
     function handleConfirmMapLocation() {
         const { latitude, longitude } = mapRegion;
         const contextoGeo = obterContextoGeografico(latitude, longitude);
-        
+
         setFormData((prev) => ({
             ...prev,
             latitude: latitude.toFixed(6),
             longitude: longitude.toFixed(6),
             municipio: contextoGeo.municipio,
         }));
+
         setErrors((prev) => ({
             ...prev,
             latitude: undefined,
             longitude: undefined,
         }));
+
         setMapModalVisible(false);
     }
 
     function validateField(field: keyof FormErrors): string | null {
         switch (field) {
-            case "nome":
-                return formData.nome.trim().length === 0 ? "Nome é obrigatório" : null;
-            case "tipo":
-                return formData.tipo === "" ? "Tipo de corpo hídrico é obrigatório" : null;
-            case "latitude":
+            case "tiposDeUso":
+                return formData.tiposDeUso.length === 0 ? "Selecione pelo menos um tipo de uso" : null;
+            case "latitude": {
                 const lat = parseFloat(formData.latitude);
                 if (formData.latitude.trim() === "") return "Latitude é obrigatória";
                 if (isNaN(lat) || lat < -90 || lat > 90) return "Latitude inválida (-90 a 90)";
                 return null;
-            case "longitude":
+            }
+            case "longitude": {
                 const lon = parseFloat(formData.longitude);
                 if (formData.longitude.trim() === "") return "Longitude é obrigatória";
                 if (isNaN(lon) || lon < -180 || lon > 180) return "Longitude inválida (-180 a 180)";
                 return null;
-            case "tiposDeUso":
-                return formData.tiposDeUso.length === 0 ? "Selecione pelo menos um tipo de uso" : null;
+            }
             default:
                 return null;
         }
@@ -248,11 +236,9 @@ export default function RegisterWaterBody() {
 
     function validateAll(): boolean {
         const newErrors: FormErrors = {
-            nome: validateField("nome") ?? undefined,
-            tipo: validateField("tipo") ?? undefined,
+            tiposDeUso: validateField("tiposDeUso") ?? undefined,
             latitude: validateField("latitude") ?? undefined,
             longitude: validateField("longitude") ?? undefined,
-            tiposDeUso: validateField("tiposDeUso") ?? undefined,
         };
         setErrors(newErrors);
         return !Object.values(newErrors).some(Boolean);
@@ -261,7 +247,7 @@ export default function RegisterWaterBody() {
     function toggleTipoDeUso(tipo: TipoUsoAgua) {
         setFormData((prev) => {
             const tipos = prev.tiposDeUso.includes(tipo)
-                ? prev.tiposDeUso.filter((t) => t !== tipo)
+                ? prev.tiposDeUso.filter((item) => item !== tipo)
                 : [...prev.tiposDeUso, tipo];
             return { ...prev, tiposDeUso: tipos };
         });
@@ -276,16 +262,12 @@ export default function RegisterWaterBody() {
 
         setLoading(true);
         try {
-            // Obter contexto geográfico
             const latitude = parseFloat(formData.latitude);
             const longitude = parseFloat(formData.longitude);
             const contextoGeo = obterContextoGeografico(latitude, longitude);
 
-            // Preparar dados para salvar (sem campos undefined)
-            const corpoHidrico: Omit<CorpoHidrico, "id" | "dataCriacao"> = {
-                nome: formData.nome.trim(),
-                tipo: formData.tipo as TipoCorpoHidrico,
-                tiposDeUso: formData.tiposDeUso,
+            const pontoDeUso: Omit<PontoDeUso, "id" | "dataCriacao"> = {
+                tipoDeUso: formData.tiposDeUso,
                 latitude,
                 longitude,
                 bioma: contextoGeo.bioma,
@@ -293,29 +275,41 @@ export default function RegisterWaterBody() {
                 mesoRH: contextoGeo.mesoRH,
                 microRH: contextoGeo.microRH,
                 municipio: formData.municipio || contextoGeo.municipio,
-                cadastroValido: false, // Novo cadastro precisa de validação
-                criadoPor: "anonymous", // Sem autenticação, usar anonymous
+                cadastroValido: false,
+                criadoPor: "anonymous",
             };
 
-            // Adicionar comentário (campo que usuário preenche) apenas se tiver valor
-            const comentarioTrimmed = formData.descricao.trim();
-            if (comentarioTrimmed) {
-                (corpoHidrico as any).comentario = comentarioTrimmed;
+            const nomeLocalPopular = formData.nomeLocalPopular.trim();
+            if (nomeLocalPopular) {
+                pontoDeUso.nomeLocalPopular = nomeLocalPopular;
             }
 
-            // Salvar no Firestore
-            const id = await salvarCorpoHidrico(corpoHidrico);
+            const nomeCorpoHidricoReferencia = formData.nomeCorpoHidricoReferencia.trim();
+            if (nomeCorpoHidricoReferencia) {
+                pontoDeUso.nomeCorpoHidricoReferencia = nomeCorpoHidricoReferencia;
+            }
+
+            if (formData.frequenciaUso) {
+                pontoDeUso.frequenciaUso = formData.frequenciaUso;
+            }
+
+            const comentario = formData.comentario.trim();
+            if (comentario) {
+                pontoDeUso.comentario = comentario;
+            }
+
+            const id = await salvarPontoDeUso(pontoDeUso);
 
             Alert.alert(
-                "Corpo hídrico cadastrado!",
-                `O corpo hídrico foi cadastrado com sucesso!\n\nID: ${id}`,
+                "Ponto de uso cadastrado!",
+                `O ponto de uso foi cadastrado com sucesso!\n\nID: ${id}`,
                 [{ text: "OK", onPress: () => router.replace("/(tabs)") }]
             );
         } catch (err: any) {
             console.error("ERRO:", err);
             Alert.alert(
                 "Erro no cadastro",
-                `${err?.message ?? "Erro desconhecido ao cadastrar corpo hídrico"}`
+                `${err?.message ?? "Erro desconhecido ao cadastrar ponto de uso"}`
             );
         } finally {
             setLoading(false);
@@ -347,15 +341,11 @@ export default function RegisterWaterBody() {
                         keyboardShouldPersistTaps="handled"
                         showsVerticalScrollIndicator={false}
                     >
-                        <Text style={[styles.title, { fontFamily: questrial }]}>
-                            Cadastrar Corpo Hídrico
-                        </Text>
+                        <Text style={[styles.title, { fontFamily: questrial }]}>Cadastrar Ponto de Uso</Text>
 
                         <View style={styles.formWrapper}>
-                            {/* LOCALIZAÇÃO - PRIMEIRO CAMPO */}
-                            <FieldLabel label="Localização do corpo hídrico:" fontFamily={questrial} />
-                            
-                            {/* BOTÕES DE LOCALIZAÇÃO */}
+                            <FieldLabel label="Localização do ponto de uso:" fontFamily={questrial} />
+
                             <View style={styles.locationButtonsContainer}>
                                 <TouchableOpacity
                                     style={[styles.locationButton, styles.buttonPrimary]}
@@ -368,9 +358,7 @@ export default function RegisterWaterBody() {
                                     ) : (
                                         <>
                                             <Ionicons name="location" size={18} color="#FFFFFF" />
-                                            <Text style={[styles.locationButtonText, { fontFamily: questrial }]}>
-                                                Meu Local
-                                            </Text>
+                                            <Text style={[styles.locationButtonText, { fontFamily: questrial }]}>Meu Local</Text>
                                         </>
                                     )}
                                 </TouchableOpacity>
@@ -381,13 +369,10 @@ export default function RegisterWaterBody() {
                                     activeOpacity={0.85}
                                 >
                                     <Ionicons name="map" size={18} color="#FFFFFF" />
-                                    <Text style={[styles.locationButtonText, { fontFamily: questrial }]}>
-                                        Usar Mapa
-                                    </Text>
+                                    <Text style={[styles.locationButtonText, { fontFamily: questrial }]}>Usar Mapa</Text>
                                 </TouchableOpacity>
                             </View>
 
-                            {/* LATITUDE E LONGITUDE LADO A LADO */}
                             <View style={styles.coordinatesRow}>
                                 <View style={styles.coordinateInputContainer}>
                                     <FieldLabel label="Latitude:" fontFamily={questrial} />
@@ -443,7 +428,6 @@ export default function RegisterWaterBody() {
                                 </View>
                             </View>
 
-                            {/* MUNICÍPIO - NÃO EDITÁVEL */}
                             <FieldLabel label="Município:" fontFamily={questrial} />
                             <View style={[styles.input, styles.municipioField]}>
                                 <Text style={[styles.municipioText, { fontFamily: questrial }]}>
@@ -451,89 +435,14 @@ export default function RegisterWaterBody() {
                                 </Text>
                             </View>
 
-                            {/* NOME */}
-                            <FieldLabel label="Nome do corpo hídrico:" fontFamily={questrial} />
-                            <TextInput
-                                ref={nomeRef}
-                                style={[
-                                    styles.input,
-                                    { fontFamily: questrial },
-                                    errors.nome ? styles.inputError : null,
-                                ]}
-                                placeholder="Ex: Riacho Capivara..."
-                                placeholderTextColor="rgba(107, 122, 122, 0.6)"
-                                value={formData.nome}
-                                onChangeText={(text) => {
-                                    setFormData((prev) => ({ ...prev, nome: text }));
-                                    if (errors.nome) {
-                                        setErrors((prev) => ({ ...prev, nome: undefined }));
-                                    }
-                                }}
-                                onBlur={() => handleBlur("nome")}
-                                maxLength={100}
-                                returnKeyType="next"
-                                onSubmitEditing={() => {}}
-                            />
-                            <ErrorText message={errors.nome} fontFamily={questrial} />
-
-                            {/* TIPO */}
-                            <FieldLabel label="Tipo de corpo hídrico:" fontFamily={questrial} />
-                            <TouchableOpacity
-                                style={[
-                                    styles.input,
-                                    styles.selectRow,
-                                    errors.tipo ? styles.inputError : null,
-                                ]}
-                                onPress={() => setTipoModalVisible(true)}
-                                activeOpacity={0.8}
-                            >
-                                <Text
-                                    style={[
-                                        styles.selectText,
-                                        !formData.tipo && styles.placeholderText,
-                                        { fontFamily: questrial },
-                                    ]}
-                                >
-                                    {formData.tipo || "Selecione um tipo..."}
-                                </Text>
-                                <Ionicons
-                                    name="chevron-down"
-                                    size={20}
-                                    color="rgba(255,255,255,0.7)"
-                                />
-                            </TouchableOpacity>
-                            <ErrorText message={errors.tipo} fontFamily={questrial} />
-
-                            {/* COMENTÁRIO */}
-                            <FieldLabel label="Comentário (opcional):" fontFamily={questrial} />
-                            <TextInput
-                                ref={descricaoRef}
-                                style={[
-                                    styles.input,
-                                    styles.descricaoInput,
-                                    { fontFamily: questrial },
-                                ]}
-                                placeholder="Adicione observações sobre o corpo hídrico..."
-                                placeholderTextColor="rgba(107, 122, 122, 0.6)"
-                                value={formData.descricao}
-                                onChangeText={(text) => {
-                                    setFormData((prev) => ({ ...prev, descricao: text }));
-                                }}
-                                maxLength={300}
-                                multiline
-                                numberOfLines={3}
-                                textAlignVertical="top"
-                            />
-
-                            {/* TIPOS DE USO */}
-                            <FieldLabel label="Tipos de uso da água:" fontFamily={questrial} />
+                            <FieldLabel label="Tipo de uso da água:" fontFamily={questrial} />
                             <TouchableOpacity
                                 style={[
                                     styles.input,
                                     styles.selectRow,
                                     errors.tiposDeUso ? styles.inputError : null,
                                 ]}
-                                onPress={() => setUsoModalVisible(true)}
+                                onPress={() => setTipoUsoModalVisible(true)}
                                 activeOpacity={0.8}
                             >
                                 <Text
@@ -547,15 +456,65 @@ export default function RegisterWaterBody() {
                                         ? "Selecione tipos de uso..."
                                         : `${formData.tiposDeUso.length} selecionado(s)`}
                                 </Text>
-                                <Ionicons
-                                    name="chevron-down"
-                                    size={20}
-                                    color="rgba(255,255,255,0.7)"
-                                />
+                                <Ionicons name="chevron-down" size={20} color="rgba(255,255,255,0.7)" />
                             </TouchableOpacity>
                             <ErrorText message={errors.tiposDeUso} fontFamily={questrial} />
 
-                            {/* BOTÃO CADASTRAR */}
+                            <FieldLabel label="Nome local popular (opcional):" fontFamily={questrial} />
+                            <TextInput
+                                style={[styles.input, { fontFamily: questrial }]}
+                                placeholder="Ex: Prainha do Rio"
+                                placeholderTextColor="rgba(107, 122, 122, 0.6)"
+                                value={formData.nomeLocalPopular}
+                                onChangeText={(text) =>
+                                    setFormData((prev) => ({ ...prev, nomeLocalPopular: text }))
+                                }
+                                maxLength={100}
+                            />
+
+                            <FieldLabel label="Corpo hídrico de referência (opcional):" fontFamily={questrial} />
+                            <TextInput
+                                style={[styles.input, { fontFamily: questrial }]}
+                                placeholder="Ex: Rio Capibaribe"
+                                placeholderTextColor="rgba(107, 122, 122, 0.6)"
+                                value={formData.nomeCorpoHidricoReferencia}
+                                onChangeText={(text) =>
+                                    setFormData((prev) => ({ ...prev, nomeCorpoHidricoReferencia: text }))
+                                }
+                                maxLength={120}
+                            />
+
+                            <FieldLabel label="Frequência de uso (opcional):" fontFamily={questrial} />
+                            <TouchableOpacity
+                                style={[styles.input, styles.selectRow]}
+                                onPress={() => setFrequenciaModalVisible(true)}
+                                activeOpacity={0.8}
+                            >
+                                <Text
+                                    style={[
+                                        styles.selectText,
+                                        !formData.frequenciaUso && styles.placeholderText,
+                                        { fontFamily: questrial },
+                                    ]}
+                                >
+                                    {formData.frequenciaUso || "Selecione uma frequência..."}
+                                </Text>
+                                <Ionicons name="chevron-down" size={20} color="rgba(255,255,255,0.7)" />
+                            </TouchableOpacity>
+
+                            <FieldLabel label="Comentário (opcional):" fontFamily={questrial} />
+                            <TextInput
+                                style={[styles.input, styles.descricaoInput, { fontFamily: questrial }]}
+                                placeholder="Adicione observações sobre o ponto de uso..."
+                                placeholderTextColor="rgba(107, 122, 122, 0.6)"
+                                value={formData.comentario}
+                                onChangeText={(text) => setFormData((prev) => ({ ...prev, comentario: text }))}
+                                maxLength={300}
+                                multiline
+                                numberOfLines={3}
+                                textAlignVertical="top"
+                            />
+
                             <TouchableOpacity
                                 style={styles.button}
                                 onPress={handleRegister}
@@ -565,105 +524,25 @@ export default function RegisterWaterBody() {
                                 {loading ? (
                                     <ActivityIndicator color="#004d48" />
                                 ) : (
-                                    <Text style={[styles.buttonText, { fontFamily: questrial }]}>
-                                        CADASTRAR CORPO HÍDRICO
-                                    </Text>
+                                    <Text style={[styles.buttonText, { fontFamily: questrial }]}>CADASTRAR PONTO DE USO</Text>
                                 )}
                             </TouchableOpacity>
                         </View>
                     </ScrollView>
                 </KeyboardAvoidingView>
 
-                {/* MODAL TIPO CORPO HÍDRICO */}
                 <Modal
-                    visible={tipoModalVisible}
+                    visible={tipoUsoModalVisible}
                     transparent
                     animationType="fade"
-                    onRequestClose={() => setTipoModalVisible(false)}
+                    onRequestClose={() => setTipoUsoModalVisible(false)}
                 >
                     <Pressable
                         style={styles.modalOverlay}
-                        onPress={() => setTipoModalVisible(false)}
+                        onPress={() => setTipoUsoModalVisible(false)}
                     >
-                        <Pressable
-                            style={styles.cityModal}
-                            onPress={(e) => e.stopPropagation()}
-                        >
-                            <Text style={[styles.cityModalTitle, { fontFamily: questrial }]}>
-                                Selecione o tipo
-                            </Text>
-                            <View style={styles.modalDivider} />
-                            <FlatList
-                                data={TIPOS_CORPO_HIDRICO}
-                                keyExtractor={(item) => item}
-                                showsVerticalScrollIndicator
-                                style={styles.cityList}
-                                nestedScrollEnabled
-                                scrollEnabled={true}
-                                renderItem={({ item }) => (
-                                    <TouchableOpacity
-                                        style={[
-                                            styles.cityItem,
-                                            formData.tipo === item && styles.selectedItem,
-                                        ]}
-                                        onPress={() => {
-                                            setFormData((prev) => ({ ...prev, tipo: item }));
-                                            setErrors((prev) => ({ ...prev, tipo: undefined }));
-                                            setTipoModalVisible(false);
-                                        }}
-                                        activeOpacity={0.7}
-                                    >
-                                        <Text
-                                            style={[
-                                                styles.cityItemText,
-                                                formData.tipo === item && styles.selectedItemText,
-                                                { fontFamily: questrial },
-                                            ]}
-                                        >
-                                            {item.charAt(0).toUpperCase() + item.slice(1)}
-                                        </Text>
-                                    </TouchableOpacity>
-                                )}
-                                ItemSeparatorComponent={() => (
-                                    <View style={styles.citySeparator} />
-                                )}
-                            />
-                            <TouchableOpacity
-                                style={styles.modalCloseButton}
-                                onPress={() => setTipoModalVisible(false)}
-                                activeOpacity={0.8}
-                            >
-                                <Text
-                                    style={[
-                                        styles.modalCloseButtonText,
-                                        { fontFamily: questrial },
-                                    ]}
-                                >
-                                    Fechar
-                                </Text>
-                            </TouchableOpacity>
-                        </Pressable>
-                    </Pressable>
-                </Modal>
-
-                {/* MODAL TIPOS DE USO */}
-                <Modal
-                    visible={usoModalVisible}
-                    transparent
-                    animationType="fade"
-                    onRequestClose={() => setUsoModalVisible(false)}
-                >
-                    <Pressable
-                        style={styles.modalOverlay}
-                        onPress={() => setUsoModalVisible(false)}
-                    >
-                        <Pressable
-                            style={styles.cityModal}
-                            onPress={(e) => e.stopPropagation()}
-                        >
-                            <Text style={[styles.cityModalTitle, { fontFamily: questrial }]}>
-                                Selecione os tipos de uso
-                            </Text>
+                        <Pressable style={styles.cityModal} onPress={(e) => e.stopPropagation()}>
+                            <Text style={[styles.cityModalTitle, { fontFamily: questrial }]}>Selecione os tipos de uso</Text>
                             <View style={styles.modalDivider} />
                             <FlatList
                                 data={TIPOS_USO_AGUA}
@@ -671,7 +550,7 @@ export default function RegisterWaterBody() {
                                 showsVerticalScrollIndicator
                                 style={styles.cityList}
                                 nestedScrollEnabled
-                                scrollEnabled={true}
+                                scrollEnabled
                                 renderItem={({ item }) => (
                                     <TouchableOpacity
                                         style={styles.cityItem}
@@ -682,52 +561,91 @@ export default function RegisterWaterBody() {
                                             <View
                                                 style={[
                                                     styles.checkboxUso,
-                                                    formData.tiposDeUso.includes(item) &&
-                                                        styles.checkboxUsoChecked,
+                                                    formData.tiposDeUso.includes(item) && styles.checkboxUsoChecked,
                                                 ]}
                                             >
                                                 {formData.tiposDeUso.includes(item) && (
-                                                    <Ionicons
-                                                        name="checkmark"
-                                                        size={14}
-                                                        color="#fff"
-                                                    />
+                                                    <Ionicons name="checkmark" size={14} color="#fff" />
                                                 )}
                                             </View>
-                                            <Text
-                                                style={[
-                                                    styles.cityItemText,
-                                                    { fontFamily: questrial },
-                                                ]}
-                                            >
+                                            <Text style={[styles.cityItemText, { fontFamily: questrial }]}> 
                                                 {item}
                                             </Text>
                                         </View>
                                     </TouchableOpacity>
                                 )}
-                                ItemSeparatorComponent={() => (
-                                    <View style={styles.citySeparator} />
-                                )}
+                                ItemSeparatorComponent={() => <View style={styles.citySeparator} />}
                             />
                             <TouchableOpacity
                                 style={styles.modalButton}
-                                onPress={() => setUsoModalVisible(false)}
+                                onPress={() => setTipoUsoModalVisible(false)}
                                 activeOpacity={0.8}
                             >
-                                <Text
-                                    style={[
-                                        styles.modalButtonText,
-                                        { fontFamily: questrial },
-                                    ]}
-                                >
-                                    Concluir
-                                </Text>
+                                <Text style={[styles.modalButtonText, { fontFamily: questrial }]}>Concluir</Text>
                             </TouchableOpacity>
                         </Pressable>
                     </Pressable>
                 </Modal>
 
-                {/* MODAL MAPA */}
+                <Modal
+                    visible={frequenciaModalVisible}
+                    transparent
+                    animationType="fade"
+                    onRequestClose={() => setFrequenciaModalVisible(false)}
+                >
+                    <Pressable
+                        style={styles.modalOverlay}
+                        onPress={() => setFrequenciaModalVisible(false)}
+                    >
+                        <Pressable style={styles.cityModal} onPress={(e) => e.stopPropagation()}>
+                            <Text style={[styles.cityModalTitle, { fontFamily: questrial }]}>Selecione a frequência</Text>
+                            <View style={styles.modalDivider} />
+                            <FlatList
+                                data={FREQUENCIAS_USO}
+                                keyExtractor={(item) => item}
+                                showsVerticalScrollIndicator
+                                style={styles.cityList}
+                                nestedScrollEnabled
+                                scrollEnabled
+                                renderItem={({ item }) => (
+                                    <TouchableOpacity
+                                        style={[
+                                            styles.cityItem,
+                                            formData.frequenciaUso === item && styles.selectedItem,
+                                        ]}
+                                        onPress={() => {
+                                            setFormData((prev) => ({ ...prev, frequenciaUso: item }));
+                                            setFrequenciaModalVisible(false);
+                                        }}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Text
+                                            style={[
+                                                styles.cityItemText,
+                                                formData.frequenciaUso === item && styles.selectedItemText,
+                                                { fontFamily: questrial },
+                                            ]}
+                                        >
+                                            {item}
+                                        </Text>
+                                    </TouchableOpacity>
+                                )}
+                                ItemSeparatorComponent={() => <View style={styles.citySeparator} />}
+                            />
+                            <TouchableOpacity
+                                style={styles.modalButton}
+                                onPress={() => {
+                                    setFormData((prev) => ({ ...prev, frequenciaUso: "" }));
+                                    setFrequenciaModalVisible(false);
+                                }}
+                                activeOpacity={0.8}
+                            >
+                                <Text style={[styles.modalButtonText, { fontFamily: questrial }]}>Limpar seleção</Text>
+                            </TouchableOpacity>
+                        </Pressable>
+                    </Pressable>
+                </Modal>
+
                 <Modal
                     visible={mapModalVisible}
                     transparent={false}
@@ -743,9 +661,7 @@ export default function RegisterWaterBody() {
                             >
                                 <Ionicons name="arrow-back" size={28} color="#FFFFFF" />
                             </TouchableOpacity>
-                            <Text style={[styles.mapHeaderTitle, { fontFamily: questrial }]}>
-                                Selecione o Local
-                            </Text>
+                            <Text style={[styles.mapHeaderTitle, { fontFamily: questrial }]}>Selecione o Local</Text>
                             <View style={{ width: 28 }} />
                         </View>
 
@@ -757,10 +673,8 @@ export default function RegisterWaterBody() {
                             provider="google"
                             mapType="satellite"
                         >
-                            {/* Localização do usuário - estilo Google Maps */}
                             {userLocation && (
                                 <>
-                                    {/* Círculo externo com precisão */}
                                     <Circle
                                         center={{
                                             latitude: userLocation.latitude,
@@ -771,7 +685,6 @@ export default function RegisterWaterBody() {
                                         strokeColor="rgba(66, 133, 244, 0.3)"
                                         strokeWidth={2}
                                     />
-                                    {/* Ponto azul - localização do usuário (estilo Google Maps) */}
                                     <Circle
                                         center={{
                                             latitude: userLocation.latitude,
@@ -785,7 +698,6 @@ export default function RegisterWaterBody() {
                                 </>
                             )}
 
-                            {/* Marker para a localização selecionada (vermelho) */}
                             <Marker
                                 coordinate={{
                                     latitude: mapRegion.latitude,
@@ -797,22 +709,23 @@ export default function RegisterWaterBody() {
                             />
                         </MapView>
 
-                        {/* INDICADOR CENTRAL */}
                         <View style={styles.mapCenterPin}>
                             <Ionicons name="location" size={48} color="#ff4444" />
                         </View>
 
-                        {/* BOTÃO FLUTUANTE - APROXIMAR MEU LOCAL (lado esquerdo) */}
                         {userLocation && (
                             <TouchableOpacity
                                 style={styles.myLocationButton}
                                 onPress={() => {
-                                    mapViewRef.current?.animateToRegion({
-                                        latitude: userLocation.latitude,
-                                        longitude: userLocation.longitude,
-                                        latitudeDelta: 0.015,
-                                        longitudeDelta: 0.015,
-                                    }, 1000);
+                                    mapViewRef.current?.animateToRegion(
+                                        {
+                                            latitude: userLocation.latitude,
+                                            longitude: userLocation.longitude,
+                                            latitudeDelta: 0.015,
+                                            longitudeDelta: 0.015,
+                                        },
+                                        1000
+                                    );
                                 }}
                                 activeOpacity={0.7}
                             >
@@ -820,16 +733,13 @@ export default function RegisterWaterBody() {
                             </TouchableOpacity>
                         )}
 
-                        {/* BOTÕES INFERIORES */}
                         <View style={styles.mapButtonsContainer}>
                             <TouchableOpacity
                                 style={[styles.mapButton, styles.mapButtonCancel]}
                                 onPress={() => setMapModalVisible(false)}
                                 activeOpacity={0.8}
                             >
-                                <Text style={[styles.mapButtonText, { fontFamily: questrial }]}>
-                                    Cancelar
-                                </Text>
+                                <Text style={[styles.mapButtonText, { fontFamily: questrial }]}>Cancelar</Text>
                             </TouchableOpacity>
 
                             <TouchableOpacity
@@ -838,20 +748,21 @@ export default function RegisterWaterBody() {
                                 activeOpacity={0.8}
                             >
                                 <Ionicons name="checkmark" size={20} color="#FFFFFF" />
-                                <Text style={[styles.mapButtonText, styles.mapButtonTextConfirm, { fontFamily: questrial }]}>
+                                <Text
+                                    style={[
+                                        styles.mapButtonText,
+                                        styles.mapButtonTextConfirm,
+                                        { fontFamily: questrial },
+                                    ]}
+                                >
                                     Confirmar
                                 </Text>
                             </TouchableOpacity>
                         </View>
 
-                        {/* COORDENADAS ATUAIS */}
                         <View style={styles.mapCoordinatesBox}>
-                            <Text style={[styles.mapCoordinatesText, { fontFamily: questrial }]}>
-                                Lat: {mapRegion.latitude.toFixed(6)}
-                            </Text>
-                            <Text style={[styles.mapCoordinatesText, { fontFamily: questrial }]}>
-                                Lon: {mapRegion.longitude.toFixed(6)}
-                            </Text>
+                            <Text style={[styles.mapCoordinatesText, { fontFamily: questrial }]}>Lat: {mapRegion.latitude.toFixed(6)}</Text>
+                            <Text style={[styles.mapCoordinatesText, { fontFamily: questrial }]}>Lon: {mapRegion.longitude.toFixed(6)}</Text>
                         </View>
                     </View>
                 </Modal>
@@ -931,7 +842,7 @@ const styles = StyleSheet.create({
         color: "#6b7a7a",
         borderWidth: 1.5,
         borderColor: "transparent",
-        marginBottom: 2,
+        marginBottom: 8,
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.08,
@@ -949,11 +860,10 @@ const styles = StyleSheet.create({
         paddingVertical: 12,
     },
 
-    // Coordenadas lado a lado
     coordinatesRow: {
         flexDirection: "row",
         gap: 10,
-        marginBottom: 8,
+        marginBottom: 4,
     },
 
     coordinateInputContainer: {
@@ -964,11 +874,10 @@ const styles = StyleSheet.create({
         height: 50,
     },
 
-    // Município não editável
     municipioField: {
         backgroundColor: "rgba(255, 255, 255, 0.7)",
         justifyContent: "center",
-        marginBottom: 8,
+        marginBottom: 10,
     },
 
     municipioText: {
@@ -982,7 +891,7 @@ const styles = StyleSheet.create({
         fontSize: 11,
         marginLeft: 8,
         marginBottom: 6,
-        marginTop: 1,
+        marginTop: -5,
     },
 
     selectRow: {
@@ -1147,7 +1056,6 @@ const styles = StyleSheet.create({
         borderColor: PRIMARY,
     },
 
-    // Estilos para botões de localização
     locationButtonsContainer: {
         flexDirection: "row",
         gap: 10,
@@ -1184,7 +1092,6 @@ const styles = StyleSheet.create({
         letterSpacing: 0.5,
     },
 
-    // Estilos para modal do mapa
     mapContainer: {
         flex: 1,
         backgroundColor: "#000",
@@ -1305,4 +1212,3 @@ const styles = StyleSheet.create({
         zIndex: 15,
     },
 });
-
