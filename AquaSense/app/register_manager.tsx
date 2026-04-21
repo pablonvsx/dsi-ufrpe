@@ -61,9 +61,19 @@ export default function registerGestor() {
         return;
     }
   
-    if (senha.length < 6) {
-    alert("A senha deve ter pelo menos 6 caracteres");
+    if (senha.length < 8) {
+    alert("A senha deve ter pelo menos 8 caracteres");
     return;
+    }
+
+    if (!/[A-Z]/ .test(senha)) {
+        alert("A senha deve ter pelo menos uma letra maiúscula.");
+        return;
+    }
+
+    if (!/[!@#$%^&*(),.?":{}|<>]/ .test(senha)){
+        alert("A senha deve ter pelo menos um caractere especial: (!@#$%...).");
+        return;
     }
 
     // Tenta salvar no Firestore
