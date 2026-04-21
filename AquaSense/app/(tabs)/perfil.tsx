@@ -3,6 +3,8 @@ import React from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, SafeAreaView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons'; // Para os ícones de mapa e alertas
 import { LinearGradient } from 'expo-linear-gradient'; // Para o gradiente no topo
+const logoImg = require('../../assets/images/AquaSenseLogoAlinhada.png'); 
+
 export default function PerfilScreen() {
   return (
     <View style={styles.container}>
@@ -15,7 +17,11 @@ export default function PerfilScreen() {
         <SafeAreaView>
           <View style={styles.headerContent}>
             {/* Logo */}
-            <Text style={styles.brandText}>AQUASENSE</Text>
+            <Image 
+                source={logoImg} 
+                style={styles.logoImage} 
+                resizeMode="contain" 
+            />
             
             <View style={styles.userInfo}>
               <View style={styles.avatar}>
@@ -54,7 +60,7 @@ export default function PerfilScreen() {
             </View>
         </View>
 
-        {/* Adicione os outros cards aqui... */}
+        
       </ScrollView>
     </View>
   );
@@ -63,28 +69,29 @@ export default function PerfilScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FBFB', // Cor de fundo da parte clara
+    backgroundColor: '#F8FBFB', 
   },
   headerGradient: {
-    height: 280, 
+    height: 285, 
     paddingHorizontal: 20,
     paddingTop: 10,
   },
   headerContent: {
-    paddingTop: 10,
+    paddingTop: 0,
     alignItems: 'center',
+    width: '100%',
   },
-  brandText: {
-    color: '#FFF',
-    fontWeight: 'bold',
-    fontSize: 16,
-    marginBottom: 25,
-    letterSpacing: 1.5,
-    opacity: 0.9,
+  logoImage: {
+    width: 130,    
+    height: 110,    
+    alignSelf: 'center',
+    marginBottom: 5,
+    marginTop: -37,
   },
   userInfo: {
     flexDirection: 'row',
     alignItems: 'center',
+    alignSelf: 'flex-start',
     width: '100%',
     paddingLeft: 10,
   },
@@ -92,7 +99,7 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)', // Efeito de vidro
+    backgroundColor: 'rgba(255, 255, 255, 0.2)', 
     borderWidth: 2,
     borderColor: 'rgba(255, 255, 255, 0.5)',
     justifyContent: 'center',
@@ -116,14 +123,14 @@ const styles = StyleSheet.create({
   },
   contentScroll: {
     flex: 1,
-    marginTop: -40, // Faz o conteúdo subir sobre o gradiente
+    marginTop: -25, 
     backgroundColor: '#F8FBFB',
     borderTopLeftRadius: 35,
     borderTopRightRadius: 35,
     paddingHorizontal: 20,
   },
   contentContainer: {
-    paddingBottom: 100, // Espaço para não cobrir atrás da tab bar
+    paddingBottom: 100, 
   },
   sectionTitle: {
     fontSize: 20,
