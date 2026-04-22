@@ -10,7 +10,6 @@ Repositório vinculado ao componente curricular **Desenvolvimento de Sistemas de
 * **Discentes:**
     * Ana Clara Souza da Silva
     * Lucas Gabriel Ferreira de Santana
-    * Luiz Filipe Feitosa Queiroz da Silva
     * Maria Laura Lopes Cordeiro
     * Matheus Costa Sales
     * Pablo Guilherme de Melo Neves
