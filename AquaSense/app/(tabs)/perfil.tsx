@@ -25,46 +25,55 @@ export default function PerfilScreen() {
  useEffect(() => {
   const fetchData = async () => {
     try {
-      // USANDO O ID DA IMAGEM DIRETAMENTE PARA TESTE
-      const amandaUid = "2jy2bmooO9O7mGMOPWJBfNBx0dE2"; 
+      console.log("---------------------------------");
+      console.log("Iniciando busca para UID:", "2jy2bmooO9O7mGMOPWJBfNBx0dE2");
+
+      const amandaUid = "2jy2bmooO9O7mGM0PWJBfNBx0dE2"; 
       
-      // 1. Conecta aos dados do Usuário
+      // 1. Dados do Usuário
       const userRef = doc(db, "usuarios", amandaUid);
       const userSnap = await getDoc(userRef);
 
       if (userSnap.exists()) {
+        console.log("Usuário encontrado no Firestore!");
         const data = userSnap.data();
         setUserData({
           nome: data.nome || 'Usuário',     
           cidade: data.cidade || 'Cidade não informada', 
           uf: "PE",
-          email: maskEmail(data.email || '')           
+          email: data.email || '' 
         });
+      } else {
+        console.warn("⚠️ Documento não existe na coleção 'usuarios' com esse ID.");
       }
 
-      // 2. Conecta aos Corpos Hídricos
-        const qRios = query(collection(db, "corposHidricos"), where("uid", "==", amandaUid));
-        const riosSnap = await getDocs(qRios);
-        setRios(riosSnap.docs.map(doc => doc.data().nome));
+      // 2. Corpos Hídricos
+      console.log("Buscando Corpos Hídricos...");
+      const qRios = query(collection(db, "corposHidricos"), where("uid", "==", amandaUid));
+      const riosSnap = await getDocs(qRios);
+      const listaRios = riosSnap.docs.map(doc => doc.data().nome);
+      console.log(`${listaRios.length} rios encontrados.`);
+      setRios(listaRios);
 
-        // 3. Conecta às Observações Feitas
-        const qObs = query(collection(db, "observacoes"), where("uid", "==", amandaUid));
-        const obsSnap = await getDocs(qObs);
-        
-        // Total de documentos na coleção 'observacoes' para este usuário
-        const totalObs = obsSnap.size; 
-        
-        // Extrai nomes dos rios únicos das observações (evita repetir o mesmo rio na lista)
-        const riosComObs = Array.from(new Set(obsSnap.docs.map(doc => doc.data().nomeRio)));
-        
-        setObservacoes({ total: totalObs, rios: riosComObs });
+      // 3. Observações
+      console.log("Buscando Observações...");
+      const qObs = query(collection(db, "observacoes"), where("uid", "==", amandaUid));
+      const obsSnap = await getDocs(qObs);
+      
+      const totalObs = obsSnap.size; 
+      const riosComObs = Array.from(new Set(obsSnap.docs.map(doc => doc.data().nomeRio)));
+      
+      console.log(`${totalObs} observações em ${riosComObs.length} rios.`);
+      setObservacoes({ total: totalObs, rios: riosComObs });
 
-      } catch (error) {
-        console.error("Erro na conexão:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
+    } catch (error) {
+      // Se houver erro de permissão (Rules) ou rede, aparecerá aqui
+      console.error("Erro crítico na conexão:", error);
+    } finally {
+      setLoading(false);
+      console.log("---------------------------------");
+    }
+  };
 
   fetchData();
 }, []);
