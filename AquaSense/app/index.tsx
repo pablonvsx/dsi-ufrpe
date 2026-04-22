@@ -2,5 +2,5 @@
 // Antes redirecionava direto para /login.
 // Agora exibe a splash screen primeiro — ela mesma navega
 // para /login com router.replace() ao fim da animação.
-export { default } from './(tabs)/home';
+export { default } from './Splashscreen';
 

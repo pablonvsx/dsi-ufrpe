@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useRef } from "react";
 import {
     View,
@@ -13,14 +11,16 @@ import {
     Platform,
     Image,
     Animated,
+    ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFonts, Questrial_400Regular } from "@expo-google-fonts/questrial";
 import { Ionicons } from "@expo/vector-icons";
-import { Stack, useRouter } from "expo-router";
+import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import * as Location from "expo-location";
 import { auth } from "@/config/firebase";
+import { markTutorialAsSeen } from "@/services/firestore/users";
 
 const PRIMARY = "#004d48";
 
@@ -28,6 +28,7 @@ type TabKey = "home" | "mapa" | "alertas" | "perfil";
 
 export default function HomeComum() {
     const router = useRouter();
+    const { tutorial } = useLocalSearchParams<{ tutorial?: string }>();
 
     const [fontsLoaded] = useFonts({ Questrial_400Regular });
     const questrial = fontsLoaded ? "Questrial_400Regular" : undefined;
@@ -35,7 +36,10 @@ export default function HomeComum() {
     const [locationText, setLocationText] = useState("Carregando...");
     const [activeTab, setActiveTab] = useState<TabKey>("home");
     const [corpoHidricoModalVisible, setCorpoHidricoModalVisible] = useState(false);
-    const [showTutorial] = useState(false);
+
+    // Tutorial: abre automaticamente se vier o parâmetro ?tutorial=1
+    const [tutorialVisible, setTutorialVisible] = useState(false);
+    const [tutorialLoading, setTutorialLoading] = useState(false);
 
     const user = auth.currentUser;
     const userName = user?.displayName?.split(" ")[0] ?? "Usuário";
@@ -44,6 +48,15 @@ export default function HomeComum() {
     const slideAnim = useRef(new Animated.Value(18)).current;
     const cardFade  = useRef(new Animated.Value(0)).current;
     const cardSlide = useRef(new Animated.Value(24)).current;
+
+    useEffect(() => {
+        // Abre o tutorial se veio o parâmetro do login
+        if (tutorial === "1") {
+            // Pequeno delay para a Home terminar de montar antes de abrir o modal
+            const timer = setTimeout(() => setTutorialVisible(true), 400);
+            return () => clearTimeout(timer);
+        }
+    }, [tutorial]);
 
     useEffect(() => {
         Animated.sequence([
@@ -57,7 +70,6 @@ export default function HomeComum() {
             ]),
         ]).start();
 
-        // Localização — lógica mantida intacta
         (async () => {
             try {
                 const { status } = await Location.requestForegroundPermissionsAsync();
@@ -78,6 +90,22 @@ export default function HomeComum() {
         })();
     }, []);
 
+    async function handleFinishTutorial() {
+        const currentUser = auth.currentUser;
+        if (!currentUser) return;
+
+        setTutorialLoading(true);
+        try {
+            await markTutorialAsSeen(currentUser.uid);
+        } catch {
+            // Falhou ao gravar — não bloqueia o usuário.
+            // No próximo login o tutorial aparece de novo, o que é aceitável.
+        } finally {
+            setTutorialLoading(false);
+            setTutorialVisible(false);
+        }
+    }
+
     function handleTabPress(tab: TabKey) {
         setActiveTab(tab);
         switch (tab) {
@@ -93,25 +121,9 @@ export default function HomeComum() {
             <Stack.Screen options={{ headerShown: false }} />
             <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-            {/*
-              ┌─────────────────────────────────────┐
-              │  HEADER — gradiente verde escuro     │
-              ├─────────────────────────────────────┤
-              │  FAIXA TEAL — "Visão geral da água" │  ← gradiente médio
-              ├─────────────────────────────────────┤
-              │                                     │
-              │  FUNDO BRANCO  ──────────────────   │  ← branco puro
-              │   card boas-vindas                  │
-              │   botões de ação                    │
-              │                                     │
-              ├─────────────────────────────────────┤
-              │  NAVBAR — branca, arredondada        │
-              └─────────────────────────────────────┘
-            */}
-
             <View style={styles.root}>
 
-                {/* ══ 1. HEADER GRADIENT (verde escuro) ══ */}
+                {/* ══ 1. HEADER GRADIENT ══ */}
                 <LinearGradient
                     colors={["#004d48", "#0a6b5e"]}
                     start={{ x: 0, y: 0 }}
@@ -141,7 +153,7 @@ export default function HomeComum() {
                     </SafeAreaView>
                 </LinearGradient>
 
-                {/* ══ 2. FAIXA TEAL — título + "onda" de transição para o branco ══ */}
+                {/* ══ 2. FAIXA TEAL ══ */}
                 <LinearGradient
                     colors={["#0d9080", "#1fc8b4", "#3ff3e7"]}
                     start={{ x: 0.5, y: 0 }}
@@ -156,18 +168,15 @@ export default function HomeComum() {
                     >
                         Visão geral da água
                     </Animated.Text>
-
-                    {/* Onda branca na base da faixa teal */}
                     <View style={styles.waveWhite} />
                 </LinearGradient>
 
-                {/* ══ 3. FUNDO BRANCO — card + botões ══ */}
+                {/* ══ 3. FUNDO BRANCO ══ */}
                 <ScrollView
                     style={styles.whiteBody}
                     contentContainerStyle={styles.whiteBodyContent}
                     showsVerticalScrollIndicator={false}
                 >
-                    {/* Card de boas-vindas */}
                     <Animated.View
                         style={[
                             styles.welcomeCard,
@@ -178,7 +187,7 @@ export default function HomeComum() {
                             <Ionicons name="water-outline" size={28} color={PRIMARY} />
                         </View>
                         <Text style={[styles.welcomeTitle, { fontFamily: questrial }]}>
-                            Bem-vindo, {userName} 
+                            Bem-vindo, {userName}
                         </Text>
                         <View style={styles.cardDivider} />
                         <Text style={[styles.welcomeBody, { fontFamily: questrial }]}>
@@ -186,14 +195,12 @@ export default function HomeComum() {
                         </Text>
                     </Animated.View>
 
-                    {/* Botões de ação */}
                     <Animated.View
                         style={[
                             styles.actionsRow,
                             { opacity: cardFade, transform: [{ translateY: cardSlide }] },
                         ]}
                     >
-                        {/* Verde — Registrar observação */}
                         <TouchableOpacity
                             style={[styles.actionButton, styles.actionPrimary]}
                             onPress={() => router.push("/register_observation" as any)}
@@ -205,7 +212,6 @@ export default function HomeComum() {
                             </Text>
                         </TouchableOpacity>
 
-                        {/* Claro — Fazer denúncia */}
                         <TouchableOpacity
                             style={[styles.actionButton, styles.actionSecondary]}
                             onPress={() => router.push("/report_complaint" as any)}
@@ -219,22 +225,20 @@ export default function HomeComum() {
                     </Animated.View>
                 </ScrollView>
 
-                {/* ══ 4. BARRA DE NAVEGAÇÃO CUSTOMIZADA ══
-                    (a barra preta do Expo fica oculta via _layout.tsx)  */}
+                {/* ══ 4. NAVBAR ══ */}
                 <SafeAreaView edges={["bottom"]} style={styles.navBarWrapper}>
                     <View style={styles.navBar}>
-                        <NavBarItem icon="home"          iconOutline="home-outline"          label="Home"    active={activeTab === "home"}    fontFamily={questrial} onPress={() => handleTabPress("home")} />
-                        <NavBarItem icon="map"           iconOutline="map-outline"           label="Mapa"    active={activeTab === "mapa"}    fontFamily={questrial} onPress={() => handleTabPress("mapa")} />
+                        <NavBarItem icon="home" iconOutline="home-outline" label="Home" active={activeTab === "home"} fontFamily={questrial} onPress={() => handleTabPress("home")} />
+                        <NavBarItem icon="map"  iconOutline="map-outline"  label="Mapa" active={activeTab === "mapa"} fontFamily={questrial} onPress={() => handleTabPress("mapa")} />
 
-                        {/* FAB central */}
                         <TouchableOpacity style={styles.fabButton} onPress={() => setCorpoHidricoModalVisible(true)} activeOpacity={0.85}>
                             <View style={styles.fabInner}>
                                 <Ionicons name="add" size={32} color="#FFFFFF" />
                             </View>
                         </TouchableOpacity>
 
-                        <NavBarItem icon="notifications"  iconOutline="notifications-outline" label="Alertas" active={activeTab === "alertas"} fontFamily={questrial} onPress={() => handleTabPress("alertas")} />
-                        <NavBarItem icon="person"         iconOutline="person-outline"        label="Perfil"  active={activeTab === "perfil"}  fontFamily={questrial} onPress={() => handleTabPress("perfil")} />
+                        <NavBarItem icon="notifications" iconOutline="notifications-outline" label="Alertas" active={activeTab === "alertas"} fontFamily={questrial} onPress={() => handleTabPress("alertas")} />
+                        <NavBarItem icon="person"        iconOutline="person-outline"        label="Perfil"  active={activeTab === "perfil"}  fontFamily={questrial} onPress={() => handleTabPress("perfil")} />
                     </View>
                 </SafeAreaView>
             </View>
@@ -244,11 +248,19 @@ export default function HomeComum() {
                 visible={corpoHidricoModalVisible}
                 fontFamily={questrial}
                 onClose={() => setCorpoHidricoModalVisible(false)}
-                onRegister={() => { setCorpoHidricoModalVisible(false); router.push("/register_water_body" as any); }}
+                onRegister={() => {
+                    setCorpoHidricoModalVisible(false);
+                    router.push("/register_water_body" as any);
+                }}
             />
 
-            {/* Modal: tutorial — estrutura pronta, ativar via AsyncStorage no primeiro acesso */}
-            <TutorialModal visible={showTutorial} fontFamily={questrial} onClose={() => {}} />
+            {/* Modal: tutorial — abre automaticamente no primeiro acesso */}
+            <TutorialModal
+                visible={tutorialVisible}
+                fontFamily={questrial}
+                loading={tutorialLoading}
+                onFinish={handleFinishTutorial}
+            />
         </>
     );
 }
@@ -300,10 +312,13 @@ function CorpoHidricoModal({ visible, fontFamily, onClose, onRegister }: {
 }
 
 // ─────────────────────────────────────────────
-// MODAL: TUTORIAL (estrutura pronta)
+// MODAL: TUTORIAL
 // ─────────────────────────────────────────────
-function TutorialModal({ visible, fontFamily, onClose }: {
-    visible: boolean; fontFamily?: string; onClose: () => void;
+function TutorialModal({ visible, fontFamily, loading, onFinish }: {
+    visible: boolean;
+    fontFamily?: string;
+    loading: boolean;
+    onFinish: () => void;
 }) {
     const steps = [
         { icon: "home-outline" as const,          title: "Home",                    desc: "Acompanhe informações e acesse as funcionalidades principais." },
@@ -314,12 +329,17 @@ function TutorialModal({ visible, fontFamily, onClose }: {
         { icon: "notifications-outline" as const, title: "Alertas",                 desc: "Receba notificações sobre qualidade da água." },
         { icon: "person-outline" as const,        title: "Perfil",                  desc: "Gerencie sua conta e configurações." },
     ];
+
     return (
-        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onFinish}>
             <View style={styles.modalOverlay}>
                 <View style={[styles.modalCard, { maxHeight: "80%" }]}>
-                    <Text style={[styles.modalTitle, { fontFamily, marginBottom: 4 }]}>Bem-vindo ao AquaSense!</Text>
-                    <Text style={[styles.modalDescription, { fontFamily, marginBottom: 12 }]}>Veja rapidamente o que você pode fazer:</Text>
+                    <Text style={[styles.modalTitle, { fontFamily, marginBottom: 4 }]}>
+                        Bem-vindo ao AquaSense!
+                    </Text>
+                    <Text style={[styles.modalDescription, { fontFamily, marginBottom: 12 }]}>
+                        Veja rapidamente o que você pode fazer:
+                    </Text>
                     <View style={styles.modalDivider} />
                     <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 320 }}>
                         {steps.map((s) => (
@@ -332,8 +352,16 @@ function TutorialModal({ visible, fontFamily, onClose }: {
                             </View>
                         ))}
                     </ScrollView>
-                    <TouchableOpacity style={[styles.modalButton, { marginTop: 16 }]} onPress={onClose} activeOpacity={0.85}>
-                        <Text style={[styles.modalButtonText, { fontFamily }]}>Entendi, vamos começar!</Text>
+                    <TouchableOpacity
+                        style={[styles.modalButton, { marginTop: 16 }]}
+                        onPress={onFinish}
+                        activeOpacity={0.85}
+                        disabled={loading}
+                    >
+                        {loading
+                            ? <ActivityIndicator color="#FFFFFF" />
+                            : <Text style={[styles.modalButtonText, { fontFamily }]}>Entendi, vamos começar!</Text>
+                        }
                     </TouchableOpacity>
                 </View>
             </View>
@@ -342,12 +370,11 @@ function TutorialModal({ visible, fontFamily, onClose }: {
 }
 
 // ─────────────────────────────────────────────
-// ESTILOS
+// ESTILOS — idênticos ao original
 // ─────────────────────────────────────────────
 const styles = StyleSheet.create({
     root: { flex: 1, backgroundColor: "#FFFFFF" },
 
-    // ── Header ──
     headerGradient: {},
     headerSafeArea:  { paddingBottom: 14 },
     headerRow: {
@@ -361,10 +388,9 @@ const styles = StyleSheet.create({
     locationText:   { fontSize: 15, color: "#FFFFFF", letterSpacing: 0.3, fontWeight: "600" },
     headerLogo:     { width: 55, height: 55 },
 
-    // ── Faixa teal ──
     tealBand: {
         paddingTop: 20,
-        paddingBottom: 0,        // a onda cobre o espaço inferior
+        paddingBottom: 0,
         overflow: "hidden",
     },
     sectionTitle: {
@@ -376,7 +402,6 @@ const styles = StyleSheet.create({
         marginBottom: 20,
         paddingHorizontal: 20,
     },
-    // Faixa branca que simula a onda de transição teal → branco
     waveWhite: {
         height: 28,
         backgroundColor: "#FFFFFF",
@@ -384,7 +409,6 @@ const styles = StyleSheet.create({
         borderTopRightRadius: 28,
     },
 
-    // ── Fundo branco ──
     whiteBody: { flex: 1, backgroundColor: "#FFFFFF" },
     whiteBodyContent: {
         paddingHorizontal: 20,
@@ -392,9 +416,8 @@ const styles = StyleSheet.create({
         paddingBottom: 16,
     },
 
-    // ── Card boas-vindas ──
     welcomeCard: {
-        backgroundColor: "#F5F9F8",      // levemente acinzentado para destacar do fundo branco
+        backgroundColor: "#F5F9F8",
         borderRadius: 20,
         padding: 24,
         marginBottom: 18,
@@ -415,7 +438,6 @@ const styles = StyleSheet.create({
     cardDivider:  { height: 1, backgroundColor: "#e0f2f1", marginBottom: 14, width: "100%" },
     welcomeBody:  { fontSize: 14, color: "#6b7a7a", textAlign: "center", lineHeight: 22 },
 
-    // ── Botões de ação ──
     actionsRow: { flexDirection: "row", gap: 14 },
     actionButton: {
         flex: 1, borderRadius: 16,
@@ -427,13 +449,12 @@ const styles = StyleSheet.create({
         shadowRadius: 8,
         elevation: 4,
     },
-    actionPrimary:   { backgroundColor: PRIMARY },           // verde escuro
-    actionSecondary: { backgroundColor: "#F2F7F6" },         // claro (cinza-branco)
+    actionPrimary:   { backgroundColor: PRIMARY },
+    actionSecondary: { backgroundColor: "#F2F7F6" },
     actionIcon: { marginBottom: 8 },
     actionTextPrimary:   { fontSize: 13, color: "#FFFFFF", textAlign: "center", lineHeight: 19 },
     actionTextSecondary: { fontSize: 13, color: PRIMARY,   textAlign: "center", lineHeight: 19 },
 
-    // ── Navbar ──
     navBarWrapper: {
         backgroundColor: "#FFFFFF",
         borderTopLeftRadius: 22,
@@ -455,7 +476,6 @@ const styles = StyleSheet.create({
     navItem:  { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 4 },
     navLabel: { fontSize: 10, marginTop: 3, letterSpacing: 0.1 },
 
-    // ── FAB ──
     fabButton: {
         width: 56, height: 56, borderRadius: 28,
         marginBottom: 16,
@@ -471,7 +491,6 @@ const styles = StyleSheet.create({
         alignItems: "center", justifyContent: "center",
     },
 
-    // ── Modal ──
     modalOverlay: {
         flex: 1, backgroundColor: "rgba(0,0,0,0.50)",
         alignItems: "center", justifyContent: "center",
@@ -498,7 +517,6 @@ const styles = StyleSheet.create({
     modalCancelButton:{ paddingVertical: 12, alignItems: "center" },
     modalCancelText:  { fontSize: 13, color: "#888", textDecorationLine: "underline" },
 
-    // ── Tutorial ──
     tutorialRow: { flexDirection: "row", alignItems: "flex-start", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#f0f0f0" },
     tutorialStepTitle: { fontSize: 14, fontWeight: "700", color: PRIMARY, marginBottom: 2 },
     tutorialStepDesc:  { fontSize: 12, color: "#6b7a7a", lineHeight: 18 },

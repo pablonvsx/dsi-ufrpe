@@ -14,15 +14,16 @@ import {
     ScrollView,
     Modal,
     Pressable,
-    Animated, // ← adicionado
+    Animated,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Stack, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFonts, Questrial_400Regular } from "@expo-google-fonts/questrial";
 import { signInWithEmailAndPassword } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 import { sendPasswordResetEmail } from "@/services/emailService";
-import { auth } from "@/config/firebase";
+import { auth, db } from "@/config/firebase";
 
 export default function Login() {
     const [email, setEmail] = useState("");
@@ -37,21 +38,16 @@ export default function Login() {
 
     const senhaRef = useRef<TextInput>(null);
 
-    // ─── Animação de entrada ───────────────────────────────────────────────────
-    // Grupo 1: logo + título
     const logoFade = useRef(new Animated.Value(0)).current;
-    const logoTranslate = useRef(new Animated.Value(18)).current; // ↑ sobe de baixo
-
-    // Grupo 2: formulário + footer (entra ligeiramente depois)
+    const logoTranslate = useRef(new Animated.Value(18)).current;
     const formFade = useRef(new Animated.Value(0)).current;
     const formTranslate = useRef(new Animated.Value(18)).current;
 
     useEffect(() => {
-        // Grupo 1 começa imediatamente
         Animated.parallel([
             Animated.timing(logoFade, {
                 toValue: 1,
-                duration: 900,       // mais lento que Select (700ms) → mais suave
+                duration: 900,
                 useNativeDriver: true,
             }),
             Animated.timing(logoTranslate, {
@@ -61,7 +57,6 @@ export default function Login() {
             }),
         ]).start();
 
-        // Grupo 2 começa 150ms depois — stagger sutil, sem chamar atenção
         const timer = setTimeout(() => {
             Animated.parallel([
                 Animated.timing(formFade, {
@@ -79,7 +74,6 @@ export default function Login() {
 
         return () => clearTimeout(timer);
     }, [logoFade, logoTranslate, formFade, formTranslate]);
-    // ──────────────────────────────────────────────────────────────────────────
 
     const [fontsLoaded] = useFonts({ Questrial_400Regular });
     const questrial = fontsLoaded ? "Questrial_400Regular" : undefined;
@@ -109,7 +103,13 @@ export default function Login() {
                 return;
             }
 
-            router.replace("/map" as any);
+            // Verifica se o usuário já viu o tutorial
+            const docSnap = await getDoc(doc(db, "usuarios", user.uid));
+            const jaViuTutorial = docSnap.exists() && docSnap.data().hasSeenTutorial === true;
+
+            // Redireciona com parâmetro apenas no primeiro acesso
+            router.replace(jaViuTutorial ? "/(tabs)" : "/(tabs)?tutorial=1" as any);
+
         } catch (err: any) {
             const msg = parseLoginError(err?.code, email.trim());
             Alert.alert("Erro ao entrar", msg);
@@ -129,10 +129,8 @@ export default function Login() {
         setForgotLoading(true);
         try {
             await sendPasswordResetEmail({ email: emailTrimmed });
-            console.log("E-mail de resete enviado para:", emailTrimmed);
             setForgotSent(true);
         } catch (err: any) {
-            console.log("Erro ao enviar reset:", err?.code, err?.message);
             const msg = parseForgotError(err?.code);
             Alert.alert("Erro", msg);
         } finally {
@@ -174,7 +172,6 @@ export default function Login() {
                                 transform: [{ translateY: logoTranslate }],
                             }}
                         >
-                            {/* LOGO */}
                             <View style={styles.logoContainer}>
                                 <Image
                                     source={require("../assets/images/aquasense-logo.png")}
@@ -184,7 +181,6 @@ export default function Login() {
                                 />
                             </View>
 
-                            {/* TÍTULO */}
                             <Text style={[styles.title, { fontFamily: questrial }]}>
                                 CONECTE-SE AO{"\n"}AQUASENSE
                             </Text>
@@ -198,10 +194,8 @@ export default function Login() {
                                 width: "100%",
                             }}
                         >
-                            {/* FORMULÁRIO */}
                             <View style={styles.formWrapper}>
 
-                                {/* EMAIL */}
                                 <FieldLabel label="Seu Email:" fontFamily={questrial} />
                                 <TextInput
                                     style={[styles.input, { fontFamily: questrial }]}
@@ -216,7 +210,6 @@ export default function Login() {
                                     onSubmitEditing={() => senhaRef.current?.focus()}
                                 />
 
-                                {/* SENHA */}
                                 <FieldLabel label="Senha:" fontFamily={questrial} />
                                 <TextInput
                                     ref={senhaRef}
@@ -230,7 +223,6 @@ export default function Login() {
                                     onSubmitEditing={handleLogin}
                                 />
 
-                                {/* ESQUECEU A SENHA */}
                                 <TouchableOpacity
                                     style={styles.forgotButton}
                                     onPress={() => {
@@ -244,7 +236,6 @@ export default function Login() {
                                     </Text>
                                 </TouchableOpacity>
 
-                                {/* MOSTRAR SENHA */}
                                 <TouchableOpacity
                                     style={styles.checkboxRow}
                                     onPress={() => setShowPassword((v) => !v)}
@@ -260,7 +251,6 @@ export default function Login() {
                                     </Text>
                                 </TouchableOpacity>
 
-                                {/* BOTÃO CONECTAR */}
                                 <TouchableOpacity
                                     style={styles.button}
                                     onPress={handleLogin}
@@ -278,7 +268,6 @@ export default function Login() {
 
                             </View>
 
-                            {/* LINK CADASTRO */}
                             <View style={styles.footer}>
                                 <Text style={[styles.footerText, { fontFamily: questrial }]}>
                                     Não tem conta?{" "}
@@ -297,7 +286,7 @@ export default function Login() {
                     </ScrollView>
                 </KeyboardAvoidingView>
 
-                {/* MODAL RECUPERAÇÃO DE SENHA — sem animação, comportamento preservado */}
+                {/* MODAL RECUPERAÇÃO DE SENHA */}
                 <Modal
                     visible={forgotModalVisible}
                     transparent

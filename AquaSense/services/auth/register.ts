@@ -31,6 +31,7 @@ export async function registerCommonUser(
     cidade,
     tipoUsuario: "comum",
     statusConta: "pendente_verificacao",
+    hasSeenTutorial: false,
     dataCriacao: serverTimestamp(),
   });
 }
