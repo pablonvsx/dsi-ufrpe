@@ -5,8 +5,9 @@ export interface UsuarioBase {
     nome: string;
     email: string;
     tipoUsuario: TipoUsuario;
-    statusConta: "ativa" | "inativa";
+    statusConta: "ativa" | "inativa" | "pendente_verificacao" | "ativo";
     dataCriacao?: any;
+    hasSeenTutorial: boolean;   // ← adicionado aqui
 }
 
 export interface UsuarioComum extends UsuarioBase {
@@ -15,14 +16,13 @@ export interface UsuarioComum extends UsuarioBase {
 }
 
 export interface UsuarioColaborador extends UsuarioBase {
-    tipoUsuario: "colaborador"
+    tipoUsuario: "colaborador";
     organizacao: string;
     cidade: string;
-
 }
 
 export interface UsuarioTecnico extends UsuarioBase {
-    tipoUsuario: "tecnico"
+    tipoUsuario: "tecnico";
     equipeId: string;
     codigoEquipe: string;
 }
@@ -33,10 +33,8 @@ export interface UsuarioGestor extends UsuarioBase {
     cidade: string;
 }
 
-export type Usuario = 
+export type Usuario =
     | UsuarioComum
     | UsuarioColaborador
     | UsuarioTecnico
     | UsuarioGestor;
-
-    

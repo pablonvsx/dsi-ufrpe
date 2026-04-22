@@ -1,4 +1,4 @@
-import { Tabs } from 'expo-router';
+/*import { Tabs } from 'expo-router';
 import React from 'react';
 
 import { HapticTab } from '@/components/haptic-tab';
@@ -32,4 +32,7 @@ export default function TabLayout() {
       />
     </Tabs>
   );
-}
+}*/ 
+
+// Depois, alterar esse arquivo com o layout correto das telas iniciais 
+

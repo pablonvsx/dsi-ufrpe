@@ -1,13 +1,6 @@
-import { Redirect } from "expo-router";
+// app/index.tsx
+// Antes redirecionava direto para /login.
+// Agora exibe a splash screen primeiro — ela mesma navega
+// para /login com router.replace() ao fim da animação.
+export { default } from './Splashscreen';
 
-/**
- * Ponto de entrada principal do app.
- * Redireciona automaticamente para a tela de seleção de perfil.
- */
-
-export default function Index() {
-    //return <Redirect href="/select_user_type" />;
-    return <Redirect href="/(tabs)" />;
-    //Descomente a linha acima para redirecionar para a tela inicial das abas
-
-}
