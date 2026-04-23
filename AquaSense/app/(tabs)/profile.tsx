@@ -324,9 +324,9 @@ const styles = StyleSheet.create({
   headerSafeArea: { paddingBottom: 0, zIndex: 1 },
   headerLogo: {
     width: 160,
-    height: 64,
+    height: 100,
     alignSelf: 'center',
-    marginTop: 10,
+    marginTop: -30,
     marginBottom: 18,
   },
   avatarRow: {
