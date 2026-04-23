@@ -1,404 +1,456 @@
 // app/(tabs)/perfil.tsx
-import React, { useEffect, useState} from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, SafeAreaView, ActivityIndicator } from 'react-native';
-import { Ionicons } from '@expo/vector-icons'; 
-import { LinearGradient } from 'expo-linear-gradient'; 
-import { db } from '../../config/firebase'; 
-import { doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth'; 
 
-const logoImg = require('../../assets/images/AquaSenseLogoAlinhada.png'); 
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Image,
+  TouchableOpacity,
+  ScrollView,
+  ActivityIndicator,
+  StatusBar,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useFonts, Questrial_400Regular } from '@expo-google-fonts/questrial';
+import { Stack } from 'expo-router';
+import { db } from '../../config/firebase';
+import { doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
+
+// ── Design tokens (espelham a Home) ──────────────────────────────────────────
+const PRIMARY      = '#004d48';
+const BORDER_LIGHT = '#e0f2f1';
+const TEXT_MUTED   = '#6b7a7a';
+const SURFACE      = '#F5F9F8';
+
+const logoImg = require('../../assets/images/AquaSenseLogoAlinhada.png');
 
 export default function PerfilScreen() {
-  const [loading, setLoading] = useState(true);
-  const [userData, setUserData] = useState({ nome: '', cidade: '', uf: '', email: '' });
-  const [rios, setRios] = useState<string[]>([]);
-  const [observacoes, setObservacoes] = useState<{ total: number, rios: string[] }>({ total: 0, rios: [] });
+  const [fontsLoaded] = useFonts({ Questrial_400Regular });
+  const questrial = fontsLoaded ? 'Questrial_400Regular' : undefined;
 
-  // Função para mascarar o e-mail (ex: ama****@gmail.com)
+  const [loading, setLoading]         = useState(true);
+  const [userData, setUserData]       = useState({ nome: '', cidade: '', uf: '', email: '' });
+  const [rios, setRios]               = useState<string[]>([]);
+  const [observacoes, setObservacoes] = useState<{ total: number; rios: string[] }>({ total: 0, rios: [] });
+
+  // ── Lógica de dados (do código atual — INTOCADA) ──────────────────────────
   const maskEmail = (email: string) => {
-    if (!email) return "";
+    if (!email) return '';
     const [user, domain] = email.split('@');
     return `${user.substring(0, 3)}****@${domain}`;
   };
 
- useEffect(() => {
-  const fetchData = async () => {
-    try {
-      console.log("---------------------------------");
-      console.log("Iniciando busca para UID:", "2jy2bmooO9O7mGMOPWJBfNBx0dE2");
+  useEffect(() => {
+    const auth = getAuth();
 
-      const amandaUid = "2jy2bmooO9O7mGM0PWJBfNBx0dE2"; 
-      
-      // 1. Dados do Usuário
-      const userRef = doc(db, "usuarios", amandaUid);
-      const userSnap = await getDoc(userRef);
-
-      if (userSnap.exists()) {
-        console.log("Usuário encontrado no Firestore!");
-        const data = userSnap.data();
-        setUserData({
-          nome: data.nome || 'Usuário',     
-          cidade: data.cidade || 'Cidade não informada', 
-          uf: "PE",
-          email: data.email || '' 
-        });
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        fetchData(user.uid);
       } else {
-        console.warn("⚠️ Documento não existe na coleção 'usuarios' com esse ID.");
+        setLoading(false);
+        console.log('Nenhum usuário logado.');
       }
+    });
 
-      // 2. Corpos Hídricos
-      console.log("Buscando Corpos Hídricos...");
-      const qRios = query(collection(db, "corposHidricos"), where("uid", "==", amandaUid));
-      const riosSnap = await getDocs(qRios);
-      const listaRios = riosSnap.docs.map(doc => doc.data().nome);
-      console.log(`${listaRios.length} rios encontrados.`);
-      setRios(listaRios);
+    const fetchData = async (uid: string) => {
+      try {
+        // 1. Dados do usuário
+        const userRef  = doc(db, 'usuarios', uid);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+          const data = userSnap.data();
+          setUserData({
+            nome:   data.nome   || 'Usuário',
+            cidade: data.cidade || 'Não informada',
+            uf:     'PE',
+            email:  data.email  || '',
+          });
+        }
 
-      // 3. Observações
-      console.log("Buscando Observações...");
-      const qObs = query(collection(db, "observacoes"), where("uid", "==", amandaUid));
-      const obsSnap = await getDocs(qObs);
-      
-      const totalObs = obsSnap.size; 
-      const riosComObs = Array.from(new Set(obsSnap.docs.map(doc => doc.data().nomeRio)));
-      
-      console.log(`${totalObs} observações em ${riosComObs.length} rios.`);
-      setObservacoes({ total: totalObs, rios: riosComObs });
+        // 2. Corpos hídricos
+        const qRios    = query(collection(db, 'corposHidricos'), where('uid', '==', uid));
+        const riosSnap = await getDocs(qRios);
+        setRios(riosSnap.docs.map(d => d.data().nome));
 
-    } catch (error) {
-      // Se houver erro de permissão (Rules) ou rede, aparecerá aqui
-      console.error("Erro crítico na conexão:", error);
-    } finally {
-      setLoading(false);
-      console.log("---------------------------------");
-    }
-  };
+        // 3. Observações
+        const qObs    = query(collection(db, 'observacoes'), where('uid', '==', uid));
+        const obsSnap = await getDocs(qObs);
+        const riosComObs = Array.from(new Set(obsSnap.docs.map(d => d.data().nomeRio)));
+        setObservacoes({ total: obsSnap.size, rios: riosComObs });
 
-  fetchData();
-}, []);
+      } catch (error) {
+        console.error('Erro ao buscar dados:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    return () => unsubscribe();
+  }, []);
+  // ─────────────────────────────────────────────────────────────────────────
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FBFB' }}>
-        <ActivityIndicator size="large" color="#004d48" />
-        <Text style={{ marginTop: 10, color: '#004d48' }}>Carregando perfil...</Text>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={PRIMARY} />
+        <Text style={[styles.loadingText, { fontFamily: questrial }]}>Carregando perfil...</Text>
       </View>
     );
   }
+
+  const initials    = userData.nome ? userData.nome.charAt(0).toUpperCase() : '?';
+  const localizacao = `${userData.cidade} - ${userData.uf}`;
+
   return (
-    <View style={styles.container}>
-      <LinearGradient
-        colors={["#004d48", "#3ff3e7"]}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-        style={styles.headerGradient}
-      >
-        <SafeAreaView>
-          <View style={styles.headerContent}>
-            {/* Logo */}
-            <Image 
-                source={logoImg} 
-                style={styles.logoImage} 
-                resizeMode="contain" 
+    <>
+      <Stack.Screen options={{ headerShown: false }} />
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+
+      <View style={styles.root}>
+
+        {/* ══ HEADER ══ */}
+        <LinearGradient
+          colors={['#004d48', '#0a6b5e']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.headerGradient}
+        >
+          <LinearGradient
+            colors={['#0d9080', '#1fc8b4', '#3ff3e7']}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={styles.tealOverlay}
+          />
+
+          <SafeAreaView edges={['top']} style={styles.headerSafeArea}>
+            <Image
+              source={logoImg}
+              style={styles.headerLogo}
+              resizeMode="contain"
+              tintColor="#FFFFFF"
             />
-            
-            <View style={styles.userInfo}>
-              <View style={styles.avatar}>
-                {/* Pega a primeira letra do nome dinamicamente */}
-                <Text style={styles.avatarText}>
-                  {userData.nome ? userData.nome.charAt(0).toUpperCase() : 'A'}
+
+            <View style={styles.avatarRow}>
+              <View style={styles.avatarCircle}>
+                <Text style={[styles.avatarText, { fontFamily: questrial }]}>{initials}</Text>
+              </View>
+              <View style={styles.avatarInfo}>
+                <Text style={[styles.headerName, { fontFamily: questrial }]} numberOfLines={1}>
+                  {userData.nome}
                 </Text>
+                <View style={styles.locationRow}>
+                  <Ionicons name="location-outline" size={13} color="rgba(255,255,255,0.85)" style={{ marginRight: 3 }} />
+                  <Text style={[styles.headerLocation, { fontFamily: questrial }]}>{localizacao}</Text>
+                </View>
               </View>
-              <View>
-                <Text style={styles.userName}>{userData.nome}</Text>
-                <Text style={styles.userLocation}>{`${userData.cidade} - ${userData.uf}`}</Text>
+            </View>
+          </SafeAreaView>
+
+          {/* Onda branca — igual à Home */}
+          <View style={styles.waveWhite} />
+        </LinearGradient>
+
+        {/* ══ CONTEÚDO ══ */}
+        <ScrollView
+          style={styles.body}
+          contentContainerStyle={styles.bodyContent}
+          showsVerticalScrollIndicator={false}
+        >
+
+          {/* ── Visão geral ── */}
+          <Text style={[styles.sectionTitle, { fontFamily: questrial }]}>Visão geral</Text>
+
+          {/* Card: Corpos hídricos */}
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <View style={styles.iconCircle}>
+                <Ionicons name="water" size={22} color={PRIMARY} />
               </View>
+              <Text style={[styles.cardTitle, { fontFamily: questrial }]}>
+                Corpos hídricos registrados
+              </Text>
+              <Text style={[styles.cardNumber, { fontFamily: questrial }]}>{rios.length}</Text>
+            </View>
+            <View style={styles.cardDivider} />
+            <View style={styles.cardDetails}>
+              {rios.length > 0 ? (
+                rios.map((rio, index) => (
+                  <View key={index} style={styles.detailRow}>
+                    <Ionicons name="ellipse" size={6} color={PRIMARY} style={{ marginRight: 8, marginTop: 5 }} />
+                    <Text style={[styles.detailItem, { fontFamily: questrial }]}>{rio}</Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={[styles.detailEmpty, { fontFamily: questrial }]}>
+                  Nenhum corpo hídrico encontrado.
+                </Text>
+              )}
             </View>
           </View>
-        </SafeAreaView>
-      </LinearGradient>
 
-      {/* Área Branca Arredondada */}
-      <ScrollView 
-        style={styles.contentScroll} 
-        contentContainerStyle={styles.contentContainer}
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={styles.sectionTitle}>Visão geral</Text>
-
-        {/* Card Corpos Hídricos */}
-        <View style={styles.card}>
+          {/* Card: Observações */}
+          <View style={styles.card}>
             <View style={styles.cardHeader}>
-                <View style={styles.iconCircle}>
-                    <Ionicons name="water" size={24} color="#00A896" />
-                </View>
-                <Text style={styles.cardTitle}>Corpos hídricos registrados</Text>
-                {/* Quantidade dinâmica baseada no array vindo do banco */}
-                <Text style={styles.cardNumber}>{rios.length}</Text>
+              <View style={styles.iconCircle}>
+                <Ionicons name="create-outline" size={22} color={PRIMARY} />
+              </View>
+              <Text style={[styles.cardTitle, { fontFamily: questrial }]}>Observações feitas</Text>
+              <Text style={[styles.cardNumber, { fontFamily: questrial }]}>{observacoes.total}</Text>
             </View>
-            
+            <View style={styles.cardDivider} />
             <View style={styles.cardDetails}>
-                {rios.length > 0 ? (
-                  rios.map((rio, index) => (
-                    <Text key={index} style={styles.detailItem}>• {rio}</Text>
-                  ))
-                ) : (
-                  <Text style={styles.detailItem}>Nenhum corpo hídrico encontrado.</Text>
-                )}
+              {observacoes.rios.length > 0 ? (
+                observacoes.rios.map((rio, index) => (
+                  <View key={index} style={styles.detailRow}>
+                    <Ionicons name="location-outline" size={14} color={PRIMARY} style={{ marginRight: 6 }} />
+                    <Text style={[styles.detailItem, { fontFamily: questrial }]}>{rio}</Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={[styles.detailEmpty, { fontFamily: questrial }]}>
+                  Nenhuma observação registrada.
+                </Text>
+              )}
             </View>
-        </View>
+          </View>
 
-        {/* Card Observações Feitas */}
-        <View style={styles.card}>
-            <View style={styles.cardHeader}>
-                <View style={[styles.iconCircle, { backgroundColor: '#E0F7F8' }]}>
-                    <Ionicons name="create-outline" size={24} color="#00A896" />
+          {/* ── Configurações da conta ── */}
+          <Text style={[styles.sectionTitle, { fontFamily: questrial }]}>Configurações da conta</Text>
+
+          <View style={styles.card}>
+            {/* E-mail */}
+            <View style={styles.configRow}>
+              <View style={styles.configLeft}>
+                <View style={styles.configIconCircle}>
+                  <Ionicons name="mail-outline" size={16} color={PRIMARY} />
                 </View>
-                <Text style={styles.cardTitle}>Observações feitas</Text>
-                <Text style={styles.cardNumber}>{observacoes.total}</Text>
+                <View>
+                  <Text style={[styles.configLabel, { fontFamily: questrial }]}>E-mail</Text>
+                  <Text style={[styles.configValue, { fontFamily: questrial }]}>
+                    {maskEmail(userData.email)}
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity activeOpacity={0.8}>
+                <LinearGradient
+                  colors={['#004d48', '#0a6b5e']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.configBtn}
+                >
+                  <Text style={[styles.configBtnText, { fontFamily: questrial }]}>Editar e-mail</Text>
+                </LinearGradient>
+              </TouchableOpacity>
             </View>
-            <View style={styles.cardDetails}>
-                {observacoes.rios.length > 0 ? (
-                  observacoes.rios.map((rio, index) => (
-                    <View key={index} style={styles.detailRow}>
-                      <Ionicons name="location-outline" size={16} color="#00A896" />
-                      <Text style={styles.detailItem}>{rio}</Text>
-                    </View>
-                  ))
-                ) : (
-                  <Text style={styles.detailItem}>Nenhuma observação registrada.</Text>
-                )}
+
+            <View style={styles.cardDivider} />
+
+            {/* Senha */}
+            <View style={styles.configRow}>
+              <View style={styles.configLeft}>
+                <View style={styles.configIconCircle}>
+                  <Ionicons name="lock-closed-outline" size={16} color={PRIMARY} />
+                </View>
+                <View>
+                  <Text style={[styles.configLabel, { fontFamily: questrial }]}>Senha</Text>
+                  <Text style={[styles.configValue, { fontFamily: questrial }]}>••••••••</Text>
+                </View>
+              </View>
+              <TouchableOpacity activeOpacity={0.8}>
+                <LinearGradient
+                  colors={['#004d48', '#0a6b5e']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.configBtn}
+                >
+                  <Text style={[styles.configBtnText, { fontFamily: questrial }]}>Alterar senha</Text>
+                </LinearGradient>
+              </TouchableOpacity>
             </View>
-        </View>
-        {/* Seção Configurações da Conta */}
-        <Text style={styles.sectionTitle}>Configurações da conta</Text>
-        <View style={styles.card}>
-          <View style={styles.configRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.configLabel}>E-mail: 
-                <Text style={styles.configValue}>  {maskEmail(userData.email)}</Text>
-              </Text>
-            </View>
-            <TouchableOpacity style={styles.editButton}>
-              <Text style={styles.editButtonText}>Editar e-mail</Text>
+          </View>
+
+          {/* ── Botões de ação ── */}
+          <View style={styles.actionRow}>
+            <TouchableOpacity style={styles.actionBtnWrapper} activeOpacity={0.82}>
+              <LinearGradient
+                colors={['#004d48', '#0a6b5e']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.actionBtn}
+              >
+                <Ionicons name="pause-circle-outline" size={16} color="#FFFFFF" style={{ marginBottom: 4 }} />
+                <Text style={[styles.actionBtnText, { fontFamily: questrial }]}>Desativar{'\n'}conta</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionBtnWrapper} activeOpacity={0.82}>
+              <LinearGradient
+                colors={['#8b1a1a', '#c0392b']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.actionBtn}
+              >
+                <Ionicons name="trash-outline" size={16} color="#FFFFFF" style={{ marginBottom: 4 }} />
+                <Text style={[styles.actionBtnText, { fontFamily: questrial }]}>Excluir{'\n'}conta</Text>
+              </LinearGradient>
             </TouchableOpacity>
           </View>
 
-          <View style={styles.divider} />
-
-          <View style={styles.configRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.configLabel}>Senha: 
-                <Text style={styles.configValue}>  ********</Text>
-              </Text>
-            </View>
-            <TouchableOpacity style={styles.editButton}>
-              <Text style={styles.editButtonText}>Alterar senha</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Botões de Perigo */}
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity style={[styles.actionButton, styles.btnExcluir]}>
-            <Text style={styles.buttonText}>Excluir conta</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={[styles.actionButton, styles.btnDesativar]}>
-            <Text style={[styles.buttonText, styles.btnTextEscuro]}>Desativar conta</Text>
-          </TouchableOpacity>
-        </View>
-        
-      </ScrollView>
-    </View>
+        </ScrollView>
+      </View>
+    </>
   );
 }
 
+// ── Estilos ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: {
+  root: { flex: 1, backgroundColor: '#FFFFFF' },
+
+  loadingContainer: {
     flex: 1,
-    backgroundColor: '#F8FBFB', 
-  },
-  headerGradient: {
-    height: 285, 
-    paddingHorizontal: 20,
-    paddingTop: 10,
-  },
-  headerContent: {
-    paddingTop: 0,
-    alignItems: 'center',
-    width: '100%',
-  },
-  logoImage: {
-    width: 130,    
-    height: 110,    
-    alignSelf: 'center',
-    marginBottom: 5,
-    marginTop: -37,
-  },
-  userInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    width: '100%',
-    paddingLeft: 10,
-  },
-  avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)', 
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 20,
+    backgroundColor: SURFACE,
   },
-  avatarText: { 
-    fontSize: 48, 
-    color: '#FFF', 
-    fontWeight: 'bold' 
+  loadingText: { marginTop: 10, color: PRIMARY, fontSize: 14 },
+
+  // Header
+  headerGradient: { overflow: 'hidden' },
+  tealOverlay: { ...StyleSheet.absoluteFillObject, opacity: 0.85 },
+  headerSafeArea: { paddingBottom: 0, zIndex: 1 },
+  headerLogo: {
+    width: 160,
+    height: 64,
+    alignSelf: 'center',
+    marginTop: 10,
+    marginBottom: 18,
   },
-  userName: { 
-    fontSize: 26, 
-    color: '#FFF', 
-    fontWeight: 'bold' 
+  avatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingBottom: 28,
+    gap: 16,
   },
-  userLocation: { 
-    fontSize: 16, 
-    color: '#FFF', 
-    opacity: 0.8 
+  avatarCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  contentScroll: {
-    flex: 1,
-    marginTop: -25, 
-    backgroundColor: '#F8FBFB',
-    borderTopLeftRadius: 35,
-    borderTopRightRadius: 35,
-    paddingHorizontal: 20,
+  avatarText: { fontSize: 32, color: '#FFFFFF', fontWeight: '700' },
+  avatarInfo: { flex: 1 },
+  headerName: { fontSize: 22, color: '#FFFFFF', fontWeight: '700', letterSpacing: 0.2 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', marginTop: 3 },
+  headerLocation: { fontSize: 13, color: 'rgba(255,255,255,0.85)' },
+
+  waveWhite: {
+    height: 28,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
   },
-  contentContainer: {
-    paddingBottom: 100, 
-  },
+
+  // Body
+  body: { flex: 1, backgroundColor: '#FFFFFF' },
+  bodyContent: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 40 },
+
   sectionTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#004d48',
-    marginTop: 25,
-    marginBottom: 15,
+    fontSize: 18,
+    fontWeight: '700',
+    color: PRIMARY,
+    marginTop: 18,
+    marginBottom: 12,
+    letterSpacing: 0.2,
   },
+
+  // Card
   card: {
-    backgroundColor: '#FFF',
+    backgroundColor: SURFACE,
     borderRadius: 20,
     padding: 16,
-    marginBottom: 15,
-    // Sombra
-    elevation: 4,
+    marginBottom: 14,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.08,
-    shadowRadius: 8,
+    shadowRadius: 10,
+    elevation: 4,
   },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
+  cardHeader: { flexDirection: 'row', alignItems: 'center' },
   iconCircle: {
-    width: 50,
-    height: 50,
-    borderRadius: 15,
-    backgroundColor: '#E0F2F1',
-    justifyContent: 'center',
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: 'rgba(63,243,231,0.18)',
     alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
   },
-  cardTitle: {
-    flex: 1,
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#333',
-    marginLeft: 10,
-  },
-  cardNumber: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  cardDetails: {
-    paddingLeft: 62,
-  },
-  detailItem: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 4,
-  },
-  detailRow: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    marginBottom: 6 
-},
-  // Estilos da seção de Configurações
+  cardTitle: { flex: 1, fontSize: 15, color: PRIMARY, fontWeight: '600' },
+  cardNumber: { fontSize: 26, fontWeight: '700', color: PRIMARY },
+  cardDivider: { height: 1, backgroundColor: BORDER_LIGHT, marginVertical: 12 },
+  cardDetails: { paddingLeft: 4 },
+  detailRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 5 },
+  detailItem: { fontSize: 13, color: '#444', lineHeight: 19, flex: 1 },
+  detailEmpty: { fontSize: 13, color: TEXT_MUTED, fontStyle: 'italic' },
+
+  // Configurações
   configRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#FFF',
-    paddingVertical: 12,
-    paddingHorizontal: 15,
-    borderRadius: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
   },
-  configLabel: {
-    fontSize: 15,
-    color: '#333',
-    fontWeight: '500',
+  configLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  configIconCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: 'rgba(63,243,231,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  configValue: { 
-    fontWeight: 'normal', 
-    color: '#666' 
-},
-divider: { 
-    height: 1, 
-    backgroundColor: '#F5F5F5', 
-    marginVertical: 4 
-},
-  editButton: {
-    backgroundColor: '#E0F7F8',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
+  configLabel: { fontSize: 12, color: TEXT_MUTED, marginBottom: 1 },
+  configValue: { fontSize: 14, color: '#333', fontWeight: '600' },
+  configBtn: {
+    borderRadius: 50,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    shadowColor: PRIMARY,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
   },
-  editButtonText: {
-    color: '#00A896',
+  configBtnText: { fontSize: 12, color: '#FFFFFF', fontWeight: '700', letterSpacing: 0.2 },
+
+  // Botões de ação
+  actionRow: { flexDirection: 'row', gap: 14, marginTop: 8 },
+  actionBtnWrapper: { flex: 1 },
+  actionBtn: {
+    borderRadius: 16,
+    paddingVertical: 18,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  actionBtnText: {
     fontSize: 13,
-    fontWeight: '600',
+    color: '#FFFFFF',
+    fontWeight: '700',
+    textAlign: 'center',
+    lineHeight: 19,
   },
-  buttonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 25,
-  },
-  actionButton: {
-    flex: 0.48,
-    paddingVertical: 14,
-    borderRadius: 25,
-    alignItems: 'center',
-  },
-  btnExcluir: {
-    backgroundColor: '#D90429',
-  },
-  btnDesativar: {
-    backgroundColor: '#A8DADC',
-  },
-  buttonText: {
-    color: '#FFF',
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
-  btnTextEscuro: {
-    color: '#1D3557',
-  }
 });
