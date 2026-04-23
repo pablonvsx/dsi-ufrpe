@@ -1,11 +1,28 @@
-// AquaSense/app/(tabs)/map.tsx
-// Corrigido nesta versão:
-//  - rotationEnabled={true} no MapView para permitir girar o mapa com gestos
-//  - Barra de busca adicionada no topo (abaixo do header) para localizar corpos hídricos por nome
-//  - busca filtra corposHidricosValidados + pendentes, centraliza no mapa e abre o bottom sheet
-//  - Integração de observações: buscarObservacoesPorCorpo usa o campo corpoHidricoId (Firestore)
-//    — se sua função já usa where('corpoHidricoId', '==', id), o fluxo estará correto.
-//    Adicionado log de debug para ajudar a verificar em dev.
+// app/(tabs)/map.tsx
+//
+// COMO O MAPA ATUALIZA O ESTADO DO USUÁRIO:
+//
+// Quando o usuário abre o modal de um corpo hídrico (abrirDetalhes),
+// o Mapa chama `setLastWaterBody(id)` do AuthContext.
+//
+// Essa função faz duas coisas em paralelo:
+//   1. Atualiza o estado em memória do userProfile imediatamente
+//      → a Home reage ao voltar, sem esperar o Firestore
+//   2. Persiste o ID no Firestore em background
+//      → na próxima sessão, a Home já carrega com o dado
+//
+// NAVEGAÇÃO CONTEXTUAL (focusCorpoId):
+//
+// Quando o usuário clica em "Ver no mapa" na Home, a rota recebe
+// o parâmetro `focusCorpoId` com o ID do corpo hídrico.
+//
+// O Mapa:
+//   1. Aguarda o carregamento dos dados do Firestore
+//   2. Localiza o corpo hídrico pelo ID
+//   3. Centraliza a câmera nas coordenadas dele
+//   4. Abre automaticamente o modal de detalhes
+//
+// Isso evita que o usuário precise procurar manualmente o corpo no mapa.
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
@@ -20,13 +37,14 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { useFonts, Questrial_400Regular } from '@expo-google-fonts/questrial';
-import { useRouter, Stack } from 'expo-router';
+import { useRouter, Stack, useLocalSearchParams } from 'expo-router';
 
 import { obterContextoGeografico } from '../../services/geoService';
 import { db } from '../../config/firebase';
 import { CorpoHidrico, PontoDeUso } from '../../types/water_bodies';
 import { buscarObservacoesPorCorpo, calcularResumoObservacoes, ResumoObservacoes } from '../../services/firestore/observations';
 import { obterDescricaoInstitucional } from '../../utils/waterBodyDescriptions';
+import { useAuth } from '@/contexts/auth-context';
 
 import stateData from '../../assets/map_layers/pe_aquasense.json';
 import municipiosData from '../../assets/map_layers/municipios_pe.json';
@@ -82,6 +100,11 @@ function StarRating({ stars, size = 14 }: { stars: number; size?: number }) {
 export default function MapaScreen() {
   const router = useRouter();
   const mapRef = useRef<MapView>(null);
+  const { setLastWaterBody } = useAuth();
+
+  // ── Parâmetro de navegação contextual da Home ────────────────────────
+  // Se vier `focusCorpoId`, o Mapa centraliza e abre o modal automaticamente.
+  const { focusCorpoId } = useLocalSearchParams<{ focusCorpoId?: string }>();
 
   const [fontsLoaded] = useFonts({ Questrial_400Regular });
   const questrial = fontsLoaded ? 'Questrial_400Regular' : undefined;
@@ -100,7 +123,7 @@ export default function MapaScreen() {
   const [corposHidricosPendentes, setCorposHidricosPendentes] = useState<CorpoHidrico[]>([]);
   const [pontosDeUsoValidados, setPontosDeUsoValidados] = useState<PontoDeUso[]>([]);
 
-  // ── BUSCA ────────────────────────────────────────────────────────────────
+  // ── BUSCA ────────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchResults, setSearchResults] = useState<CorpoHidrico[]>([]);
@@ -110,6 +133,9 @@ export default function MapaScreen() {
   const [detalheModalVisible, setDetalheModalVisible] = useState(false);
   const [resumoObservacoes, setResumoObservacoes] = useState<ResumoObservacoes | null>(null);
   const [loadingResumo, setLoadingResumo] = useState(false);
+
+  // Controla se o foco automático (via focusCorpoId) já foi executado
+  const focusHandled = useRef(false);
 
   // Bottom sheet drag
   const sheetHeight = useRef(new Animated.Value(SHEET_COLLAPSED)).current;
@@ -187,23 +213,44 @@ export default function MapaScreen() {
         ]);
         const hasCoords = (item: any) =>
           typeof item.latitude === 'number' && typeof item.longitude === 'number';
-        setCorposHidricosValidados(
-          validadosSnap.docs.map((d) => ({ id: d.id, ...d.data() } as CorpoHidrico)).filter(hasCoords)
-        );
-        setCorposHidricosPendentes(
-          pendentesSnap.docs.map((d) => ({ id: d.id, ...d.data() } as CorpoHidrico)).filter(hasCoords)
-        );
+
+        const validados = validadosSnap.docs.map((d) => ({ id: d.id, ...d.data() } as CorpoHidrico)).filter(hasCoords);
+        const pendentes = pendentesSnap.docs.map((d) => ({ id: d.id, ...d.data() } as CorpoHidrico)).filter(hasCoords);
+
+        setCorposHidricosValidados(validados);
+        setCorposHidricosPendentes(pendentes);
         setPontosDeUsoValidados(
           pontosSnap.docs.map((d) => ({ id: d.id, ...d.data() } as PontoDeUso)).filter(hasCoords)
         );
+
+        // ── FOCO AUTOMÁTICO via focusCorpoId ─────────────────────────────
+        //
+        // Executado UMA vez, após os dados carregarem.
+        // Localiza o corpo pelo ID, centraliza o mapa e abre o modal.
+        // O guard `focusHandled.current` evita execução dupla em re-renders.
+        if (focusCorpoId && !focusHandled.current) {
+          focusHandled.current = true;
+          const alvo =
+            [...validados, ...pendentes].find((c) => c.id === focusCorpoId);
+          if (alvo) {
+            setTimeout(() => {
+              mapRef.current?.animateToRegion({
+                latitude: alvo.latitude,
+                longitude: alvo.longitude,
+                latitudeDelta: 0.04,
+                longitudeDelta: 0.04,
+              }, 900);
+              abrirDetalhes({ tipo: 'corpoHidrico', dado: alvo });
+            }, 600); // pequeno delay para o mapa terminar de montar
+          }
+        }
       } catch (e) {
         console.log('Erro ao carregar pontos:', e);
       }
     })();
-  }, []);
+  }, [focusCorpoId]);
 
   // ── Lógica de busca ──────────────────────────────────────────────────────
-  // Combina validados + pendentes para a busca
   const todosCorpos = [...corposHidricosValidados, ...corposHidricosPendentes];
 
   useEffect(() => {
@@ -216,7 +263,7 @@ export default function MapaScreen() {
       (c.nome ?? '').toLowerCase().includes(q) ||
       (c.municipio ?? '').toLowerCase().includes(q)
     );
-    setSearchResults(filtered.slice(0, 8)); // limita a 8 resultados
+    setSearchResults(filtered.slice(0, 8));
   }, [searchQuery, corposHidricosValidados, corposHidricosPendentes]);
 
   function handleSelectSearchResult(corpo: CorpoHidrico) {
@@ -224,22 +271,17 @@ export default function MapaScreen() {
     setSearchQuery('');
     setSearchFocused(false);
     setSearchResults([]);
-
-    // Centraliza o mapa no corpo hídrico selecionado
     mapRef.current?.animateToRegion({
       latitude: corpo.latitude,
       longitude: corpo.longitude,
       latitudeDelta: 0.04,
       longitudeDelta: 0.04,
     }, 900);
-
-    // Abre o bottom sheet de detalhes
     abrirDetalhes({ tipo: 'corpoHidrico', dado: corpo });
   }
 
   // ── Handlers ─────────────────────────────────────────────────────────────
   const handleMapPress = (e: any) => {
-    // Se a busca está focada, fecha ela primeiro
     if (searchFocused) {
       Keyboard.dismiss();
       setSearchFocused(false);
@@ -265,6 +307,16 @@ export default function MapaScreen() {
 
   const resetNorth = () => mapRef.current?.animateCamera({ heading: 0 }, { duration: 1000 });
 
+  /**
+   * ABERTURA DO MODAL + ATUALIZAÇÃO DO HISTÓRICO
+   *
+   * Quando o usuário abre o detalhe de um corpo hídrico:
+   *   1. Chama setLastWaterBody(id) → atualiza AuthContext em memória + Firestore
+   *   2. Abre o bottom sheet de detalhes normalmente
+   *
+   * A chamada a setLastWaterBody ocorre apenas para corposHidricos,
+   * não para pontosDeUso (que não são corpos hídricos).
+   */
   const abrirDetalhes = useCallback(async (detalhe: DetalheMapa) => {
     setDetalheSelecionado(detalhe);
     setResumoObservacoes(null);
@@ -274,19 +326,22 @@ export default function MapaScreen() {
     setDetalheModalVisible(true);
 
     if (detalhe.tipo === 'corpoHidrico') {
-      if (!detalhe.dado?.id) {
+      const id = detalhe.dado?.id;
+
+      // Registra o último corpo acessado no AuthContext (memória + Firestore)
+      if (id) {
+        setLastWaterBody(id);
+      }
+
+      if (!id) {
         setResumoObservacoes(calcularResumoObservacoes([]));
         return;
       }
 
       setLoadingResumo(true);
-
       try {
-        // INTEGRAÇÃO: busca observações usando o id do Firestore do corpo hídrico.
-        // A função buscarObservacoesPorCorpo deve usar where('corpoHidricoId', '==', id).
-        // O campo corpoHidricoId é salvo com o id real do Firestore no register_observation.
-        const obs = await buscarObservacoesPorCorpo(detalhe.dado.id);
-        console.log(`[AquaSense] Observações carregadas para ${detalhe.dado.id}:`, obs.length);
+        const obs = await buscarObservacoesPorCorpo(id);
+        console.log(`[AquaSense] Observações carregadas para ${id}:`, obs.length);
         setResumoObservacoes(calcularResumoObservacoes(obs));
       } catch (err) {
         console.log('[AquaSense] Erro ao buscar observações:', err);
@@ -295,7 +350,7 @@ export default function MapaScreen() {
         setLoadingResumo(false);
       }
     }
-  }, []);
+  }, [setLastWaterBody]);
 
   const fecharDetalhes = () => {
     setDetalheModalVisible(false);
@@ -333,7 +388,6 @@ export default function MapaScreen() {
           style={styles.headerGradient}
         >
           <SafeAreaView edges={['top']} style={styles.headerSafe}>
-            {/* Linha 1: Marca centralizada */}
             <View style={styles.headerBrandRow}>
               <Image
                 source={require('../../assets/images/aquasense-name.png')}
@@ -342,7 +396,6 @@ export default function MapaScreen() {
                 tintColor="#FFFFFF"
               />
             </View>
-            {/* Linha 2: Seta + título da tela */}
             <View style={styles.headerTitleRow}>
               <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.7}>
                 <Ionicons name="arrow-back-outline" size={22} color="#FFFFFF" />
@@ -351,7 +404,6 @@ export default function MapaScreen() {
               <View style={{ width: 36 }} />
             </View>
 
-            {/* ══ BARRA DE BUSCA — dentro do header, abaixo do título ══ */}
             <View style={styles.searchBarWrapper}>
               <View style={[styles.searchBarInner, searchFocused && styles.searchBarFocused]}>
                 <Ionicons name="search-outline" size={18} color={TEXT_MUTED} style={{ marginRight: 8 }} />
@@ -362,10 +414,7 @@ export default function MapaScreen() {
                   value={searchQuery}
                   onChangeText={setSearchQuery}
                   onFocus={() => setSearchFocused(true)}
-                  onBlur={() => {
-                    // pequeno delay para permitir o tap no resultado
-                    setTimeout(() => setSearchFocused(false), 150);
-                  }}
+                  onBlur={() => { setTimeout(() => setSearchFocused(false), 150); }}
                   returnKeyType="search"
                   clearButtonMode="while-editing"
                 />
@@ -416,9 +465,7 @@ export default function MapaScreen() {
           </View>
         )}
 
-        {/* ══ MAPA ══
-            CORREÇÃO: rotationEnabled={true} habilita rotação com gesto de dois dedos
-        ══ */}
+        {/* ══ MAPA ══ */}
         <MapView
           ref={mapRef}
           style={styles.mapa}
@@ -493,33 +540,21 @@ export default function MapaScreen() {
           <TouchableOpacity style={styles.botaoCircular} onPress={() => setMapTypeVisible(true)}>
             <Ionicons name="map" size={22} color={PRIMARY} />
           </TouchableOpacity>
-
           <TouchableOpacity style={[styles.botaoCircular, { marginTop: 10 }]} onPress={() => setLayersVisible(true)}>
             <Ionicons name="layers" size={22} color={PRIMARY} />
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.botaoCircular, { marginTop: 10 }]}
-            onPress={() => setLegendaVisible(true)}
-          >
+          <TouchableOpacity style={[styles.botaoCircular, { marginTop: 10 }]} onPress={() => setLegendaVisible(true)}>
             <Ionicons name="information-circle-outline" size={24} color={PRIMARY} />
           </TouchableOpacity>
-
           <TouchableOpacity
             style={[styles.botaoCircular, { marginTop: 10 }, modoInteligencia && styles.botaoCircularAtivo]}
             onPress={() => {
-              if (modoInteligencia) {
-                setModoInteligencia(false);
-                setContextoExibicao(null);
-                setPontoSelecionado(null);
-              } else {
-                setModoInteligencia(true);
-              }
+              if (modoInteligencia) { setModoInteligencia(false); setContextoExibicao(null); setPontoSelecionado(null); }
+              else { setModoInteligencia(true); }
             }}
           >
             <Ionicons name="analytics-outline" size={22} color={modoInteligencia ? '#FFF' : PRIMARY} />
           </TouchableOpacity>
-
           <TouchableOpacity style={[styles.botaoCircular, { marginTop: 10 }]} onPress={resetNorth}>
             <Ionicons name="arrow-up" size={22} color={PRIMARY} />
           </TouchableOpacity>
@@ -533,7 +568,6 @@ export default function MapaScreen() {
           <TouchableOpacity style={styles.modalOverlay} onPress={() => setLegendaVisible(false)}>
             <View style={styles.menuCard}>
               <Text style={[styles.menuTitle, { fontFamily: questrial }]}>Legenda do Mapa</Text>
-
               {[
                 { color: '#0B63CE', icon: 'water', label: 'Corpo hídrico validado', desc: 'Cadastrado e aprovado pela equipe gestora.' },
                 { color: '#E67E22', icon: 'time-outline', label: 'Corpo hídrico pendente', desc: 'Aguardando validação da equipe.' },
@@ -549,9 +583,7 @@ export default function MapaScreen() {
                   </View>
                 </View>
               ))}
-
               <View style={styles.legendaDivider} />
-
               <View style={styles.legendaRow}>
                 <View style={[styles.legendaIcon, { backgroundColor: PRIMARY }]}>
                   <Ionicons name="analytics-outline" size={14} color="#fff" />
@@ -559,15 +591,11 @@ export default function MapaScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.legendaLabel, { fontFamily: questrial }]}>Inteligência Territorial</Text>
                   <Text style={[styles.legendaDesc, { fontFamily: questrial }]}>
-                    Ative pelo botão{' '}
-                    <Text style={{ fontWeight: '700' }}>⟨análise⟩</Text>
-                    {' '}e toque no mapa para ver dados geográficos do ponto.
+                    Ative pelo botão <Text style={{ fontWeight: '700' }}>⟨análise⟩</Text> e toque no mapa para ver dados geográficos do ponto.
                   </Text>
                 </View>
               </View>
-
               <View style={styles.legendaDivider} />
-
               <View style={styles.legendaRow}>
                 <View style={[styles.legendaIcon, { backgroundColor: TEAL_MID }]}>
                   <Ionicons name="search" size={14} color="#fff" />
@@ -585,18 +613,11 @@ export default function MapaScreen() {
 
         {/* ══ MODAL: INTELIGÊNCIA TERRITORIAL ══ */}
         <Modal visible={intelVisible} transparent animationType="fade">
-          <TouchableOpacity
-            style={styles.modalOverlay}
-            onPress={() => { setIntelVisible(false); }}
-          >
+          <TouchableOpacity style={styles.modalOverlay} onPress={() => { setIntelVisible(false); }}>
             <View style={styles.menuCard}>
               <View style={styles.cardContextoHeader}>
                 <Text style={[styles.menuTitle, { fontFamily: questrial }]}>Inteligência Territorial</Text>
-                <TouchableOpacity onPress={() => {
-                  setIntelVisible(false);
-                  setContextoExibicao(null);
-                  setPontoSelecionado(null);
-                }}>
+                <TouchableOpacity onPress={() => { setIntelVisible(false); setContextoExibicao(null); setPontoSelecionado(null); }}>
                   <Ionicons name="close" size={20} color={PRIMARY} />
                 </TouchableOpacity>
               </View>
@@ -675,13 +696,10 @@ export default function MapaScreen() {
             <TouchableOpacity style={StyleSheet.absoluteFill} onPress={fecharDetalhes} activeOpacity={1} />
 
             <Animated.View style={[styles.detalheSheet, { height: sheetHeight }]}>
-
-              {/* ── Drag handle ── */}
               <View style={styles.dragHandleWrapper} {...panResponder.panHandlers}>
                 <View style={styles.dragHandle} />
               </View>
 
-              {/* ── Header gradiente ── */}
               <LinearGradient
                 colors={['#004d48', '#0a6b5e']}
                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
@@ -752,10 +770,8 @@ export default function MapaScreen() {
                 )}
               </LinearGradient>
 
-              {/* ── Corpo scrollável ── */}
               <ScrollView style={styles.detalheBody} showsVerticalScrollIndicator={false}>
 
-                {/* ═══ CORPO HÍDRICO ═══ */}
                 {detalheSelecionado?.tipo === 'corpoHidrico' && corpoSelecionado && (
                   <>
                     {descricaoInstitucional ? (
@@ -767,7 +783,6 @@ export default function MapaScreen() {
                     <View style={styles.mediasParamsRow}>
                       <View style={[styles.mediasParamsCard, { flex: 1.1 }]}>
                         <Text style={[styles.mediasParamsTitle, { fontFamily: questrial }]}>MÉDIAS:</Text>
-
                         {loadingResumo ? (
                           <Text style={[styles.semDadosText, { fontFamily: questrial }]}>...</Text>
                         ) : resumoObservacoes && resumoObservacoes.totalObservacoes > 0 ? (
@@ -812,7 +827,6 @@ export default function MapaScreen() {
                     {resumoObservacoes && resumoObservacoes.totalObservacoes > 0 && (
                       <View style={styles.detalheSection}>
                         <Text style={[styles.detalheSectionTitle, { fontFamily: questrial }]}>Observações usuais</Text>
-
                         {resumoObservacoes.corMaisFrequente && (
                           <View style={styles.obsRow}>
                             <Ionicons name="color-palette-outline" size={14} color={TEAL_MID} style={{ marginRight: 6 }} />
@@ -837,7 +851,6 @@ export default function MapaScreen() {
                             </Text>
                           </View>
                         )}
-
                         <Text style={[styles.totalObsText, { fontFamily: questrial }]}>
                           Baseado em {resumoObservacoes.totalObservacoes} observação(ões)
                         </Text>
@@ -871,7 +884,6 @@ export default function MapaScreen() {
                   </>
                 )}
 
-                {/* ═══ PONTO DE USO ═══ */}
                 {detalheSelecionado?.tipo === 'pontoDeUso' && (
                   <View style={styles.detalheSection}>
                     <Text style={[styles.detalheSectionTitle, { fontFamily: questrial }]}>Informações</Text>
@@ -893,7 +905,6 @@ export default function MapaScreen() {
                 <View style={{ height: 20 }} />
               </ScrollView>
 
-              {/* ── Botão Voltar ── */}
               <View style={styles.detalheFooter}>
                 <TouchableOpacity style={styles.detalheVoltarBtn} onPress={fecharDetalhes} activeOpacity={0.85}>
                   <LinearGradient
@@ -905,7 +916,6 @@ export default function MapaScreen() {
                   </LinearGradient>
                 </TouchableOpacity>
               </View>
-
             </Animated.View>
           </View>
         </Modal>
@@ -915,287 +925,114 @@ export default function MapaScreen() {
 }
 
 // ─────────────────────────────────────────────
-// ESTILOS
+// ESTILOS — idênticos ao original
 // ─────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1 },
   mapa: { flex: 1 },
-
-  // ── Header ──
   headerGradient: {},
   headerSafe: { paddingBottom: 12 },
-  headerBrandRow: {
-    alignItems: 'center',
-    paddingTop: 6,
-    paddingBottom: 4,
-  },
-  headerBrandImage: {
-    height: 22,
-    width: 160,
-  },
-  headerTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 8,
-  },
+  headerBrandRow: { alignItems: 'center', paddingTop: 6, paddingBottom: 4 },
+  headerBrandImage: { height: 22, width: 160 },
+  headerTitleRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 8 },
   backBtn: {
     width: 36, height: 36, borderRadius: 18,
     backgroundColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center', justifyContent: 'center',
   },
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 16,
-    color: '#FFFFFF',
-    fontWeight: '600',
-    letterSpacing: 0.2,
-    marginLeft: 4,
-  },
-
-  // ── Barra de busca (dentro do header) ──
-  searchBarWrapper: {
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-  },
+  headerTitle: { flex: 1, textAlign: 'center', fontSize: 16, color: '#FFFFFF', fontWeight: '600', letterSpacing: 0.2, marginLeft: 4 },
+  searchBarWrapper: { paddingHorizontal: 16, paddingBottom: 10 },
   searchBarInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 50,
-    paddingHorizontal: 14,
-    paddingVertical: Platform.OS === 'ios' ? 10 : 7,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    elevation: 4,
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF',
+    borderRadius: 50, paddingHorizontal: 14, paddingVertical: Platform.OS === 'ios' ? 10 : 7,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 6, elevation: 4,
   },
-  searchBarFocused: {
-    shadowOpacity: 0.2,
-    elevation: 6,
-  },
-  searchBarInput: {
-    flex: 1,
-    fontSize: 14,
-    color: '#333',
-  },
-
-  // ── Dropdown de resultados ──
+  searchBarFocused: { shadowOpacity: 0.2, elevation: 6 },
+  searchBarInput: { flex: 1, fontSize: 14, color: '#333' },
   searchDropdown: {
-    position: 'absolute',
-    top: 0, // será sobreposto pelo z-order; o header empurra o mapa para baixo
-    left: 0, right: 0,
-    zIndex: 100,
-    // Calcula posição via marginTop dinâmica não é simples em RN absoluto,
-    // então usamos position absolute com top calculado via header height estimado.
-    // O dropdown flutua sobre o mapa, logo abaixo do header.
+    position: 'absolute', left: 0, right: 0, zIndex: 100,
     marginTop: Platform.OS === 'ios' ? 185 : 165,
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: 12,
-    borderRadius: 16,
-    maxHeight: 280,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 8,
-    overflow: 'hidden',
+    backgroundColor: '#FFFFFF', marginHorizontal: 12, borderRadius: 16, maxHeight: 280,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 8, overflow: 'hidden',
   },
-  searchDropdownItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    gap: 10,
-  },
-  searchDropdownIcon: {
-    width: 28, height: 28, borderRadius: 14,
-    alignItems: 'center', justifyContent: 'center',
-    flexShrink: 0,
-  },
-  searchDropdownName: {
-    fontSize: 14, color: '#333', fontWeight: '600',
-  },
-  searchDropdownSub: {
-    fontSize: 12, color: TEXT_MUTED, marginTop: 1,
-  },
-  pendentePill: {
-    backgroundColor: '#fff8e1',
-    borderWidth: 1, borderColor: '#ffe082',
-    borderRadius: 20, paddingHorizontal: 6, paddingVertical: 2,
-  },
+  searchDropdownItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 14, gap: 10 },
+  searchDropdownIcon: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  searchDropdownName: { fontSize: 14, color: '#333', fontWeight: '600' },
+  searchDropdownSub: { fontSize: 12, color: TEXT_MUTED, marginTop: 1 },
+  pendentePill: { backgroundColor: '#fff8e1', borderWidth: 1, borderColor: '#ffe082', borderRadius: 20, paddingHorizontal: 6, paddingVertical: 2 },
   pendentePillText: { fontSize: 10, color: '#f9a825', fontWeight: '700' },
-
-  // ── Card contexto intel ──
-  cardContextoHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginBottom: 8, borderBottomWidth: 1, borderBottomColor: '#f0f0f0', paddingBottom: 6,
-  },
+  cardContextoHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, borderBottomWidth: 1, borderBottomColor: '#f0f0f0', paddingBottom: 6 },
   cardText: { fontSize: 13, color: TEXT_MUTED, marginBottom: 3 },
   bold: { fontWeight: '700', color: PRIMARY },
-
-  // ── Botões laterais ──
   controlesDireita: { position: 'absolute', bottom: 40, left: 16 },
-  botaoCircular: {
-    backgroundColor: 'rgba(255,255,255,0.95)', padding: 11, borderRadius: 26,
-    elevation: 4, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4,
-    alignItems: 'center', justifyContent: 'center',
-  },
+  botaoCircular: { backgroundColor: 'rgba(255,255,255,0.95)', padding: 11, borderRadius: 26, elevation: 4, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, alignItems: 'center', justifyContent: 'center' },
   botaoCircularAtivo: { backgroundColor: PRIMARY },
-
-  // ── Modal overlay centrado ──
-  modalOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24,
-  },
-  menuCard: {
-    backgroundColor: 'rgba(255,255,255,0.97)', width: '100%',
-    borderRadius: 20, padding: 20, elevation: 6,
-  },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
+  menuCard: { backgroundColor: 'rgba(255,255,255,0.97)', width: '100%', borderRadius: 20, padding: 20, elevation: 6 },
   menuTitle: { fontSize: 17, fontWeight: '700', color: PRIMARY, marginBottom: 14, letterSpacing: 0.3 },
   itemMenu: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
   itemAtivo: { backgroundColor: 'rgba(63,243,231,0.12)', borderRadius: 8, paddingHorizontal: 10, borderBottomWidth: 0 },
   textoItem: { fontSize: 14, color: TEXT_MUTED, fontWeight: '500' },
   textoAtivo: { fontWeight: '700', color: PRIMARY },
-
-  // ── Legenda ──
   legendaRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 12 },
-  legendaIcon: {
-    width: 28, height: 28, borderRadius: 14,
-    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-  },
+  legendaIcon: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   legendaLabel: { fontSize: 13, fontWeight: '700', color: PRIMARY, marginBottom: 2 },
   legendaDesc: { fontSize: 12, color: TEXT_MUTED, lineHeight: 17 },
   legendaDivider: { height: 1, backgroundColor: BORDER_LIGHT, marginBottom: 12, marginTop: 4 },
-
-  // ── Modal overlay bottom ──
   modalOverlayBottom: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
-  menuBottom: {
-    backgroundColor: 'rgba(255,255,255,0.98)', width: '100%',
-    borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    padding: 24, maxHeight: '60%',
-    elevation: 8, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8,
-    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
-  },
+  menuBottom: { backgroundColor: 'rgba(255,255,255,0.98)', width: '100%', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '60%', elevation: 8, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8, paddingBottom: Platform.OS === 'ios' ? 36 : 24 },
   menuHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   menuDivider: { height: 1, backgroundColor: BORDER_LIGHT, marginBottom: 16 },
-  toggleRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingVertical: 13, paddingHorizontal: 12,
-    backgroundColor: '#f9fafa', marginBottom: 8, borderRadius: 10,
-    borderWidth: 1, borderColor: '#f0f0f0',
-  },
+  toggleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 13, paddingHorizontal: 12, backgroundColor: '#f9fafa', marginBottom: 8, borderRadius: 10, borderWidth: 1, borderColor: '#f0f0f0' },
   toggleLabel: { fontSize: 14, fontWeight: '600', color: '#333' },
   toggle: { width: 48, height: 26, backgroundColor: '#ddd', borderRadius: 13, padding: 2, justifyContent: 'center' },
   toggleAtivo: { backgroundColor: PRIMARY },
   toggleCircle: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#fff', alignSelf: 'flex-start' },
   toggleCircleAtivo: { alignSelf: 'flex-end' },
-
-  // ── BOTTOM SHEET DETALHES ──
   detalheOverlay: { flex: 1, justifyContent: 'flex-end' },
-  detalheSheet: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    overflow: 'hidden',
-    elevation: 12, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 12,
-  },
+  detalheSheet: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden', elevation: 12, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 12 },
   dragHandleWrapper: { alignItems: 'center', paddingVertical: 10, backgroundColor: '#FFFFFF' },
   dragHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#ccc' },
-
   detalheSheetHeader: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 16 },
   detalheSheetHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   detalheNomeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
   detalheNome: { fontSize: 18, fontWeight: '700', color: '#FFFFFF', flex: 1, flexShrink: 1 },
   detalheSubtitulo: { fontSize: 13, color: 'rgba(255,255,255,0.75)', marginLeft: 28 },
-
-  qualidadeHeaderRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    marginTop: 12, paddingTop: 12,
-    borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.2)',
-  },
+  qualidadeHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.2)' },
   qualidadeHeaderDot: { width: 18, height: 18, borderRadius: 9 },
   qualidadeHeaderLabel: { fontSize: 16, fontWeight: '700' },
   qualidadeHeaderHint: { fontSize: 12, color: 'rgba(255,255,255,0.75)', marginTop: 1 },
-
-  statusBadge: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, flexShrink: 0,
-  },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, flexShrink: 0 },
   statusBadgePendente: { backgroundColor: '#fff8e1', borderWidth: 1, borderColor: '#ffe082' },
   statusBadgeValidado: { backgroundColor: 'rgba(46,125,110,0.15)', borderWidth: 1, borderColor: 'rgba(46,125,110,0.3)' },
   statusBadgeText: { fontSize: 11, fontWeight: '700' },
   statusTextPendente: { color: '#f9a825' },
   statusTextValidado: { color: '#2e7d6e' },
-
   detalheBody: { paddingHorizontal: 16, paddingTop: 14, flex: 1 },
-
-  detalheDescText: {
-    fontSize: 13, color: '#444', lineHeight: 20,
-    marginBottom: 14,
-    backgroundColor: '#F5F9F8', borderRadius: 12, padding: 12,
-  },
-
-  mediasParamsRow: {
-    flexDirection: 'row', gap: 10, marginBottom: 12,
-  },
-  mediasParamsCard: {
-    backgroundColor: '#F5F9F8', borderRadius: 12, padding: 12,
-  },
-  mediasParamsTitle: {
-    fontSize: 10, fontWeight: '700', color: TEXT_MUTED,
-    textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8,
-  },
+  detalheDescText: { fontSize: 13, color: '#444', lineHeight: 20, marginBottom: 14, backgroundColor: '#F5F9F8', borderRadius: 12, padding: 12 },
+  mediasParamsRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  mediasParamsCard: { backgroundColor: '#F5F9F8', borderRadius: 12, padding: 12 },
+  mediasParamsTitle: { fontSize: 10, fontWeight: '700', color: TEXT_MUTED, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
   mediaLineRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' },
   mediaLineTxt: { fontSize: 12, color: '#444' },
   semDadosSmText: { fontSize: 11, color: TEXT_MUTED },
-
-  detalheSection: {
-    backgroundColor: '#F5F9F8', borderRadius: 12, padding: 12, marginBottom: 10,
-  },
+  detalheSection: { backgroundColor: '#F5F9F8', borderRadius: 12, padding: 12, marginBottom: 10 },
   detalheSectionTitle: { fontSize: 13, fontWeight: '700', color: PRIMARY, marginBottom: 8 },
-
   obsRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 },
   obsText: { fontSize: 13, color: '#555' },
   obsBold: { fontWeight: '700', color: '#333' },
-
   totalObsText: { fontSize: 11, color: TEXT_MUTED, marginTop: 6, fontStyle: 'italic' },
-
-  alertaBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#fff8e1', borderRadius: 10,
-    paddingVertical: 10, paddingHorizontal: 12, marginBottom: 12,
-    borderWidth: 1, borderColor: '#ffe082',
-  },
+  alertaBanner: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#fff8e1', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 12, borderWidth: 1, borderColor: '#ffe082' },
   alertaText: { flex: 1, fontSize: 13, color: '#f57c00', fontWeight: '700' },
-
   semDadosText: { fontSize: 12, color: TEXT_MUTED, fontStyle: 'italic' },
-
-  fichaRow: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    paddingVertical: 5, borderBottomWidth: 1, borderBottomColor: BORDER_LIGHT,
-  },
+  fichaRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 5, borderBottomWidth: 1, borderBottomColor: BORDER_LIGHT },
   fichaLabel: { fontSize: 12, color: TEXT_MUTED, fontWeight: '600' },
   fichaVal: { fontSize: 12, color: '#333', textAlign: 'right', flex: 1, marginLeft: 12 },
-
-  detalheFooter: {
-    paddingHorizontal: 20, paddingVertical: 14,
-    borderTopWidth: 1, borderTopColor: BORDER_LIGHT,
-    paddingBottom: Platform.OS === 'ios' ? 32 : 14,
-    backgroundColor: '#FFFFFF',
-  },
+  detalheFooter: { paddingHorizontal: 20, paddingVertical: 14, borderTopWidth: 1, borderTopColor: BORDER_LIGHT, paddingBottom: Platform.OS === 'ios' ? 32 : 14, backgroundColor: '#FFFFFF' },
   detalheVoltarBtn: { borderRadius: 50, overflow: 'hidden' },
   detalheVoltarGradient: { paddingVertical: 15, alignItems: 'center' },
   detalheVoltarText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700', letterSpacing: 0.3 },
-
-  // ── Marcadores ──
-  customMarker: {
-    width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: '#FFFFFF',
-    shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 }, elevation: 5,
-  },
+  customMarker: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#FFFFFF', shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 5 },
   markerCorpoHidrico: { backgroundColor: '#0B63CE' },
   markerPontoDeUso: { backgroundColor: '#2E7D32' },
   markerPendente: { backgroundColor: '#E67E22' },
