@@ -11,7 +11,6 @@ import {
     KeyboardAvoidingView,
     Platform,
     ActivityIndicator,
-    Alert,
     StatusBar,
     Image,
     Pressable,
@@ -22,8 +21,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { Stack } from "expo-router";
 import { useFonts, Questrial_400Regular } from "@expo-google-fonts/questrial";
 
-
-import { registerCollaboratorUser } from "@/services/auth/register";
+import { registerCollaboratorUser, parseFirebaseAuthError } from "@/services/auth/register";
+import { sendVerificationEmail } from "@/services/emailService";
 import {
     validateName,
     validateEmail,
@@ -43,6 +42,125 @@ interface FormErrors {
     confirmSenha?: string;
 }
 
+interface CustomAlertProps {
+    visible: boolean;
+    title: string;
+    message: string;
+    buttonLabel?: string;
+    type?: "success" | "error" | "warning";
+    onClose: () => void;
+    fontFamily?: string;
+}
+
+function CustomAlert({
+    visible,
+    title,
+    message,
+    buttonLabel = "Entendi",
+    type = "success",
+    onClose,
+    fontFamily,
+}: CustomAlertProps) {
+    const iconName =
+        type === "success"
+            ? "checkmark-circle"
+            : type === "warning"
+            ? "alert-circle"
+            : "close-circle";
+    const iconColor =
+        type === "success" ? "#1a8c80" : type === "warning" ? "#e6a817" : "#e05252";
+
+    return (
+        <Modal
+            visible={visible}
+            transparent
+            animationType="fade"
+            onRequestClose={onClose}
+            statusBarTranslucent
+        >
+            <Pressable style={alertStyles.overlay} onPress={onClose}>
+                <Pressable style={alertStyles.box} onPress={(e) => e.stopPropagation()}>
+                    <View style={alertStyles.iconWrapper}>
+                        <Ionicons name={iconName as any} size={48} color={iconColor} />
+                    </View>
+                    <Text style={[alertStyles.title, { fontFamily }]}>{title}</Text>
+                    <View style={alertStyles.divider} />
+                    <Text style={[alertStyles.message, { fontFamily }]}>{message}</Text>
+                    <TouchableOpacity
+                        style={alertStyles.button}
+                        onPress={onClose}
+                        activeOpacity={0.85}
+                    >
+                        <Text style={[alertStyles.buttonText, { fontFamily }]}>
+                            {buttonLabel}
+                        </Text>
+                    </TouchableOpacity>
+                </Pressable>
+            </Pressable>
+        </Modal>
+    );
+}
+
+const alertStyles = StyleSheet.create({
+    overlay: {
+        flex: 1,
+        backgroundColor: "rgba(0,0,0,0.52)",
+        justifyContent: "center",
+        alignItems: "center",
+        paddingHorizontal: 32,
+    },
+    box: {
+        backgroundColor: "#fff",
+        borderRadius: 24,
+        width: "100%",
+        paddingHorizontal: 28,
+        paddingTop: 32,
+        paddingBottom: 24,
+        alignItems: "center",
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.2,
+        shadowRadius: 24,
+        elevation: 16,
+    },
+    iconWrapper: { marginBottom: 14 },
+    title: {
+        fontSize: 17,
+        fontWeight: "700",
+        color: "#004d48",
+        textAlign: "center",
+        marginBottom: 14,
+        letterSpacing: 0.2,
+    },
+    divider: {
+        width: "100%",
+        height: 1,
+        backgroundColor: "#e0f2f1",
+        marginBottom: 14,
+    },
+    message: {
+        fontSize: 14,
+        color: "#555",
+        textAlign: "center",
+        lineHeight: 22,
+        marginBottom: 24,
+    },
+    button: {
+        backgroundColor: "#004d48",
+        borderRadius: 50,
+        paddingVertical: 14,
+        paddingHorizontal: 40,
+        alignItems: "center",
+        width: "100%",
+    },
+    buttonText: {
+        color: "#fff",
+        fontSize: 15,
+        fontWeight: "600",
+        letterSpacing: 0.4,
+    },
+});
+
 export default function RegisterCollaborator() {
     const [nome, setNome] = useState("");
     const [email, setEmail] = useState("");
@@ -58,6 +176,29 @@ export default function RegisterCollaborator() {
     const [passwordInfoVisible, setPasswordInfoVisible] = useState(false);
     const [citySearch, setCitySearch] = useState("");
 
+    const [alertVisible, setAlertVisible] = useState(false);
+    const [alertConfig, setAlertConfig] = useState<{
+        title: string;
+        message: string;
+        type: "success" | "error" | "warning";
+        onClose?: () => void;
+    }>({ title: "", message: "", type: "success" });
+
+    function showAlert(
+        title: string,
+        message: string,
+        type: "success" | "error" | "warning" = "error",
+        onClose?: () => void
+    ) {
+        setAlertConfig({ title, message, type, onClose });
+        setAlertVisible(true);
+    }
+
+    function handleAlertClose() {
+        setAlertVisible(false);
+        alertConfig.onClose?.();
+    }
+
     const emailRef = useRef<TextInput>(null);
     const orgRef = useRef<TextInput>(null);
     const senhaRef = useRef<TextInput>(null);
@@ -68,20 +209,13 @@ export default function RegisterCollaborator() {
 
     function validateField(field: keyof FormErrors): string | null {
         switch (field) {
-            case "nome":
-                return validateName(nome);
-            case "email":
-                return validateEmail(email);
-            case "organizacao":
-                return validateOrganization(organizacao);
-            case "cidade":
-                return validateCity(cidade);
-            case "senha":
-                return validatePassword(senha);
-            case "confirmSenha":
-                return validateConfirmPassword(senha, confirmSenha);
-            default:
-                return null;
+            case "nome": return validateName(nome);
+            case "email": return validateEmail(email);
+            case "organizacao": return validateOrganization(organizacao);
+            case "cidade": return validateCity(cidade);
+            case "senha": return validatePassword(senha);
+            case "confirmSenha": return validateConfirmPassword(senha, confirmSenha);
+            default: return null;
         }
     }
 
@@ -109,19 +243,25 @@ export default function RegisterCollaborator() {
         setLoading(true);
         try {
             await registerCollaboratorUser({ nome, email, organizacao, cidade, senha });
-            Alert.alert(
+            await sendVerificationEmail({ nome, email });
+
+            showAlert(
                 "Cadastro realizado!",
-                "Enviamos um e-mail de verificação para " +
-                    email +
-                    ".\n\nVerifique sua caixa de entrada e confirme seu e-mail para acessar o AquaSense.",
-                [{ text: "Entendi", onPress: () => router.back() }]
+                `Enviamos um e-mail de verificação para ${email}.\n\nVerifique sua caixa de entrada e confirme seu e-mail para acessar o AquaSense.`,
+                "success",
+                () => router.replace("/awaiting-verification" as any)
             );
         } catch (err: any) {
             console.log("ERRO COMPLETO:", err);
-            Alert.alert(
-                "Erro no cadastro",
-                `${err?.code ?? "sem código"} | ${err?.message ?? "sem mensagem"}`
-            );
+            if (err?.code?.startsWith("auth/")) {
+                showAlert("Erro no cadastro", parseFirebaseAuthError(err.code), "error");
+            } else {
+                showAlert(
+                    "Erro no envio do e-mail",
+                    err?.message ?? "O cadastro foi realizado, mas o e-mail de verificação não pôde ser enviado.",
+                    "warning"
+                );
+            }
         } finally {
             setLoading(false);
         }
@@ -149,11 +289,7 @@ export default function RegisterCollaborator() {
                 end={{ x: 0.5, y: 1 }}
                 style={styles.gradient}
             >
-                <StatusBar
-                    barStyle="light-content"
-                    translucent
-                    backgroundColor="transparent"
-                />
+                <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
                 <KeyboardAvoidingView
                     style={styles.flex}
@@ -223,7 +359,6 @@ export default function RegisterCollaborator() {
                                 onChangeText={(t) => {
                                     const sanitized = t.replace(/\s/g, "");
                                     setEmail(sanitized);
-
                                     if (errors.email) {
                                         setErrors((prev) => ({
                                             ...prev,
@@ -284,11 +419,7 @@ export default function RegisterCollaborator() {
                                 >
                                     {cidade || "Selecione sua cidade..."}
                                 </Text>
-                                <Ionicons
-                                    name="chevron-down"
-                                    size={20}
-                                    color="rgba(255,255,255,0.7)"
-                                />
+                                <Ionicons name="chevron-down" size={20} color="rgba(255,255,255,0.7)" />
                             </TouchableOpacity>
                             <ErrorText message={errors.cidade} fontFamily={questrial} />
 
@@ -308,7 +439,6 @@ export default function RegisterCollaborator() {
                                     value={senha}
                                     onChangeText={(text) => {
                                         setSenha(text);
-
                                         if (errors.senha || errors.confirmSenha) {
                                             setErrors((prev) => ({
                                                 ...prev,
@@ -330,11 +460,7 @@ export default function RegisterCollaborator() {
                                     onPress={() => setPasswordInfoVisible(true)}
                                     hitSlop={{ top: 10, bottom: 8, left: 8, right: 8 }}
                                 >
-                                    <Ionicons
-                                        name="information-circle-outline"
-                                        size={22}
-                                        color="#FFFFFF"
-                                    />
+                                    <Ionicons name="information-circle-outline" size={22} color="#FFFFFF" />
                                 </TouchableOpacity>
                             </View>
                             <ErrorText message={errors.senha} fontFamily={questrial} />
@@ -355,7 +481,6 @@ export default function RegisterCollaborator() {
                                     value={confirmSenha}
                                     onChangeText={(text) => {
                                         setConfirmSenha(text);
-
                                         if (errors.confirmSenha) {
                                             setErrors((prev) => ({
                                                 ...prev,
@@ -373,11 +498,7 @@ export default function RegisterCollaborator() {
                                     onPress={() => setPasswordInfoVisible(true)}
                                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                                 >
-                                    <Ionicons
-                                        name="information-circle-outline"
-                                        size={22}
-                                        color="#FFFFFF"
-                                    />
+                                    <Ionicons name="information-circle-outline" size={22} color="#FFFFFF" />
                                 </TouchableOpacity>
                             </View>
                             <ErrorText message={errors.confirmSenha} fontFamily={questrial} />
@@ -388,12 +509,7 @@ export default function RegisterCollaborator() {
                                 onPress={() => setShowPassword((v) => !v)}
                                 activeOpacity={0.7}
                             >
-                                <View
-                                    style={[
-                                        styles.checkbox,
-                                        showPassword && styles.checkboxChecked,
-                                    ]}
-                                >
+                                <View style={[styles.checkbox, showPassword && styles.checkboxChecked]}>
                                     {showPassword && (
                                         <Ionicons name="checkmark" size={13} color="#fff" />
                                     )}
@@ -423,21 +539,14 @@ export default function RegisterCollaborator() {
                 </KeyboardAvoidingView>
 
                 {/* MODAL CIDADES */}
-                {/* ... (Mesmo código do modal de cidades do register_common.tsx) ... */}
                 <Modal
                     visible={cityModalVisible}
                     transparent
                     animationType="fade"
                     onRequestClose={() => setCityModalVisible(false)}
                 >
-                    <Pressable
-                        style={styles.modalOverlay}
-                        onPress={() => setCityModalVisible(false)}
-                    >
-                        <Pressable
-                            style={styles.cityModal}
-                            onPress={(e) => e.stopPropagation()}
-                        >
+                    <Pressable style={styles.modalOverlay} onPress={() => setCityModalVisible(false)}>
+                        <Pressable style={styles.cityModal} onPress={(e) => e.stopPropagation()}>
                             <Text style={[styles.cityModalTitle, { fontFamily: questrial }]}>
                                 Selecione a cidade
                             </Text>
@@ -462,19 +571,12 @@ export default function RegisterCollaborator() {
                                         onPress={() => selectCity(item)}
                                         activeOpacity={0.7}
                                     >
-                                        <Text
-                                            style={[
-                                                styles.cityItemText,
-                                                { fontFamily: questrial },
-                                            ]}
-                                        >
+                                        <Text style={[styles.cityItemText, { fontFamily: questrial }]}>
                                             {item}
                                         </Text>
                                     </TouchableOpacity>
                                 )}
-                                ItemSeparatorComponent={() => (
-                                    <View style={styles.citySeparator} />
-                                )}
+                                ItemSeparatorComponent={() => <View style={styles.citySeparator} />}
                                 ListEmptyComponent={
                                     <Text style={[styles.emptyText, { fontFamily: questrial }]}>
                                         Nenhuma cidade encontrada
@@ -486,12 +588,7 @@ export default function RegisterCollaborator() {
                                 onPress={() => setCityModalVisible(false)}
                                 activeOpacity={0.8}
                             >
-                                <Text
-                                    style={[
-                                        styles.modalCloseButtonText,
-                                        { fontFamily: questrial },
-                                    ]}
-                                >
+                                <Text style={[styles.modalCloseButtonText, { fontFamily: questrial }]}>
                                     Fechar
                                 </Text>
                             </TouchableOpacity>
@@ -500,21 +597,14 @@ export default function RegisterCollaborator() {
                 </Modal>
 
                 {/* MODAL INFO SENHA */}
-                {/* ... (Mesmo código do modal de senhas do register_common.tsx) ... */}
-                 <Modal
+                <Modal
                     visible={passwordInfoVisible}
                     transparent
                     animationType="fade"
                     onRequestClose={() => setPasswordInfoVisible(false)}
                 >
-                    <Pressable
-                        style={styles.modalOverlay}
-                        onPress={() => setPasswordInfoVisible(false)}
-                    >
-                        <Pressable
-                            style={styles.infoModal}
-                            onPress={(e) => e.stopPropagation()}
-                        >
+                    <Pressable style={styles.modalOverlay} onPress={() => setPasswordInfoVisible(false)}>
+                        <Pressable style={styles.infoModal} onPress={(e) => e.stopPropagation()}>
                             <Text style={[styles.infoModalTitle, { fontFamily: questrial }]}>
                                 Critérios da senha
                             </Text>
@@ -549,6 +639,16 @@ export default function RegisterCollaborator() {
                         </Pressable>
                     </Pressable>
                 </Modal>
+
+                {/* CUSTOM ALERT */}
+                <CustomAlert
+                    visible={alertVisible}
+                    title={alertConfig.title}
+                    message={alertConfig.message}
+                    type={alertConfig.type}
+                    onClose={handleAlertClose}
+                    fontFamily={questrial}
+                />
 
             </LinearGradient>
         </>
