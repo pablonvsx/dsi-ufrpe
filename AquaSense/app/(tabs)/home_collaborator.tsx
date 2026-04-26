@@ -223,22 +223,20 @@ export default function HomeColaborador() {
                     </Animated.View>
 
                     <Animated.View style={[styles.actionsRow, { opacity: cardFade, transform: [{ translateY: cardSlide }] }]}>
-                        <TouchableOpacity style={[styles.actionButton, styles.actionPrimary]} onPress={() => router.push("/register_observation" as any)} activeOpacity={0.82}>
-                            <Ionicons name="document-text-outline" size={28} color="#FFFFFF" style={styles.actionIcon} />
-                            <Text style={[styles.actionTextPrimary, { fontFamily: questrial }]}>{"Registrar\nobservação"}</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={[styles.actionButton, styles.actionSecondary]} onPress={() => router.push("/report_complaint" as any)} activeOpacity={0.82}>
-                            <Ionicons name="megaphone-outline" size={28} color={PRIMARY} style={styles.actionIcon} />
-                            <Text style={[styles.actionTextSecondary, { fontFamily: questrial }]}>{"Fazer\ndenúncia"}</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={[styles.actionButton, styles.actionTertiary]} 
-                                          onPress= {() => {}}
-                                          activeOpacity={0.82}
-                        >
-                                          <Ionicons name="flask-outline" size={28} color={PRIMARY} style={styles.actionIcon} />
-                                          <Text style={[styles.actionTextTertiary, { fontFamily: questrial }]}>
-                                              {"Realizar\nmediçoes simples"}
-                                          </Text> 
+                         <TouchableOpacity style={[styles.actionButton, styles.actionPrimary]} onPress={() => router.push("/register_observation" as any)} activeOpacity={0.82}>
+                             <Ionicons name="document-text-outline" size={28} color="#FFFFFF" style={styles.actionIcon} />
+                             <Text style={[styles.actionTextPrimary, { fontFamily: questrial }]}>{"Registrar\nobservação"}</Text>
+                         </TouchableOpacity>
+                         <TouchableOpacity style={[styles.actionButton, styles.actionSecondary]} onPress={() => router.push("/report_complaint" as any)} activeOpacity={0.82}>
+                             <Ionicons name="megaphone-outline" size={28} color={PRIMARY} style={styles.actionIcon} />
+                             <Text style={[styles.actionTextSecondary, { fontFamily: questrial }]}>{"Fazer\ndenúncia"}</Text>
+                         </TouchableOpacity>
+                    </Animated.View>
+
+                    <Animated.View style={[styles.actionsTerciaryRow, { opacity: cardFade, transform: [{ translateY: cardSlide }] }]}>
+                         <TouchableOpacity style={[styles.actionButton, styles.actionTertiary]} onPress={() => {}} activeOpacity={0.82}>
+                             <Ionicons name="flask-outline" size={28} color={PRIMARY} style={styles.actionIcon} />
+                             <Text style={[styles.actionTextTertiary, { fontFamily: questrial }]}>{"Realizar\nmedições simples"}</Text>
                         </TouchableOpacity>
                     </Animated.View>
                 </ScrollView>
@@ -574,12 +572,15 @@ const styles = StyleSheet.create({
 
     // Actions
     actionsRow: { flexDirection: "row", gap: 14 },
+    actionsTerciaryRow: { marginTop: 14, alignItems: "center" },
     actionButton: { flex: 1, borderRadius: 16, paddingVertical: 22, paddingHorizontal: 14, alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.09, shadowRadius: 8, elevation: 4 },
     actionPrimary: { backgroundColor: PRIMARY },
     actionSecondary: { backgroundColor: "#F2F7F6" },
+    actionTertiary: { backgroundColor: "#E8F5F3", borderWidth: 1.5, borderColor: PRIMARY },
     actionIcon: { marginBottom: 8 },
     actionTextPrimary: { fontSize: 13, color: "#FFFFFF", textAlign: "center", lineHeight: 19 },
     actionTextSecondary: { fontSize: 13, color: PRIMARY, textAlign: "center", lineHeight: 19 },
+    actionTextTertiary: { fontSize: 13, color: PRIMARY, textAlign: "center", lineHeight: 19 },
 
     // Navbar
     navBarWrapper: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 22, borderTopRightRadius: 22, shadowColor: "#000", shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.07, shadowRadius: 10, elevation: 12 },
