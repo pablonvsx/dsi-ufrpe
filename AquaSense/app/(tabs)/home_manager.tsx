@@ -4,7 +4,6 @@ import {
     Text,
     StyleSheet,
     StatusBar,
-    Platform,
     Image,
     Animated,
 } from "react-native";
@@ -59,8 +58,8 @@ export default function HomeManager() {
         <>
             <Stack.Screen options={{ headerShown: false }} />
             <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-
             <View style={styles.root}>
+
                 {/* ══ HEADER ══ */}
                 <LinearGradient colors={["#004d48", "#0a6b5e"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.headerGradient}>
                     <SafeAreaView edges={["top"]} style={styles.headerSafeArea}>
@@ -85,8 +84,28 @@ export default function HomeManager() {
 
                 {/* ══ CONTEÚDO ══ */}
                 <View style={styles.body}>
-                    <Text style={[{ color: PRIMARY, fontFamily: questrial }]}>Conteúdo em breve...</Text>
+
+                    {/* Cards de métricas */}
+                    <View style={styles.metricsRow}>
+                        <View style={styles.metricCard}>
+                            <Ionicons name="water-outline" size={24} color={PRIMARY} />
+                            <Text style={[styles.metricNumber, { fontFamily: questrial }]}>0</Text>
+                            <Text style={[styles.metricLabel, { fontFamily: questrial }]}>Pontos{"\n"}Monitorados</Text>
+                        </View>
+                        <View style={styles.metricCard}>
+                            <Ionicons name="warning-outline" size={24} color="#e6a817" />
+                            <Text style={[styles.metricNumber, { fontFamily: questrial }]}>0</Text>
+                            <Text style={[styles.metricLabel, { fontFamily: questrial }]}>Denúncias</Text>
+                        </View>
+                        <View style={styles.metricCard}>
+                            <Ionicons name="analytics-outline" size={24} color="#e05252" />
+                            <Text style={[styles.metricNumber, { fontFamily: questrial }]}>0</Text>
+                            <Text style={[styles.metricLabel, { fontFamily: questrial }]}>Análises{"\n"}Pendentes</Text>
+                        </View>
+                    </View>
+
                 </View>
+
             </View>
         </>
     );
@@ -103,4 +122,8 @@ const styles = StyleSheet.create({
     welcomeText: { fontSize: 14, color: "rgba(255,255,255,0.8)", marginTop: 8 },
     welcomeName: { fontSize: 22, color: "#FFFFFF", fontWeight: "700" },
     body: { flex: 1, padding: 20 },
+    metricsRow: { flexDirection: "row", gap: 12, marginBottom: 20 },
+    metricCard: { flex: 1, backgroundColor: "#FFFFFF", borderRadius: 16, padding: 14, alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 4 },
+    metricNumber: { fontSize: 28, fontWeight: "700", color: PRIMARY, marginVertical: 6 },
+    metricLabel: { fontSize: 11, color: "#6b7a7a", textAlign: "center", lineHeight: 16 },
 });
