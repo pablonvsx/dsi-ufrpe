@@ -23,3 +23,7 @@ export async function testSalvarUsuario() {
 
     });
 }
+
+export async function testFirestoreConnection() {
+    await testSalvarUsuario();
+}

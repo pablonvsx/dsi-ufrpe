@@ -1,14 +1,14 @@
 // Critérios de validações 
-// Para reutilizar para os outros tipos de cadatro, importar: 
-/**  
- * import {
-    validateName,
-    validateEmail, 
-    validateCity,
-    validatePassword,
-    validateConfirmPassword,
-} from "@/utils/validators";
- */ 
+// Para reutilizar para os outros tipos de cadastro, importar: 
+/** * import {
+ * validateName,
+ * validateEmail, 
+ * validateCity,
+ * validateOrganization,
+ * validatePassword,
+ * validateConfirmPassword,
+ * } from "@/utils/validators";
+ */
 
 export function validateName(value: string): string | null {
   const trimmed = value.trim();
@@ -57,5 +57,13 @@ export function validateConfirmPassword(
 ): string | null {
   if (!confirm) return "Confirme sua senha.";
   if (confirm !== password) return "As senhas não coincidem.";
+  return null;
+}
+
+export function validateOrganization(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return "A organização é obrigatória.";
+  if (trimmed.length < 3) return "A organização deve ter pelo menos 3 caracteres.";
+  if (trimmed.length > 100) return "O nome da organização é muito longo.";
   return null;
 }

@@ -11,7 +11,6 @@ import {
     KeyboardAvoidingView,
     Platform,
     ActivityIndicator,
-    Alert,
     StatusBar,
     Image,
     Pressable,
@@ -21,7 +20,7 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack } from "expo-router";
 import { useFonts, Questrial_400Regular } from "@expo-google-fonts/questrial";
-
+import { sendVerificationEmail } from "@/services/emailService";
 import { registerCommonUser, parseFirebaseAuthError } from "@/services/auth/register";
 import {
     validateName,
@@ -32,6 +31,15 @@ import {
 } from "@/utils/validators";
 import { pernambucoCities } from "@/utils/pernambucoCities";
 
+// ---------------------------------------------------------------------------
+// NOTA SOBRE FONTE (para equipe):
+// A fonte Questrial renderiza de forma diferente entre iOS e Android quando o
+// texto está em CAPS LOCK — no Android os caracteres ficam mais condensados e
+// o espaçamento entre letras varia. Isso é comportamento nativo do sistema de
+// renderização de texto (Skia no Android vs CoreText no iOS) e não tem solução
+// simples sem trocar a fonte. Por ora mantemos assim e deixamos documentado.
+// ---------------------------------------------------------------------------
+
 interface FormErrors {
     nome?: string;
     email?: string;
@@ -40,6 +48,148 @@ interface FormErrors {
     confirmSenha?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Modal customizado que substitui o Alert nativo
+// O Alert padrão no Android é muito quadrado e visualmente inconsistente.
+// Este componente mantém o visual do app nos dois sistemas.
+// ---------------------------------------------------------------------------
+interface CustomAlertProps {
+    visible: boolean;
+    title: string;
+    message: string;
+    buttonLabel?: string;
+    type?: "success" | "error" | "warning";
+    onClose: () => void;
+    fontFamily?: string;
+}
+
+function CustomAlert({
+    visible,
+    title,
+    message,
+    buttonLabel = "Entendi",
+    type = "success",
+    onClose,
+    fontFamily,
+}: CustomAlertProps) {
+    const iconName =
+        type === "success"
+            ? "checkmark-circle"
+            : type === "warning"
+            ? "alert-circle"
+            : "close-circle";
+
+    const iconColor =
+        type === "success" ? "#1a8c80" : type === "warning" ? "#e6a817" : "#e05252";
+
+    return (
+        <Modal
+            visible={visible}
+            transparent
+            animationType="fade"
+            onRequestClose={onClose}
+            statusBarTranslucent
+        >
+            <Pressable style={alertStyles.overlay} onPress={onClose}>
+                <Pressable
+                    style={alertStyles.box}
+                    onPress={(e) => e.stopPropagation()}
+                >
+                    {/* Ícone */}
+                    <View style={alertStyles.iconWrapper}>
+                        <Ionicons name={iconName as any} size={48} color={iconColor} />
+                    </View>
+
+                    {/* Título */}
+                    <Text style={[alertStyles.title, { fontFamily }]}>{title}</Text>
+
+                    {/* Divisor */}
+                    <View style={alertStyles.divider} />
+
+                    {/* Mensagem */}
+                    <Text style={[alertStyles.message, { fontFamily }]}>{message}</Text>
+
+                    {/* Botão */}
+                    <TouchableOpacity
+                        style={alertStyles.button}
+                        onPress={onClose}
+                        activeOpacity={0.85}
+                    >
+                        <Text style={[alertStyles.buttonText, { fontFamily }]}>
+                            {buttonLabel}
+                        </Text>
+                    </TouchableOpacity>
+                </Pressable>
+            </Pressable>
+        </Modal>
+    );
+}
+
+const alertStyles = StyleSheet.create({
+    overlay: {
+        flex: 1,
+        backgroundColor: "rgba(0,0,0,0.52)",
+        justifyContent: "center",
+        alignItems: "center",
+        paddingHorizontal: 32,
+    },
+    box: {
+        backgroundColor: "#fff",
+        borderRadius: 24,
+        width: "100%",
+        paddingHorizontal: 28,
+        paddingTop: 32,
+        paddingBottom: 24,
+        alignItems: "center",
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.2,
+        shadowRadius: 24,
+        elevation: 16,
+    },
+    iconWrapper: {
+        marginBottom: 14,
+    },
+    title: {
+        fontSize: 17,
+        fontWeight: "700",
+        color: "#004d48",
+        textAlign: "center",
+        marginBottom: 14,
+        letterSpacing: 0.2,
+    },
+    divider: {
+        width: "100%",
+        height: 1,
+        backgroundColor: "#e0f2f1",
+        marginBottom: 14,
+    },
+    message: {
+        fontSize: 14,
+        color: "#555",
+        textAlign: "center",
+        lineHeight: 22,
+        marginBottom: 24,
+    },
+    button: {
+        backgroundColor: "#004d48",
+        borderRadius: 50,
+        paddingVertical: 14,
+        paddingHorizontal: 40,
+        alignItems: "center",
+        width: "100%",
+    },
+    buttonText: {
+        color: "#fff",
+        fontSize: 15,
+        fontWeight: "600",
+        letterSpacing: 0.4,
+    },
+});
+
+// ---------------------------------------------------------------------------
+// Tela principal
+// ---------------------------------------------------------------------------
 export default function RegisterCommon() {
     const [nome, setNome] = useState("");
     const [email, setEmail] = useState("");
@@ -53,6 +203,30 @@ export default function RegisterCommon() {
     const [cityModalVisible, setCityModalVisible] = useState(false);
     const [passwordInfoVisible, setPasswordInfoVisible] = useState(false);
     const [citySearch, setCitySearch] = useState("");
+
+    // Estados do CustomAlert (substitui Alert nativo)
+    const [alertVisible, setAlertVisible] = useState(false);
+    const [alertConfig, setAlertConfig] = useState<{
+        title: string;
+        message: string;
+        type: "success" | "error" | "warning";
+        onClose?: () => void;
+    }>({ title: "", message: "", type: "success" });
+
+    function showAlert(
+        title: string,
+        message: string,
+        type: "success" | "error" | "warning" = "error",
+        onClose?: () => void
+    ) {
+        setAlertConfig({ title, message, type, onClose });
+        setAlertVisible(true);
+    }
+
+    function handleAlertClose() {
+        setAlertVisible(false);
+        alertConfig.onClose?.();
+    }
 
     const emailRef = useRef<TextInput>(null);
     const senhaRef = useRef<TextInput>(null);
@@ -101,23 +275,37 @@ export default function RegisterCommon() {
         setLoading(true);
         try {
             await registerCommonUser({ nome, email, cidade, senha });
-            Alert.alert(
+            await sendVerificationEmail({ nome, email });
+
+            
+            showAlert(
                 "Cadastro realizado!",
-                "Enviamos um e-mail de verificação para " +
-                    email +
-                    ".\n\nVerifique sua caixa de entrada e confirme seu e-mail para acessar o AquaSense.",
-                [{ text: "Entendi", onPress: () => router.back() }]
+                `Enviamos um e-mail de verificação para ${email}.\n\nVerifique sua caixa de entrada e confirme seu e-mail para acessar o AquaSense.`,
+                "success",
+                () => router.replace("/awaiting-verification")
             );
         } catch (err: any) {
-            console.log("ERRO COMPLETO:", err);
-            console.log("CÓDIGO DO ERRO:", err?.code);
-            console.log("MENSAGEM DO ERRO:", err?.message);
-            
-            Alert.alert(
-                "Erro no cadastro",
-                `${err?.code ?? "sem código"} | ${err?.message ?? "sem mensagem"}`
-            );
+            console.log("ERRO:", err?.code, err?.message);
 
+            if (
+                err?.message?.includes("TOO_MANY_ATTEMPTS_TRY_LATER") ||
+                err?.code === "auth/too-many-requests"
+            ) {
+                showAlert(
+                    "Muitas tentativas",
+                    "O Firebase bloqueou temporariamente. Espere alguns minutos e tente novamente.",
+                    "warning"
+                );
+            } else if (err?.code?.startsWith("auth/")) {
+                showAlert("Erro no cadastro", parseFirebaseAuthError(err.code), "error");
+            } else {
+                showAlert(
+                    "Erro no envio do e-mail",
+                    err?.message ??
+                        "O cadastro foi realizado, mas o e-mail de verificação não pôde ser enviado. Tente novamente.",
+                    "warning"
+                );
+            }
         } finally {
             setLoading(false);
         }
@@ -151,6 +339,16 @@ export default function RegisterCommon() {
                     backgroundColor="transparent"
                 />
 
+                
+                <TouchableOpacity
+                    style={styles.backButton}
+                    onPress={() => router.back()}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                    <Ionicons name="arrow-back" size={22} color="rgba(255,255,255,0.85)" />
+                </TouchableOpacity>
+
                 <KeyboardAvoidingView
                     style={styles.flex}
                     behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -174,6 +372,7 @@ export default function RegisterCommon() {
                         </Text>
 
                         <View style={styles.formWrapper}>
+
                             {/* NOME */}
                             <FieldLabel label="Seu nome:" fontFamily={questrial} />
                             <TextInput
@@ -219,7 +418,6 @@ export default function RegisterCommon() {
                                 onChangeText={(t) => {
                                     const sanitized = t.replace(/\s/g, "");
                                     setEmail(sanitized);
-
                                     if (errors.email) {
                                         setErrors((prev) => ({
                                             ...prev,
@@ -276,7 +474,6 @@ export default function RegisterCommon() {
                                     value={senha}
                                     onChangeText={(text) => {
                                         setSenha(text);
-
                                         if (errors.senha || errors.confirmSenha) {
                                             setErrors((prev) => ({
                                                 ...prev,
@@ -300,7 +497,7 @@ export default function RegisterCommon() {
                                 >
                                     <Ionicons
                                         name="information-circle-outline"
-                                        size={22}
+                                        size={24}
                                         color="#FFFFFF"
                                     />
                                 </TouchableOpacity>
@@ -323,7 +520,6 @@ export default function RegisterCommon() {
                                     value={confirmSenha}
                                     onChangeText={(text) => {
                                         setConfirmSenha(text);
-
                                         if (errors.confirmSenha) {
                                             setErrors((prev) => ({
                                                 ...prev,
@@ -343,7 +539,7 @@ export default function RegisterCommon() {
                                 >
                                     <Ionicons
                                         name="information-circle-outline"
-                                        size={22}
+                                        size={24}
                                         color="#FFFFFF"
                                     />
                                 </TouchableOpacity>
@@ -386,11 +582,12 @@ export default function RegisterCommon() {
                                     </Text>
                                 )}
                             </TouchableOpacity>
+
                         </View>
                     </ScrollView>
                 </KeyboardAvoidingView>
 
-                {/* MODAL CIDADES */}
+                {/* ── MODAL CIDADES ──────────────────────────────────────────────────── */}
                 <Modal
                     visible={cityModalVisible}
                     transparent
@@ -466,7 +663,7 @@ export default function RegisterCommon() {
                     </Pressable>
                 </Modal>
 
-                {/* MODAL INFO SENHA */}
+                {/* ── MODAL INFO SENHA ───────────────────────────────────────────────── */}
                 <Modal
                     visible={passwordInfoVisible}
                     transparent
@@ -494,7 +691,7 @@ export default function RegisterCommon() {
                                 <View key={i} style={styles.infoRow}>
                                     <Ionicons
                                         name="checkmark-circle"
-                                        size={16}
+                                        size={18}
                                         color="#004d48"
                                         style={{ marginRight: 10 }}
                                     />
@@ -515,32 +712,37 @@ export default function RegisterCommon() {
                         </Pressable>
                     </Pressable>
                 </Modal>
+
+                {/* ── CUSTOM ALERT (substitui Alert nativo — igual em iOS e Android) ─── */}
+                <CustomAlert
+                    visible={alertVisible}
+                    title={alertConfig.title}
+                    message={alertConfig.message}
+                    type={alertConfig.type}
+                    onClose={handleAlertClose}
+                    fontFamily={questrial}
+                />
+
             </LinearGradient>
         </>
     );
 }
 
-function FieldLabel({
-    label,
-    fontFamily,
-}: {
-    label: string;
-    fontFamily?: string;
-}) {
+// ---------------------------------------------------------------------------
+// Sub-componentes
+// ---------------------------------------------------------------------------
+function FieldLabel({ label, fontFamily }: { label: string; fontFamily?: string }) {
     return <Text style={[styles.fieldLabel, { fontFamily }]}>{label}</Text>;
 }
 
-function ErrorText({
-    message,
-    fontFamily,
-}: {
-    message?: string;
-    fontFamily?: string;
-}) {
+function ErrorText({ message, fontFamily }: { message?: string; fontFamily?: string }) {
     if (!message) return null;
     return <Text style={[styles.errorText, { fontFamily }]}>{message}</Text>;
 }
 
+// ---------------------------------------------------------------------------
+// Estilos
+// ---------------------------------------------------------------------------
 const PRIMARY = "#004d48";
 const BORDER_RADIUS = 50;
 
@@ -548,15 +750,29 @@ const styles = StyleSheet.create({
     flex: { flex: 1 },
     gradient: { flex: 1 },
 
+    
+    backButton: {
+        position: "absolute",
+        top: Platform.OS === "android" ? 52 : 60,
+        left: 20,
+        zIndex: 10,
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: "rgba(255,255,255,0.15)",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+
     scrollContent: {
         flexGrow: 1,
         paddingHorizontal: 36,
-        paddingTop: Platform.OS === "android" ? 48 : 60,
+        paddingTop: Platform.OS === "android" ? 96 : 104,
         paddingBottom: 40,
         alignItems: "center",
     },
 
-    logoContainer: { marginBottom: 8 },
+    logoContainer: { marginBottom: 10 },
 
     logoImage: {
         width: 180,
@@ -565,21 +781,22 @@ const styles = StyleSheet.create({
 
     title: {
         color: "#fff",
-        fontSize: 17,
+        fontSize: 19,
         fontWeight: "700",
         letterSpacing: 1.5,
         textAlign: "center",
-        marginBottom: 24,
-        lineHeight: 26,
+        marginBottom: 28,
+        lineHeight: 30,
     },
 
     formWrapper: { width: "100%" },
 
     fieldLabel: {
         color: "rgba(255, 255, 255, 0.85)",
-        fontSize: 12,
+        fontSize: 13,
         fontWeight: "600",
-        marginBottom: 5,
+        marginBottom: 6,
+        marginTop: 10,
         marginLeft: 6,
         letterSpacing: 0.3,
     },
@@ -587,13 +804,13 @@ const styles = StyleSheet.create({
     input: {
         backgroundColor: "rgba(255, 255, 255, 0.92)",
         borderRadius: BORDER_RADIUS,
-        height: 50,
+        height: 54,
         paddingHorizontal: 20,
-        fontSize: 14,
+        fontSize: 15,
         color: "#6b7a7a",
         borderWidth: 1.5,
         borderColor: "transparent",
-        marginBottom: 2,
+        marginBottom: 3,
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.08,
@@ -608,10 +825,10 @@ const styles = StyleSheet.create({
 
     errorText: {
         color: "#ffe0e0",
-        fontSize: 11,
+        fontSize: 12,
         marginLeft: 8,
-        marginBottom: 6,
-        marginTop: 1,
+        marginBottom: 4,
+        marginTop: 2,
     },
 
     selectRow: {
@@ -622,7 +839,7 @@ const styles = StyleSheet.create({
     },
 
     selectText: {
-        fontSize: 14,
+        fontSize: 15,
         color: "#6b7a7a",
         flex: 1,
     },
@@ -634,7 +851,7 @@ const styles = StyleSheet.create({
     passwordRow: {
         flexDirection: "row",
         alignItems: "center",
-        marginBottom: 2,
+        marginBottom: 3,
     },
 
     passwordInput: {
@@ -643,15 +860,15 @@ const styles = StyleSheet.create({
     },
 
     infoIcon: {
-        marginLeft: 10,
+        marginLeft: 12,
         marginTop: -2,
     },
 
     checkboxRow: {
         flexDirection: "row",
         alignItems: "center",
-        marginTop: 8,
-        marginBottom: 20,
+        marginTop: 10,
+        marginBottom: 24,
         marginLeft: 6,
     },
 
@@ -674,7 +891,7 @@ const styles = StyleSheet.create({
 
     checkboxLabel: {
         color: "rgba(255, 255, 255, 0.9)",
-        fontSize: 11,
+        fontSize: 12,
         fontWeight: "700",
         letterSpacing: 1,
     },
@@ -682,7 +899,7 @@ const styles = StyleSheet.create({
     button: {
         backgroundColor: "rgba(255, 255, 255, 0.92)",
         borderRadius: BORDER_RADIUS,
-        height: 52,
+        height: 56,
         alignItems: "center",
         justifyContent: "center",
         shadowColor: "#000",
@@ -694,7 +911,7 @@ const styles = StyleSheet.create({
 
     buttonText: {
         color: "#6b7a7a",
-        fontSize: 15,
+        fontSize: 16,
         fontWeight: "700",
         letterSpacing: 2,
     },
@@ -758,7 +975,7 @@ const styles = StyleSheet.create({
         backgroundColor: "#f4f4f4",
         paddingHorizontal: 16,
         paddingVertical: 10,
-        fontSize: 13,
+        fontSize: 14,
         color: "#333",
         borderWidth: 1,
         borderColor: "#e0e0e0",
@@ -770,12 +987,12 @@ const styles = StyleSheet.create({
     },
 
     cityItem: {
-        paddingVertical: 14,
+        paddingVertical: 15,
         paddingHorizontal: 22,
     },
 
     cityItemText: {
-        fontSize: 14,
+        fontSize: 15,
         color: "#555",
     },
 
@@ -788,7 +1005,7 @@ const styles = StyleSheet.create({
     emptyText: {
         textAlign: "center",
         color: "#aaa",
-        fontSize: 13,
+        fontSize: 14,
         paddingVertical: 20,
     },
 
@@ -798,14 +1015,14 @@ const styles = StyleSheet.create({
         marginBottom: 18,
         backgroundColor: PRIMARY,
         borderRadius: BORDER_RADIUS,
-        paddingVertical: 13,
+        paddingVertical: 14,
         alignItems: "center",
     },
 
     modalCloseButtonText: {
         color: "#fff",
         fontWeight: "600",
-        fontSize: 14,
+        fontSize: 15,
         letterSpacing: 0.3,
     },
 
@@ -832,15 +1049,13 @@ const styles = StyleSheet.create({
     infoRow: {
         flexDirection: "row",
         alignItems: "center",
-        marginBottom: 10,
+        marginBottom: 12,
     },
 
     infoText: {
-        fontSize: 13,
+        fontSize: 14,
         color: "#555",
         flex: 1,
-        lineHeight: 20,
+        lineHeight: 21,
     },
-});               
-
-      
+});

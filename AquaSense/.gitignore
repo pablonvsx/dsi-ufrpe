@@ -49,3 +49,7 @@ app-example
 # generated native folders
 /ios
 /android
+
+# backend
+backend/src/serviceAccountKey.json
+backend/.env

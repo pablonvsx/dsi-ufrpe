@@ -1,54 +1,164 @@
-import {
-    createUserWithEmailAndPassword,
-    sendEmailVerification,
-} from "firebase/auth";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { createUserWithEmailAndPassword, reload } from "firebase/auth";
+import { doc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "@/config/firebase";
 
+// ==========================================
+// USUÁRIO COMUM
+// ==========================================
 export interface RegisterCommonPayload {
-    nome: string;
-    email: string;
-    cidade: string;
-    senha: string;
+  nome: string;
+  email: string;
+  cidade: string;
+  senha: string;
 }
 
 export async function registerCommonUser(
-    payload: RegisterCommonPayload
+  payload: RegisterCommonPayload
 ): Promise<void> {
-    const { nome, email, cidade, senha } = payload;
+  const { nome, email, cidade, senha } = payload;
 
-// O email e senha são usados para criar a conta no Firebase Authentication
-    const credential = await createUserWithEmailAndPassword(auth, email, senha);
-    const { uid } = credential.user;
+  const credential = await createUserWithEmailAndPassword(auth, email, senha);
+  const { uid } = credential.user;
 
-// Verificação de email
-    await sendEmailVerification(credential.user);
-
-// Persistir dados de perfil no Firestore usando o uid como ID do documento
-    await setDoc(doc(db, "usuarios", uid), {
-        uid,
-        nome: nome.trim(),
-        email: email.toLowerCase().trim(),
-        cidade,
-        tipoUsuario: "comum",
-        statusConta: "pendente_verificacao",
-        dataCriacao: serverTimestamp(),
-    });
+  await setDoc(doc(db, "usuarios", uid), {
+    uid,
+    nome: nome.trim(),
+    email: email.toLowerCase().trim(),
+    cidade,
+    tipoUsuario: "comum",
+    statusConta: "pendente_verificacao",
+    hasSeenTutorial: false,
+    dataCriacao: serverTimestamp(),
+  });
 }
 
-// Mapeia códigos de erro do Firebase Auth para mensagens legíveis.
+// ==========================================
+// COLABORADOR
+// ==========================================
+export interface RegisterCollaboratorPayload {
+  nome: string;
+  email: string;
+  organizacao: string;
+  cidade: string;
+  senha: string;
+}
+
+export async function registerCollaboratorUser(
+  payload: RegisterCollaboratorPayload
+): Promise<void> {
+  const { nome, email, organizacao, cidade, senha } = payload;
+
+  const credential = await createUserWithEmailAndPassword(auth, email, senha);
+  const { uid } = credential.user;
+
+  await setDoc(doc(db, "usuarios", uid), {
+    uid,
+    nome: nome.trim(),
+    email: email.toLowerCase().trim(),
+    organizacao: organizacao.trim(),
+    cidade,
+    tipoUsuario: "colaborador",
+    statusConta: "pendente_verificacao",
+    hasSeenTutorial: false,
+    dataCriacao: serverTimestamp(),
+  });
+}
+
+// ==========================================
+// TÉCNICO
+// ==========================================
+export interface RegisterTechnicianPayload {
+  nome: string;
+  email: string;
+  codigoEquipe: string;
+  senha: string;
+}
+
+export async function registerTechnician(
+  payload: RegisterTechnicianPayload
+): Promise<void> {
+  const { nome, email, codigoEquipe, senha } = payload;
+
+  const credential = await createUserWithEmailAndPassword(auth, email, senha);
+  const { uid } = credential.user;
+
+  await setDoc(doc(db, "usuarios", uid), {
+    uid,
+    nome: nome.trim(),
+    email: email.toLowerCase().trim(),
+    codigoEquipe: codigoEquipe.trim().toUpperCase(),
+    tipoUsuario: "tecnico",
+    statusConta: "pendente_verificacao",
+    hasSeenTutorial: false,
+    dataCriacao: serverTimestamp(),
+  });
+}
+
+// ==========================================
+// GESTOR
+// ==========================================
+export interface RegisterGestorPayload {
+  nome: string;
+  email: string;
+  orgao: string;
+  cargo: string;
+  matricula: string;
+  senha: string;
+}
+
+export async function registerGestor(
+  payload: RegisterGestorPayload
+): Promise<void> {
+  const { nome, email, orgao, cargo, matricula, senha } = payload;
+
+  const credential = await createUserWithEmailAndPassword(auth, email, senha);
+  const { uid } = credential.user;
+
+  await setDoc(doc(db, "usuarios", uid), {
+    uid,
+    nome: nome.trim(),
+    email: email.toLowerCase().trim(),
+    orgao: orgao.trim(),
+    cargo: cargo.trim(),
+    matricula: matricula.trim(),
+    tipoUsuario: "gestor",
+    statusConta: "pendente_verificacao",
+    hasSeenTutorial: false,
+    dataCriacao: serverTimestamp(),
+  });
+}
+
+// ==========================================
+// UTILITÁRIOS
+// ==========================================
+export async function syncUserVerificationStatus(): Promise<boolean> {
+  const user = auth.currentUser;
+  if (!user) throw new Error("Nenhum usuário autenticado.");
+
+  await reload(user);
+  const updatedUser = auth.currentUser;
+  if (!updatedUser) throw new Error("Usuário não encontrado após recarregar.");
+
+  const isVerified = updatedUser.emailVerified;
+
+  await updateDoc(doc(db, "usuarios", updatedUser.uid), {
+    statusConta: isVerified ? "ativo" : "pendente_verificacao",
+  });
+
+  return isVerified;
+}
+
 export function parseFirebaseAuthError(code: string): string {
-    switch (code) {
-        case "auth/email-already-in-use":
-            return "Este e-mail já está cadastrado. Tente fazer login ou use outro e-mail.";
-        case "auth/invalid-email":
-            return "O endereço de e-mail é invalido. Verifique e tente novamente.";
-        case "auth/weak=password":
-            return "A senha escolhida é muito fraca. Use pelo menos 8 caracteres.";
-        case "auth/too-many-requests":
-            return "Muitas tentativas de cadastro. Aguarde um momento e tente novamente.";
-        default:
-            return "Ocorreu um erro inesperado. Por favor, tente novamente.";
-        
-    }
+  switch (code) {
+    case "auth/email-already-in-use":
+      return "Este e-mail já está cadastrado.";
+    case "auth/invalid-email":
+      return "O endereço de e-mail é inválido.";
+    case "auth/weak-password":
+      return "A senha é muito fraca. Use pelo menos 8 caracteres.";
+    case "auth/too-many-requests":
+      return "Muitas tentativas. Aguarde um momento e tente novamente.";
+    default:
+      return "Ocorreu um erro inesperado. Tente novamente.";
+  }
 }
