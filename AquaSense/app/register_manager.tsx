@@ -17,12 +17,11 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { useFonts, Questrial_400Regular } from "@expo-google-fonts/questrial";
 import { Stack, useRouter } from "expo-router";
-import { db } from "../config/firebase";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { Ionicons } from "@expo/vector-icons";
 
+import { registerGestor, parseFirebaseAuthError } from "@/services/auth/register";
+import { sendVerificationEmail } from "@/services/emailService";
 
-// ─── tipos ────────────────────────────────────────────────────────────────────
 interface FormErrors {
     nome?: string;
     email?: string;
@@ -43,7 +42,6 @@ interface TouchedFields {
     confirmarSenha?: boolean;
 }
 
-// ─── helpers de validação ─────────────────────────────────────────────────────
 function validateNome(value: string): string | null {
     if (!value.trim()) return "Informe seu nome completo.";
     if (value.trim().length < 3) return "O nome deve ter pelo menos 3 caracteres.";
@@ -82,7 +80,6 @@ function validateConfirmarSenha(senha: string, confirmar: string): string | null
     return null;
 }
 
-// ─── componentes auxiliares ────────────────────────────────────────────────────
 function FieldLabel({ label, fontFamily }: { label: string; fontFamily?: string }) {
     return <Text style={[styles.fieldLabel, { fontFamily }]}>{label}</Text>;
 }
@@ -90,7 +87,6 @@ function ErrorText({ message, fontFamily }: { message?: string; fontFamily?: str
     if (!message) return null;
     return <Text style={[styles.errorText, { fontFamily }]}>{message}</Text>;
 }
-
 
 interface CustomAlertProps {
     visible: boolean;
@@ -117,7 +113,6 @@ function CustomAlert({
             : type === "warning"
             ? "alert-circle"
             : "close-circle";
-
     const iconColor =
         type === "success" ? "#1a8c80" : type === "warning" ? "#e6a817" : "#e05252";
 
@@ -212,7 +207,6 @@ const alertStyles = StyleSheet.create({
     },
 });
 
-// ─── tela principal ────────────────────────────────────────────────────────────
 export default function RegisterGestor() {
     const router = useRouter();
 
@@ -229,7 +223,6 @@ export default function RegisterGestor() {
     const [touched, setTouched] = useState<TouchedFields>({});
     const [passwordInfoVisible, setPasswordInfoVisible] = useState(false);
 
-    // Estados do CustomAlert
     const [alertVisible, setAlertVisible] = useState(false);
     const [alertConfig, setAlertConfig] = useState<{
         title: string;
@@ -253,7 +246,6 @@ export default function RegisterGestor() {
         alertConfig.onClose?.();
     }
 
-    // refs para navegação por teclado
     const emailRef = useRef<TextInput>(null);
     const orgaoRef = useRef<TextInput>(null);
     const cargoRef = useRef<TextInput>(null);
@@ -306,31 +298,27 @@ export default function RegisterGestor() {
 
         setLoading(true);
         try {
-            await addDoc(collection(db, "usuarios"), {
-                nome: nome.trim(),
-                email: email.toLowerCase().trim(),
-                orgao: orgao.trim(),
-                cargo: cargo.trim(),
-                matricula: matricula.trim(),
-                tipoUsuario: "gestor",
-                statusConta: "pendente",
-                dataCriacao: serverTimestamp(),
-            });
+            await registerGestor({ nome, email, orgao, cargo, matricula, senha });
+            await sendVerificationEmail({ nome, email });
 
-            // Substituímos o Alert nativo pelo CustomAlert
             showAlert(
                 "Cadastro realizado!",
-                "Seu cadastro foi enviado para análise. Você será notificado quando aprovado.",
+                Enviamos um e-mail de verificação para ${email}.\n\nVerifique sua caixa de entrada e confirme seu e-mail para acessar o AquaSense.,
                 "success",
-                () => router.back()
+                () => router.replace("/awaiting-verification" as any)
+
             );
-        } catch (error: any) {
-            console.error("Erro ao salvar:", error);
-            showAlert(
-                "Erro no cadastro",
-                "Não foi possível concluir o cadastro. Tente novamente.",
-                "error"
-            );
+        } catch (err: any) {
+            console.error("Erro no cadastro:", err);
+            if (err?.code?.startsWith("auth/")) {
+                showAlert("Erro no cadastro", parseFirebaseAuthError(err.code), "error");
+            } else {
+                showAlert(
+                    "Erro no envio do e-mail",
+                    err?.message ?? "O cadastro foi realizado, mas o e-mail de verificação não pôde ser enviado.",
+                    "warning"
+                );
+            }
         } finally {
             setLoading(false);
         }
@@ -348,7 +336,6 @@ export default function RegisterGestor() {
             >
                 <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-                
                 {Platform.OS === "android" && (
                     <TouchableOpacity
                         style={styles.backButton}
@@ -425,7 +412,7 @@ export default function RegisterGestor() {
                             />
                             <ErrorText message={touched.email ? errors.email : undefined} fontFamily={questrial} />
 
-                            {/* ÓRGÃO / INSTITUIÇÃO */}
+                            {/* ÓRGÃO */}
                             <FieldLabel label="Órgão / Instituição:" fontFamily={questrial} />
                             <TextInput
                                 ref={orgaoRef}
@@ -465,7 +452,7 @@ export default function RegisterGestor() {
                             />
                             <ErrorText message={touched.cargo ? errors.cargo : undefined} fontFamily={questrial} />
 
-                            {/* MATRÍCULA FUNCIONAL */}
+                            {/* MATRÍCULA */}
                             <FieldLabel label="Matrícula funcional:" fontFamily={questrial} />
                             <TextInput
                                 ref={matriculaRef}
@@ -648,7 +635,6 @@ export default function RegisterGestor() {
                     </Pressable>
                 </Modal>
 
-                
                 <CustomAlert
                     visible={alertVisible}
                     title={alertConfig.title}
@@ -663,18 +649,15 @@ export default function RegisterGestor() {
     );
 }
 
-// ─── estilos ───────────────────────────────────────────────────────────────────
 const PRIMARY = "#004d48";
 const BORDER_RADIUS = 50;
 
 const styles = StyleSheet.create({
     flex: { flex: 1 },
     gradient: { flex: 1 },
-
-    
     backButton: {
         position: "absolute",
-        top: 52, 
+        top: 52,
         left: 20,
         zIndex: 10,
         width: 36,
@@ -684,7 +667,6 @@ const styles = StyleSheet.create({
         alignItems: "center",
         justifyContent: "center",
     },
-
     scrollContent: {
         flexGrow: 1,
         paddingHorizontal: 36,
@@ -692,14 +674,8 @@ const styles = StyleSheet.create({
         paddingBottom: 40,
         alignItems: "center",
     },
-
     logoContainer: { marginBottom: 10 },
-
-    logoImage: {
-        width: 180,
-        height: 180,
-    },
-
+    logoImage: { width: 180, height: 180 },
     title: {
         color: "#fff",
         fontSize: 19,
@@ -709,9 +685,7 @@ const styles = StyleSheet.create({
         marginBottom: 28,
         lineHeight: 30,
     },
-
     formWrapper: { width: "100%" },
-
     fieldLabel: {
         color: "rgba(255, 255, 255, 0.85)",
         fontSize: 13,
@@ -721,7 +695,6 @@ const styles = StyleSheet.create({
         marginLeft: 6,
         letterSpacing: 0.3,
     },
-
     input: {
         backgroundColor: "rgba(255, 255, 255, 0.92)",
         borderRadius: BORDER_RADIUS,
@@ -738,16 +711,11 @@ const styles = StyleSheet.create({
         shadowRadius: 4,
         elevation: 2,
     },
-
     inputError: {
         borderColor: "#ff6b6b",
         backgroundColor: "rgba(255, 255, 255, 0.92)",
     },
-
-    inputSenha: {
-        height: 46,
-    },
-
+    inputSenha: { height: 46 },
     errorText: {
         color: "#ffe0e0",
         fontSize: 12,
@@ -755,40 +723,33 @@ const styles = StyleSheet.create({
         marginBottom: 4,
         marginTop: 2,
     },
-
     inputWithIconWrapper: {
         width: "100%",
         position: "relative",
         marginBottom: 3,
     },
-
     inputWithIconPadding: {
         paddingRight: 52,
         marginBottom: 0,
     },
-
     infoIconAbsolute: {
         position: "absolute",
         right: 16,
         top: 15,
     },
-
     passwordRow: {
         flexDirection: "row",
         alignItems: "center",
         marginBottom: 3,
     },
-
     passwordInput: {
         flex: 1,
         marginBottom: 0,
     },
-
     infoIcon: {
         marginLeft: 12,
         marginTop: -2,
     },
-
     checkboxRow: {
         flexDirection: "row",
         alignItems: "center",
@@ -796,7 +757,6 @@ const styles = StyleSheet.create({
         marginBottom: 24,
         marginLeft: 6,
     },
-
     checkbox: {
         width: 18,
         height: 18,
@@ -808,19 +768,16 @@ const styles = StyleSheet.create({
         justifyContent: "center",
         marginRight: 8,
     },
-
     checkboxChecked: {
         backgroundColor: PRIMARY,
         borderColor: PRIMARY,
     },
-
     checkboxLabel: {
         color: "rgba(255, 255, 255, 0.9)",
         fontSize: 12,
         fontWeight: "700",
         letterSpacing: 1,
     },
-
     button: {
         backgroundColor: "rgba(255, 255, 255, 0.92)",
         borderRadius: BORDER_RADIUS,
@@ -833,14 +790,12 @@ const styles = StyleSheet.create({
         shadowRadius: 8,
         elevation: 4,
     },
-
     buttonText: {
         color: "#6b7a7a",
         fontSize: 16,
         fontWeight: "700",
         letterSpacing: 2,
     },
-
     modalOverlay: {
         flex: 1,
         backgroundColor: "rgba(0,0,0,0.5)",
@@ -848,13 +803,11 @@ const styles = StyleSheet.create({
         alignItems: "center",
         paddingHorizontal: 28,
     },
-
     modalDivider: {
         height: 1,
         backgroundColor: "#e0f2f1",
         marginBottom: 16,
     },
-
     modalButton: {
         backgroundColor: PRIMARY,
         borderRadius: BORDER_RADIUS,
@@ -862,14 +815,12 @@ const styles = StyleSheet.create({
         alignItems: "center",
         marginTop: 8,
     },
-
     modalButtonText: {
         fontSize: 15,
         color: "#FFFFFF",
         fontWeight: "600",
         letterSpacing: 0.3,
     },
-
     infoModal: {
         backgroundColor: "#fff",
         borderRadius: 20,
@@ -881,7 +832,6 @@ const styles = StyleSheet.create({
         shadowRadius: 20,
         elevation: 12,
     },
-
     infoModalTitle: {
         fontSize: 17,
         color: PRIMARY,
@@ -889,20 +839,17 @@ const styles = StyleSheet.create({
         marginBottom: 14,
         fontWeight: "600",
     },
-
     infoRow: {
         flexDirection: "row",
         alignItems: "flex-start",
         marginBottom: 10,
     },
-
     infoText: {
         fontSize: 14,
         color: "#555",
         flex: 1,
         lineHeight: 21,
     },
-
     infoTextMuted: {
         fontSize: 12,
         color: "#888",
