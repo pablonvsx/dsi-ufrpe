@@ -231,6 +231,15 @@ export default function HomeColaborador() {
                             <Ionicons name="megaphone-outline" size={28} color={PRIMARY} style={styles.actionIcon} />
                             <Text style={[styles.actionTextSecondary, { fontFamily: questrial }]}>{"Fazer\ndenúncia"}</Text>
                         </TouchableOpacity>
+                        <TouchableOpacity style={[styles.actionButton, styles.actionTertiary]} 
+                                          onPress= {() => {}}
+                                          activeOpacity={0.82}
+                        >
+                                          <Ionicons name="flask-outline" size={28} color={PRIMARY} style={styles.actionIcon} />
+                                          <Text style={[styles.actionTextTertiary, { fontFamily: questrial }]}>
+                                              {"Realizar\nmediçoes simples"}
+                                          </Text> 
+                        </TouchableOpacity>
                     </Animated.View>
                 </ScrollView>
 
