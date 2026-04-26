@@ -88,19 +88,50 @@ export default function HomeManager() {
                     {/* Cards de métricas */}
                     <View style={styles.metricsRow}>
                         <View style={styles.metricCard}>
-                            <Ionicons name="water-outline" size={24} color={PRIMARY} />
+                            <View style={[styles.metricIconCircle, { backgroundColor: "rgba(26,140,128,0.12)" }]}>
+                                <Ionicons name="water-outline" size={22} color={PRIMARY} />
+                            </View>
                             <Text style={[styles.metricNumber, { fontFamily: questrial }]}>0</Text>
                             <Text style={[styles.metricLabel, { fontFamily: questrial }]}>Pontos{"\n"}Monitorados</Text>
                         </View>
                         <View style={styles.metricCard}>
-                            <Ionicons name="warning-outline" size={24} color="#e6a817" />
+                            <View style={[styles.metricIconCircle, { backgroundColor: "rgba(230,168,23,0.12)" }]}>
+                                <Ionicons name="warning-outline" size={22} color="#e6a817" />
+                            </View>
                             <Text style={[styles.metricNumber, { fontFamily: questrial }]}>0</Text>
                             <Text style={[styles.metricLabel, { fontFamily: questrial }]}>Denúncias</Text>
                         </View>
                         <View style={styles.metricCard}>
-                            <Ionicons name="analytics-outline" size={24} color="#e05252" />
+                            <View style={[styles.metricIconCircle, { backgroundColor: "rgba(224,82,82,0.12)" }]}>
+                                <Ionicons name="analytics-outline" size={22} color="#e05252" />
+                            </View>
                             <Text style={[styles.metricNumber, { fontFamily: questrial }]}>0</Text>
                             <Text style={[styles.metricLabel, { fontFamily: questrial }]}>Análises{"\n"}Pendentes</Text>
+                        </View>
+                    </View>
+
+                    {/* Seção qualidade da água */}
+                    <View style={styles.qualidadeCard}>
+                        <Text style={[styles.qualidadeTitle, { fontFamily: questrial }]}>Qualidade da Água</Text>
+                        <View style={styles.qualidadeContent}>
+                            <View style={styles.qualidadeCirculo}>
+                                <Text style={[styles.qualidadeCirculoLabel, { fontFamily: questrial }]}>—</Text>
+                                <Text style={[styles.qualidadeCirculoSub, { fontFamily: questrial }]}>sem dados</Text>
+                            </View>
+                            <View style={styles.qualidadeLegenda}>
+                                <View style={styles.legendaItem}>
+                                    <View style={[styles.legendaDot, { backgroundColor: "#e05252" }]} />
+                                    <Text style={[styles.legendaText, { fontFamily: questrial }]}>Ruim</Text>
+                                </View>
+                                <View style={styles.legendaItem}>
+                                    <View style={[styles.legendaDot, { backgroundColor: "#e6a817" }]} />
+                                    <Text style={[styles.legendaText, { fontFamily: questrial }]}>Razoável</Text>
+                                </View>
+                                <View style={styles.legendaItem}>
+                                    <View style={[styles.legendaDot, { backgroundColor: "#1a8c80" }]} />
+                                    <Text style={[styles.legendaText, { fontFamily: questrial }]}>Boa</Text>
+                                </View>
+                            </View>
                         </View>
                     </View>
 
@@ -124,6 +155,17 @@ const styles = StyleSheet.create({
     body: { flex: 1, padding: 20 },
     metricsRow: { flexDirection: "row", gap: 12, marginBottom: 20 },
     metricCard: { flex: 1, backgroundColor: "#FFFFFF", borderRadius: 16, padding: 14, alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 4 },
+    metricIconCircle: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", marginBottom: 6 },
     metricNumber: { fontSize: 28, fontWeight: "700", color: PRIMARY, marginVertical: 6 },
     metricLabel: { fontSize: 11, color: "#6b7a7a", textAlign: "center", lineHeight: 16 },
+    qualidadeCard: { backgroundColor: "#FFFFFF", borderRadius: 16, padding: 18, shadowColor: "#000", shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 4 },
+    qualidadeTitle: { fontSize: 16, fontWeight: "700", color: PRIMARY, marginBottom: 14 },
+    qualidadeContent: { flexDirection: "row", alignItems: "center", gap: 20 },
+    qualidadeCirculo: { width: 90, height: 90, borderRadius: 45, borderWidth: 8, borderColor: "#e0f2f1", alignItems: "center", justifyContent: "center" },
+    qualidadeCirculoLabel: { fontSize: 18, fontWeight: "700", color: PRIMARY },
+    qualidadeCirculoSub: { fontSize: 9, color: "#6b7a7a", textAlign: "center" },
+    qualidadeLegenda: { flex: 1, gap: 10 },
+    legendaItem: { flexDirection: "row", alignItems: "center", gap: 8 },
+    legendaDot: { width: 10, height: 10, borderRadius: 5 },
+    legendaText: { fontSize: 13, color: "#6b7a7a" },
 });
