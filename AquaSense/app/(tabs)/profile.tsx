@@ -28,6 +28,7 @@ import {
   EmailAuthProvider,
   deleteUser,
 } from 'firebase/auth';
+import { sendPasswordResetEmail } from '@/services/emailService';
 
 // ── Design tokens ──────────────────────────────────────────
 const PRIMARY      = '#004d48';
@@ -143,6 +144,7 @@ export default function PerfilScreen() {
   const [modalReauthVisible, setModalReauthVisible] = useState(false);
   const [modalDeactivateVisible, setModalDeactivateVisible] = useState(false);
   const [modalDeleteVisible,     setModalDeleteVisible]     = useState(false);
+  const [modalPasswordSentVisible, setModalPasswordSentVisible] = useState(false);
 
   const [newEmail,       setNewEmail]       = useState('');
   const [newPassword,    setNewPassword]    = useState('');
@@ -263,6 +265,25 @@ export default function PerfilScreen() {
       setLoading(false);
     }
   };
+
+  // ── Enviar e-mail de redefinição de senha ───────────────────
+ const handlePasswordReset = async () => {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user?.email) return;
+
+  try {
+    await sendPasswordResetEmail({ email: user.email });
+    setModalPasswordSentVisible(true);
+  } catch (err: any) {
+    const code = err?.code;
+    const msg =
+      code === 'auth/too-many-requests'
+        ? 'Muitas tentativas. Tente novamente mais tarde.'
+        : 'Não foi possível enviar o e-mail. Tente novamente.';
+    Alert.alert('Erro', msg);
+  }
+};
 
   // ── Desativar conta ──────────────────────────────────────────
   const handleDeactivate = () => setModalDeactivateVisible(true);
@@ -450,7 +471,10 @@ export default function PerfilScreen() {
                   </View>
                   <TouchableOpacity
                     activeOpacity={0.8}
-                    onPress={() => { setNewPassword(''); setModalPassVisible(true); }}
+                    onPress={() => {
+                      console.log('botão pressionado');
+                      handlePasswordReset();
+                    }}
                   >
                     <LinearGradient
                       colors={['#004d48', '#0a6b5e']}
@@ -512,21 +536,15 @@ export default function PerfilScreen() {
         />
 
         {/* ── 2. Modal: Nova Senha ── */}
-        <AquaModal
-          visible={modalPassVisible}
-          title="Alterar Senha"
-          placeholder="Digite a nova senha"
-          value={newPassword}
-          onChangeText={setNewPassword}
-          secureTextEntry
+        <AquaConfirmModal
+          visible={modalPasswordSentVisible}
+          title="E-mail enviado!"
+          description={`Enviamos um link de redefinição de senha para ${maskEmail(userData.email)}. Verifique sua caixa de entrada e siga as instruções.`}
+          confirmLabel="Entendido"
+          icon="mail-outline"
           fontFamily={questrial}
-          onCancel={() => setModalPassVisible(false)}
-          onConfirm={() => {
-            if (newPassword.length < 6) return Alert.alert('Erro', 'A senha deve ter no mínimo 6 caracteres.');
-            setPendingAction('PASSWORD');
-            setModalPassVisible(false);
-            setModalReauthVisible(true);
-          }}
+          onCancel={() => setModalPasswordSentVisible(false)}
+          onConfirm={() => setModalPasswordSentVisible(false)}
         />
 
         {/* ── 3. Modal: Reautenticação ── */}
