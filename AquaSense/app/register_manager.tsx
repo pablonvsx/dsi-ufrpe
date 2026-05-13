@@ -303,7 +303,7 @@ export default function RegisterGestor() {
 
             showAlert(
                 "Cadastro realizado!",
-                Enviamos um e-mail de verificação para ${email}.\n\nVerifique sua caixa de entrada e confirme seu e-mail para acessar o AquaSense.,
+                `Enviamos um e-mail de verificação para ${email}.\n\nVerifique sua caixa de entrada e confirme seu e-mail para acessar o AquaSense.`,
                 "success",
                 () => router.replace("/awaiting-verification" as any)
 
