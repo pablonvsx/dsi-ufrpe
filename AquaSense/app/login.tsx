@@ -109,8 +109,10 @@ export default function Login() {
             if (tipoUsuario === "comum") {
                 const jaViuTutorial = userData?.hasSeenTutorial === true;
                 router.replace(jaViuTutorial ? "/(tabs)" : "/(tabs)?tutorial=1" as any);
+            } else if (tipoUsuario === "gestor") {
+                router.replace("/(tabs)/home_manager" as any);
             } else {
-                // colaborador, tecnico, gestor
+                // colaborador, tecnico
                 router.replace("/under-development" as any);
             }
 
