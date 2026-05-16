@@ -171,6 +171,7 @@ export default function HomeComum() {
     }
 
     const userName = userProfile?.nome?.split(" ")[0] ?? "Usuário";
+    const isGestor = userProfile?.tipoUsuario === "gestor";
 
     return (
         <>
@@ -221,6 +222,38 @@ export default function HomeComum() {
                             <WelcomeCard userName={userName} fontFamily={questrial} />
                         )}
                     </Animated.View>
+
+                    {isGestor && (
+                        <Animated.View style={[styles.managerCardContainer, { opacity: cardFade, transform: [{ translateY: cardSlide }] }]}>
+                            <TouchableOpacity
+                                style={styles.managerCard}
+                                onPress={() => router.push("/(tabs)/home_manager" as any)}
+                                activeOpacity={0.75}
+                            >
+                                <LinearGradient
+                                    colors={["#1a8c80", "#0d6b5f"]}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 1 }}
+                                    style={styles.managerCardGradient}
+                                >
+                                    <View style={styles.managerCardContent}>
+                                        <View style={styles.managerCardIcon}>
+                                            <Ionicons name="clipboard-outline" size={32} color="#FFFFFF" />
+                                        </View>
+                                        <View style={styles.managerCardText}>
+                                            <Text style={[styles.managerCardTitle, { fontFamily: questrial }]}>
+                                                Acessar Módulo de Gestão
+                                            </Text>
+                                            <Text style={[styles.managerCardSubtitle, { fontFamily: questrial }]}>
+                                                Gerencie alertas, corpos hídricos e equipes do AquaSense
+                                            </Text>
+                                        </View>
+                                        <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
+                                    </View>
+                                </LinearGradient>
+                            </TouchableOpacity>
+                        </Animated.View>
+                    )}
 
                     <Animated.View style={[styles.actionsRow, { opacity: cardFade, transform: [{ translateY: cardSlide }] }]}>
                         <TouchableOpacity style={[styles.actionButton, styles.actionPrimary]} onPress={() => router.push("/register_observation" as any)} activeOpacity={0.82}>
@@ -571,6 +604,16 @@ const styles = StyleSheet.create({
     actionIcon: { marginBottom: 8 },
     actionTextPrimary: { fontSize: 13, color: "#FFFFFF", textAlign: "center", lineHeight: 19 },
     actionTextSecondary: { fontSize: 13, color: PRIMARY, textAlign: "center", lineHeight: 19 },
+
+    // Manager card (para gestores)
+    managerCardContainer: { marginBottom: 18 },
+    managerCard: { borderRadius: 16, overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 5 },
+    managerCardGradient: { paddingVertical: 20, paddingHorizontal: 16 },
+    managerCardContent: { flexDirection: "row", alignItems: "center", gap: 14 },
+    managerCardIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: "rgba(255,255,255,0.18)", alignItems: "center", justifyContent: "center" },
+    managerCardText: { flex: 1 },
+    managerCardTitle: { fontSize: 15, fontWeight: "700", color: "#FFFFFF", marginBottom: 3 },
+    managerCardSubtitle: { fontSize: 12, color: "rgba(255,255,255,0.88)" },
 
     // Navbar
     navBarWrapper: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 22, borderTopRightRadius: 22, shadowColor: "#000", shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.07, shadowRadius: 10, elevation: 12 },
