@@ -13,11 +13,12 @@ import {
     TextInput,
     Switch,
     ScrollView,
+    BackHandler,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
-import { Stack, useRouter } from "expo-router";
+import { Stack, useRouter, useFocusEffect } from "expo-router";
 import { useAuth } from "@/contexts/auth-context";
 import { getCollaborators, updateUserStatus } from "@/services/firestore/users";
 import { UsuarioColaborador } from "@/types";
@@ -37,6 +38,17 @@ export default function ManageCollaborators() {
 
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(20)).current;
+
+    // Interceptar botão de voltar do celular
+    useFocusEffect(
+        React.useCallback(() => {
+            const backHandler = BackHandler.addEventListener("hardwareBackPress", () => {
+                router.replace("/(tabs)/home_manager" as any);
+                return true;
+            });
+            return () => backHandler.remove();
+        }, [])
+    );
 
     useEffect(() => {
         Animated.parallel([

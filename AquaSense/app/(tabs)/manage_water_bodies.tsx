@@ -12,12 +12,13 @@ import {
     ActivityIndicator,
     Animated,
     Alert,
+    BackHandler,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFonts, Questrial_400Regular } from "@expo-google-fonts/questrial";
 import { Ionicons } from "@expo/vector-icons";
-import { Stack, useRouter } from "expo-router";
+import { Stack, useRouter, useFocusEffect } from "expo-router";
 import { useAuth } from "@/contexts/auth-context";
 import { getUnvalidatedWaterBodies, getValidatedWaterBodies, validateWaterBody, rejectWaterBody } from "@/services/firestore/water_bodies";
 import { CorpoHidrico } from "@/types/water_bodies";
@@ -46,6 +47,17 @@ export default function ManageWaterBodies() {
 
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(18)).current;
+
+    // Interceptar botão de voltar do celular
+    useFocusEffect(
+        React.useCallback(() => {
+            const backHandler = BackHandler.addEventListener("hardwareBackPress", () => {
+                router.replace("/(tabs)/home_manager" as any);
+                return true;
+            });
+            return () => backHandler.remove();
+        }, [])
+    );
 
     useEffect(() => {
         Animated.parallel([
