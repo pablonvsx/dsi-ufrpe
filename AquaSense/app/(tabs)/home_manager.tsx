@@ -16,6 +16,7 @@ import { Stack, useRouter } from "expo-router";
 import * as Location from "expo-location";
 import { useAuth } from "@/contexts/auth-context";
 import { getUnvalidatedWaterBodies } from "@/services/firestore/water_bodies";
+import { getCollaborators, getTechnicians } from "@/services/firestore/users";
 
 const PRIMARY = "#004d48";
 
@@ -26,6 +27,8 @@ export default function HomeManager() {
     const questrial = fontsLoaded ? "Questrial_400Regular" : undefined;
     const [locationText, setLocationText] = useState("Carregando...");
     const [unvalidatedCount, setUnvalidatedCount] = useState(0);
+    const [collaboratorsCount, setCollaboratorsCount] = useState(0);
+    const [techniciansCount, setTechniciansCount] = useState(0);
 
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(18)).current;
@@ -41,8 +44,14 @@ export default function HomeManager() {
             try {
                 const unvalidated = await getUnvalidatedWaterBodies();
                 setUnvalidatedCount(unvalidated.length);
+                
+                const collaborators = await getCollaborators();
+                setCollaboratorsCount(collaborators.length);
+                
+                const technicians = await getTechnicians();
+                setTechniciansCount(technicians.length);
             } catch (error) {
-                console.error("Erro ao buscar contagem de corpos:", error);
+                console.error("Erro ao buscar contagens:", error);
             }
         })();
 
@@ -128,6 +137,78 @@ export default function HomeManager() {
                                     </Text>
                                     <Text style={[styles.manageCardSubtitle, { fontFamily: questrial }]}>
                                         Revisar e validar novos cadastros
+                                    </Text>
+                                </View>
+                                <Ionicons name="chevron-forward" size={24} color="#FFFFFF" style={{ marginLeft: "auto" }} />
+                            </View>
+                        </LinearGradient>
+                    </TouchableOpacity>
+
+                    {/* Card: Gerenciar Colaboradores */}
+                    <TouchableOpacity
+                        style={styles.manageCard}
+                        onPress={() => router.push("/(tabs)/manage_collaborators" as any)}
+                        activeOpacity={0.75}
+                    >
+                        <LinearGradient
+                            colors={["#2E7D76", "#1a5850"]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={styles.manageCardGradient}
+                        >
+                            <View style={styles.manageCardContent}>
+                                <View style={styles.manageCardIconContainer}>
+                                    <View style={styles.manageCardIcon}>
+                                        <Ionicons name="people-outline" size={40} color="#FFFFFF" />
+                                    </View>
+                                    {collaboratorsCount > 0 && (
+                                        <View style={styles.badgeContainer}>
+                                            <Text style={styles.badgeText}>{collaboratorsCount}</Text>
+                                        </View>
+                                    )}
+                                </View>
+                                <View style={styles.manageCardText}>
+                                    <Text style={[styles.manageCardTitle, { fontFamily: questrial }]}>
+                                        Gerenciar Colaboradores
+                                    </Text>
+                                    <Text style={[styles.manageCardSubtitle, { fontFamily: questrial }]}>
+                                        Editar e ativar/desativar usuários
+                                    </Text>
+                                </View>
+                                <Ionicons name="chevron-forward" size={24} color="#FFFFFF" style={{ marginLeft: "auto" }} />
+                            </View>
+                        </LinearGradient>
+                    </TouchableOpacity>
+
+                    {/* Card: Gerenciar Técnicos */}
+                    <TouchableOpacity
+                        style={styles.manageCard}
+                        onPress={() => router.push("/(tabs)/manage_technicians" as any)}
+                        activeOpacity={0.75}
+                    >
+                        <LinearGradient
+                            colors={["#1F6B64", "#0d4a42"]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={styles.manageCardGradient}
+                        >
+                            <View style={styles.manageCardContent}>
+                                <View style={styles.manageCardIconContainer}>
+                                    <View style={styles.manageCardIcon}>
+                                        <Ionicons name="build-outline" size={40} color="#FFFFFF" />
+                                    </View>
+                                    {techniciansCount > 0 && (
+                                        <View style={styles.badgeContainer}>
+                                            <Text style={styles.badgeText}>{techniciansCount}</Text>
+                                        </View>
+                                    )}
+                                </View>
+                                <View style={styles.manageCardText}>
+                                    <Text style={[styles.manageCardTitle, { fontFamily: questrial }]}>
+                                        Gerenciar Técnicos
+                                    </Text>
+                                    <Text style={[styles.manageCardSubtitle, { fontFamily: questrial }]}>
+                                        Editar e ativar/desativar usuários
                                     </Text>
                                 </View>
                                 <Ionicons name="chevron-forward" size={24} color="#FFFFFF" style={{ marginLeft: "auto" }} />
