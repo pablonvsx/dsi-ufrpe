@@ -1,2 +1,18 @@
-// Barrel de serviços.
-// Futuramente: exportar aqui os módulos de serviços (ex.: `coletas`, `usuarios`, `denuncias`).
+/**
+ * Barrel de serviços - Exporta todos os módulos de negócio
+ */
+
+// Firestore Collections
+export * as coletas from "./coletas";
+export * as users from "./firestore/users";
+export * as waterBodies from "./firestore/water_bodies";
+export * as contributions from "./firestore/contributions";
+
+// Storage & Files
+export * as storage from "./storage/supabaseStorage";
+
+// Utilities
+export * as ambientalInfo from "./ambientalInfo";
+export * as contributionHelper from "./contributionHelper";
+export * as geo from "./geoService";
+export * as email from "./emailService";
