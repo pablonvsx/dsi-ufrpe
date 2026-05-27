@@ -467,13 +467,14 @@ function TutorialModal({ visible, fontFamily, loading, onFinish }: {
     visible: boolean; fontFamily?: string; loading: boolean; onFinish: () => void;
 }) {
     const steps = [
-        { icon: "home-outline" as const,          title: "Home",                    desc: "Acompanhe informações e acesse as funcionalidades principais." },
-        { icon: "create-outline" as const,        title: "Registrar observação",    desc: "Relate o que você observou em um corpo hídrico." },
-        { icon: "warning-outline" as const,       title: "Fazer denúncia",          desc: "Reporte problemas ambientais na sua região." },
-        { icon: "add-circle-outline" as const,    title: "Registrar corpo hídrico", desc: "Cadastre um novo rio, lago ou açude." },
-        { icon: "map-outline" as const,           title: "Mapa",                    desc: "Visualize corpos hídricos e alertas no mapa." },
-        { icon: "notifications-outline" as const, title: "Alertas",                 desc: "Receba notificações sobre qualidade da água." },
-        { icon: "person-outline" as const,        title: "Perfil",                  desc: "Gerencie sua conta e configurações." },
+    { icon: "home-outline" as const,          title: "Home",                       desc: "Acompanhe informações e acesse as funcionalidades principais." },
+    { icon: "create-outline" as const,        title: "Registrar observação",       desc: "Relate o que você observou em um corpo hídrico." },
+    { icon: "flask-outline" as const,         title: "Realizar medições simples",  desc: "Exclusivo para colaboradores — registre medições básicas de qualidade da água." },
+    { icon: "warning-outline" as const,       title: "Fazer denúncia",             desc: "Reporte problemas ambientais na sua região." },
+    { icon: "add-circle-outline" as const,    title: "Registrar corpo hídrico",    desc: "Cadastre um novo rio, lago ou açude." },
+    { icon: "map-outline" as const,           title: "Mapa",                       desc: "Visualize corpos hídricos e alertas no mapa." },
+    { icon: "notifications-outline" as const, title: "Alertas",                    desc: "Receba notificações sobre qualidade da água." },
+    { icon: "person-outline" as const,        title: "Perfil",                     desc: "Gerencie sua conta e configurações." },
     ];
     return (
         <Modal visible={visible} transparent animationType="slide" onRequestClose={onFinish}>
