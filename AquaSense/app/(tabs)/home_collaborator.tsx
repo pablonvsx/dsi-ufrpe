@@ -275,15 +275,14 @@ function WelcomeCard({ userName, fontFamily }: { userName: string; fontFamily?: 
             <View style={styles.welcomeIconCircle}>
                 <Ionicons name="water-outline" size={28} color={PRIMARY} />
             </View>
-            <Text style={[styles.welcomeTitle, { fontFamily }]}>Bem-vindo, Colaborador {userName}</Text>
+            <Text style={[styles.welcomeTitle, { fontFamily }]}>Olá, {userName}!</Text>
             <View style={styles.cardDivider} />
             <Text style={[styles.welcomeBody, { fontFamily }]}>
-                Explore os corpos hídricos, registre observações e acompanhe alertas da sua região.
+                Como colaborador, você pode registrar observações, realizar medições simples e contribuir com a qualidade da água da sua região.
             </Text>
         </View>
     );
 }
-
 // ─────────────────────────────────────────────
 // CARD: RESUMO DO ÚLTIMO CORPO HÍDRICO
 // visual do modal de detalhes do mapa.
