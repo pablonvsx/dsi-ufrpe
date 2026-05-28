@@ -30,7 +30,9 @@ import {
     getDailyColetasCompletas,
     getPreviousPeriodColetasSimples,
     getPreviousPeriodColetasCompletas,
+    getDailyQualityLevels,
     DailyAnalysisData,
+    DailyLevelData,
 } from "@/services/coletas";
 
 const PRIMARY = "#004d48";
@@ -54,6 +56,11 @@ export default function HomeManager() {
     const [dailyCompletas, setDailyCompletas] = useState<DailyAnalysisData[]>([]);
     const [previousSimples, setPreviousSimples] = useState(0);
     const [previousCompletas, setPreviousCompletas] = useState(0);
+    const [last14DaysSimples, setLast14DaysSimples] = useState(0);
+    const [previous14DaysSimples, setPrevious14DaysSimples] = useState(0);
+    const [last14DaysCompletas, setLast14DaysCompletas] = useState(0);
+    const [previous14DaysCompletas, setPrevious14DaysCompletas] = useState(0);
+    const [dailyQualityLevels, setDailyQualityLevels] = useState<DailyLevelData[]>([]);
     const [loadingStats, setLoadingStats] = useState(false);
 
     const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -128,6 +135,23 @@ export default function HomeManager() {
 
                 const prevCompletas = await getPreviousPeriodColetasCompletas(timeFilter);
                 setPreviousCompletas(prevCompletas);
+
+                // Buscar últimos 14 dias vs 14 dias anteriores (para comparação fixa)
+                const simplesLast14 = await getColetasSimples(14);
+                setLast14DaysSimples(simplesLast14);
+
+                const simplesPrev14 = await getPreviousPeriodColetasSimples(14);
+                setPrevious14DaysSimples(simplesPrev14);
+
+                const completasLast14 = await getColetasCompletas(14);
+                setLast14DaysCompletas(completasLast14);
+
+                const completasPrev14 = await getPreviousPeriodColetasCompletas(14);
+                setPrevious14DaysCompletas(completasPrev14);
+
+                // Buscar dados diários de qualidade unificados
+                const qualityLevelsData = await getDailyQualityLevels(timeFilter);
+                setDailyQualityLevels(qualityLevelsData);
             } catch (error) {
                 console.error("Erro ao buscar dados das coletas:", error);
             } finally {
@@ -220,7 +244,6 @@ export default function HomeManager() {
                             </View>
                             <Text style={styles.quickCardNumber}>—</Text>
                             <Text style={styles.quickCardTitle}>Alertas</Text>
-                            <Text style={styles.quickCardDescription}>Em breve</Text>
                             <Ionicons name="chevron-forward" size={14} color="#9ca3a3" style={styles.quickCardArrow} />
                         </TouchableOpacity>
 
@@ -234,8 +257,7 @@ export default function HomeManager() {
                                 <Ionicons name="build" size={22} color="#22C55E" />
                             </View>
                             <Text style={styles.quickCardNumber}>{techniciansCount}</Text>
-                            <Text style={styles.quickCardTitle}>Equipes</Text>
-                            <Text style={styles.quickCardDescription}>técnicas</Text>
+                            <Text style={styles.quickCardTitle}>Técnicos</Text>
                             <Ionicons name="chevron-forward" size={14} color="#9ca3a3" style={styles.quickCardArrow} />
                         </TouchableOpacity>
 
@@ -250,7 +272,6 @@ export default function HomeManager() {
                             </View>
                             <Text style={styles.quickCardNumber}>{collaboratorsCount}</Text>
                             <Text style={styles.quickCardTitle}>Colab.</Text>
-                            <Text style={styles.quickCardDescription}>adores</Text>
                             <Ionicons name="chevron-forward" size={14} color="#9ca3a3" style={styles.quickCardArrow} />
                         </TouchableOpacity>
 
@@ -261,19 +282,18 @@ export default function HomeManager() {
                             activeOpacity={0.7}
                         >
                             <View style={[styles.quickCardIcon, { backgroundColor: "#E0E8FF" }]}>
-                                <Ionicons name="clipboard" size={22} color="#3B82F6" />
+                                <Ionicons name="water" size={22} color="#3B82F6" />
                             </View>
                             <Text style={styles.quickCardNumber}>{unvalidatedCount}</Text>
-                            <Text style={styles.quickCardTitle}>Novos</Text>
-                            <Text style={styles.quickCardDescription}>registros</Text>
+                            <Text style={styles.quickCardTitle}>Registros</Text>
                             <Ionicons name="chevron-forward" size={14} color="#9ca3a3" style={styles.quickCardArrow} />
                         </TouchableOpacity>
 
                     </View>
 
-                    {/* ══ PANORAMA DA REGIÃO ══ */}
+                    {/* ══ PANORAMA GERAL ══ */}
                     <View style={styles.panoramaSection}>
-                        <Text style={[styles.panoramaTitle, { fontFamily: questrial }]}>Panorama da Região</Text>
+                        <Text style={[styles.panoramaTitle, { fontFamily: questrial }]}>Panorama Geral</Text>
                         
                         {/* Filtro de Tempo */}
                         <View style={styles.timeFilterContainer}>
@@ -360,14 +380,16 @@ export default function HomeManager() {
                                     <ScrollView horizontal showsHorizontalScrollIndicator={true} style={styles.chartCardScroll}>
                                         <View style={styles.chartCardContent}>
                                             <View style={styles.chartHeaderRow}>
-                                                <Text style={[styles.chartTitle, { fontFamily: questrial }]}>Análises Simples</Text>
-                                                {previousSimples > 0 && (
-                                                    <View style={[styles.percentageBadge, { backgroundColor: analisesSimples >= previousSimples ? "#DBEAFE" : "#FEE2E2" }]}>
-                                                        <Text style={[styles.percentageText, { color: analisesSimples >= previousSimples ? "#1E40AF" : "#7F1D1D" }]}>
-                                                            {analisesSimples >= previousSimples ? "↑" : "↓"} {Math.abs(Math.round((analisesSimples - previousSimples) / previousSimples * 100))}%
-                                                        </Text>
-                                                    </View>
-                                                )}
+                                                <View style={styles.chartTitleContainer}>
+                                                    <Text style={[styles.chartTitle, { fontFamily: questrial }]}>Análises Simples</Text>
+                                                    {previous14DaysSimples > 0 && (
+                                                        <View style={[styles.percentageBadgeInline, { backgroundColor: last14DaysSimples >= previous14DaysSimples ? "#DBEAFE" : "#FEE2E2" }]}>
+                                                            <Text style={[styles.percentageTextInline, { color: last14DaysSimples >= previous14DaysSimples ? "#1E40AF" : "#7F1D1D" }]}>
+                                                                {last14DaysSimples >= previous14DaysSimples ? "↑" : "↓"} {Math.abs(Math.round((last14DaysSimples - previous14DaysSimples) / previous14DaysSimples * 100))}% em relação aos 14 dias anteriores
+                                                            </Text>
+                                                        </View>
+                                                    )}
+                                                </View>
                                             </View>
                                             {dailySimples.length > 0 ? (
                                                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chartScrollContainer}>
@@ -392,6 +414,10 @@ export default function HomeManager() {
                                                             },
                                                             propsForLabels: {
                                                                 fontSize: 10,
+                                                                dx: "-10",
+                                                            },
+                                                            propsForHorizontalLabels: {
+                                                                paddingRight: 60,
                                                             },
                                                         }}
                                                         yAxisLabel=""
@@ -414,14 +440,16 @@ export default function HomeManager() {
                                     <ScrollView horizontal showsHorizontalScrollIndicator={true} style={styles.chartCardScroll}>
                                         <View style={styles.chartCardContent}>
                                             <View style={styles.chartHeaderRow}>
-                                                <Text style={[styles.chartTitle, { fontFamily: questrial }]}>Análises Técnicas</Text>
-                                                {previousCompletas > 0 && (
-                                                    <View style={[styles.percentageBadge, { backgroundColor: analisesCompletas >= previousCompletas ? "#DBEAFE" : "#FEE2E2" }]}>
-                                                        <Text style={[styles.percentageText, { color: analisesCompletas >= previousCompletas ? "#1E40AF" : "#7F1D1D" }]}>
-                                                            {analisesCompletas >= previousCompletas ? "↑" : "↓"} {Math.abs(Math.round((analisesCompletas - previousCompletas) / previousCompletas * 100))}%
-                                                        </Text>
-                                                    </View>
-                                                )}
+                                                <View style={styles.chartTitleContainer}>
+                                                    <Text style={[styles.chartTitle, { fontFamily: questrial }]}>Análises Técnicas</Text>
+                                                    {previous14DaysCompletas > 0 && (
+                                                        <View style={[styles.percentageBadgeInline, { backgroundColor: last14DaysCompletas >= previous14DaysCompletas ? "#DBEAFE" : "#FEE2E2" }]}>
+                                                            <Text style={[styles.percentageTextInline, { color: last14DaysCompletas >= previous14DaysCompletas ? "#1E40AF" : "#7F1D1D" }]}>
+                                                                {last14DaysCompletas >= previous14DaysCompletas ? "↑" : "↓"} {Math.abs(Math.round((last14DaysCompletas - previous14DaysCompletas) / previous14DaysCompletas * 100))}% em relação aos 14 dias anteriores
+                                                            </Text>
+                                                        </View>
+                                                    )}
+                                                </View>
                                             </View>
                                             {dailyCompletas.length > 0 ? (
                                                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chartScrollContainer}>
@@ -446,6 +474,10 @@ export default function HomeManager() {
                                                             },
                                                             propsForLabels: {
                                                                 fontSize: 10,
+                                                                dx: "-10",
+                                                            },
+                                                            propsForHorizontalLabels: {
+                                                                paddingRight: 60,
                                                             },
                                                         }}
                                                         yAxisLabel=""
@@ -461,6 +493,112 @@ export default function HomeManager() {
                                         </View>
                                     </ScrollView>
                                     <Text style={styles.statNumber}>{analisesCompletas} análises realizadas</Text>
+                                </View>
+
+                                {/* Gráfico de Qualidade por Nível */}
+                                <View style={styles.chartCard}>
+                                    <ScrollView horizontal showsHorizontalScrollIndicator={true} style={styles.chartCardScroll}>
+                                        <View style={styles.chartCardContent}>
+                                            <View style={styles.chartHeaderRow}>
+                                                <View style={styles.chartTitleContainer}>
+                                                    <Text style={[styles.chartTitle, { fontFamily: questrial }]}>Qualidade por Nível</Text>
+                                                </View>
+                                            </View>
+                                            {dailyQualityLevels.length > 0 ? (
+                                                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chartScrollContainer}>
+                                                    <LineChart
+                                                        data={{
+                                                            labels: generateChartLabels(timeFilter),
+                                                            datasets: [
+                                                                {
+                                                                    data: prepareChartData(
+                                                                        dailyQualityLevels.map(d => ({ date: d.date, count: d.boa })),
+                                                                        timeFilter
+                                                                    ).map(d => d.count),
+                                                                    strokeWidth: 2,
+                                                                    color: () => "#22C55E",
+                                                                },
+                                                                {
+                                                                    data: prepareChartData(
+                                                                        dailyQualityLevels.map(d => ({ date: d.date, count: d.normal })),
+                                                                        timeFilter
+                                                                    ).map(d => d.count),
+                                                                    strokeWidth: 2,
+                                                                    color: () => "#F59E0B",
+                                                                },
+                                                                {
+                                                                    data: prepareChartData(
+                                                                        dailyQualityLevels.map(d => ({ date: d.date, count: d.atencao })),
+                                                                        timeFilter
+                                                                    ).map(d => d.count),
+                                                                    strokeWidth: 2,
+                                                                    color: () => "#F97316",
+                                                                },
+                                                                {
+                                                                    data: prepareChartData(
+                                                                        dailyQualityLevels.map(d => ({ date: d.date, count: d.critico })),
+                                                                        timeFilter
+                                                                    ).map(d => d.count),
+                                                                    strokeWidth: 2,
+                                                                    color: () => "#EF4444",
+                                                                },
+                                                            ],
+                                                        }}
+                                                        width={Math.max(Dimensions.get("window").width - 48, timeFilter * 8)}
+                                                        height={180}
+                                                        chartConfig={{
+                                                            backgroundColor: "#ffffff",
+                                                            backgroundGradientFrom: "#ffffff",
+                                                            backgroundGradientTo: "#ffffff",
+                                                            decimalPlaces: 0,
+                                                            color: () => "#7C3AED",
+                                                            strokeWidth: 2,
+                                                            propsForDots: {
+                                                                r: "2",
+                                                                strokeWidth: "1",
+                                                            },
+                                                            propsForLabels: {
+                                                                fontSize: 10,
+                                                                dx: "-10",
+                                                            },
+                                                        }}
+                                                        yAxisLabel=""
+                                                        yAxisSuffix=""
+                                                        fromZero={true}
+                                                        style={styles.chartInnerContainer}
+                                                        withVerticalLines={false}
+                                                    />
+                                                </ScrollView>
+                                            ) : (
+                                                <Text style={styles.noDataText}>Sem dados suficientes para este período</Text>
+                                            )}
+                                        </View>
+                                    </ScrollView>
+                                    <Text style={styles.statNumber}>
+                                        {dailyQualityLevels.reduce((total, day) => total + day.boa + day.normal + day.atencao + day.critico, 0)} análises realizadas
+                                    </Text>
+                                </View>
+
+                                {/* Legenda de Qualidade */}
+                                <View style={[styles.chartCard, { paddingBottom: 8 }]}>
+                                    <View style={styles.chartLegend}>
+                                        <View style={styles.legendItem}>
+                                            <View style={[styles.legendColor, { backgroundColor: "#22C55E" }]} />
+                                            <Text style={styles.legendText}>Boa</Text>
+                                        </View>
+                                        <View style={styles.legendItem}>
+                                            <View style={[styles.legendColor, { backgroundColor: "#F59E0B" }]} />
+                                            <Text style={styles.legendText}>Normal</Text>
+                                        </View>
+                                        <View style={styles.legendItem}>
+                                            <View style={[styles.legendColor, { backgroundColor: "#F97316" }]} />
+                                            <Text style={styles.legendText}>Atenção</Text>
+                                        </View>
+                                        <View style={styles.legendItem}>
+                                            <View style={[styles.legendColor, { backgroundColor: "#EF4444" }]} />
+                                            <Text style={styles.legendText}>Crítico</Text>
+                                        </View>
+                                    </View>
                                 </View>
                             </>
                         )}
@@ -531,7 +669,7 @@ const styles = StyleSheet.create({
         marginBottom: 2,
     },
     quickCardTitle: {
-        fontSize: 11,
+        fontSize: 10,
         fontWeight: "700",
         color: "#004d48",
         textAlign: "center",
@@ -674,6 +812,20 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: "700",
     },
+    chartTitleContainer: {
+        flexDirection: "column",
+        gap: 6,
+    },
+    percentageBadgeInline: {
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 6,
+        alignSelf: "flex-start",
+    },
+    percentageTextInline: {
+        fontSize: 11,
+        fontWeight: "600",
+    },
     chartContainer: {
         marginVertical: 4,
         marginHorizontal: -16,
@@ -689,6 +841,8 @@ const styles = StyleSheet.create({
     chartScrollContainer: {
         marginVertical: 4,
         marginHorizontal: -16,
+        paddingLeft: 20,
+        paddingRight: 80,
     },
     chartInnerContainer: {
         marginVertical: 0,

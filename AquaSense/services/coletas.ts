@@ -24,6 +24,17 @@ export interface DailyAnalysisData {
 }
 
 /**
+ * Dados diários por nível de alerta
+ */
+export interface DailyLevelData {
+  date: string; // formato YYYY-MM-DD
+  boa: number;
+  normal: number;
+  atencao: number;
+  critico: number;
+}
+
+/**
  * Busca coletas simples de um período e as agrupa por nivelAlerta
  * @param daysBack - Quantos dias atrás buscar (padrão: 30 dias)
  * @returns Contagem de coletas por nível de alerta
@@ -267,6 +278,87 @@ export async function getPreviousPeriodColetasCompletas(daysBack: number = 30): 
     return querySnapshot.size;
   } catch (error) {
     console.error("Erro ao buscar período anterior de coletas completas:", error);
+    throw error;
+  }
+}
+
+/**
+ * Busca dados diários unificados (simples + completas) agrupados por nível de alerta
+ * @param daysBack - Quantos dias atrás buscar
+ * @returns Array com dados de cada nível por dia
+ */
+export async function getDailyQualityLevels(daysBack: number = 30): Promise<DailyLevelData[]> {
+  try {
+    const dataInicio = new Date();
+    dataInicio.setDate(dataInicio.getDate() - daysBack);
+
+    // Buscar ambas as coleções
+    const qSimples = query(
+      collection(db, "coletaSimples"),
+      where("data", ">=", Timestamp.fromDate(dataInicio))
+    );
+
+    const qCompletas = query(
+      collection(db, "coletaCompleta"),
+      where("data", ">=", Timestamp.fromDate(dataInicio))
+    );
+
+    const [snapshotSimples, snapshotCompletas] = await Promise.all([
+      getDocs(qSimples),
+      getDocs(qCompletas),
+    ]);
+
+    // Agrupar por dia e nível
+    const dailyLevels: { [key: string]: DailyLevelData } = {};
+
+    // Processar coletas simples
+    snapshotSimples.forEach((doc) => {
+      const timestamp = doc.data().data;
+      const nivel = doc.data().nivelAlerta ?? 2;
+
+      if (timestamp) {
+        const date = new Date(timestamp.toDate());
+        const dateStr = date.toISOString().split("T")[0];
+
+        if (!dailyLevels[dateStr]) {
+          dailyLevels[dateStr] = { date: dateStr, boa: 0, normal: 0, atencao: 0, critico: 0 };
+        }
+
+        if (nivel === 1) dailyLevels[dateStr].boa++;
+        else if (nivel === 2) dailyLevels[dateStr].normal++;
+        else if (nivel === 3) dailyLevels[dateStr].atencao++;
+        else if (nivel === 4) dailyLevels[dateStr].critico++;
+      }
+    });
+
+    // Processar coletas completas
+    snapshotCompletas.forEach((doc) => {
+      const timestamp = doc.data().data;
+      const nivel = doc.data().nivelAlerta ?? 2;
+
+      if (timestamp) {
+        const date = new Date(timestamp.toDate());
+        const dateStr = date.toISOString().split("T")[0];
+
+        if (!dailyLevels[dateStr]) {
+          dailyLevels[dateStr] = { date: dateStr, boa: 0, normal: 0, atencao: 0, critico: 0 };
+        }
+
+        if (nivel === 1) dailyLevels[dateStr].boa++;
+        else if (nivel === 2) dailyLevels[dateStr].normal++;
+        else if (nivel === 3) dailyLevels[dateStr].atencao++;
+        else if (nivel === 4) dailyLevels[dateStr].critico++;
+      }
+    });
+
+    // Converter para array e ordenar por data
+    const result = Object.values(dailyLevels).sort((a, b) =>
+      a.date.localeCompare(b.date)
+    );
+
+    return result;
+  } catch (error) {
+    console.error("Erro ao buscar dados diários de qualidade por nível:", error);
     throw error;
   }
 }
