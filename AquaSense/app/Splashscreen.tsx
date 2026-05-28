@@ -73,8 +73,7 @@ export default function Splashscreen() {
       if (loadingAuth) return;
 
       if (user && user.emailVerified) {
-        // Usuário já logado e verificado → vai direto pra home
-        router.replace('/(tabs)/home' as any);
+        router.replace('/(tabs)' as any);
       } else {
         // Sem usuário ou e-mail não verificado → vai pro login
         router.replace('/login');
