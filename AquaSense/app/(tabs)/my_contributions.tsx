@@ -59,46 +59,99 @@ export default function MyContributions() {
     }, []);
 
     async function buscarContribuicoes() {
-        setLoading(true);
-        try {
-            const uid = auth.currentUser?.uid;
-            if (!uid) return;
+    setLoading(true);
 
-            // Busca observações reais do Firestore
-            const q = query(
-                collection(db, "observacoes"),
-                where("criadoPor", "==", uid),
-                orderBy("dataCriacao", "desc")
-            );
-            const snap = await getDocs(q);
+    try {
+        const uid = auth.currentUser?.uid;
 
-            const lista: Contribuicao[] = snap.docs.map((doc) => {
-                const d = doc.data();
-                const { data, hora } = formatarData(d.dataCriacao);
-                return {
-                    id: doc.id,
-                    tipo: "observacao",
-                    titulo: `Observação - ${d.corpoHidricoId ?? "Corpo hídrico"}`,
-                    corpo: d.corpoHidricoId ?? "—",
-                    detalhe: `Cor: ${d.cor ?? "—"} · Odor: ${d.odor ?? "—"}`,
-                    data,
-                    hora,
-                    status: "Pendente",
-                    statusBg: "#fff8e1",
-                    statusColor: "#e6a817",
-                    icon: "leaf-outline",
-                    iconBg: "rgba(230,168,23,0.12)",
-                    iconColor: "#e6a817",
-                };
-            });
-
-            setContribuicoes(lista);
-        } catch (e) {
-            console.error("Erro ao buscar contribuições:", e);
-        } finally {
-            setLoading(false);
+        if (!uid) {
+            setContribuicoes([]);
+            return;
         }
+
+        const observacoesQuery = query(
+            collection(db, "observacoes"),
+            where("criadoPor", "==", uid),
+            orderBy("dataCriacao", "desc")
+        );
+
+        const [obsSnap, denuncias] = await Promise.all([
+            getDocs(observacoesQuery),
+            buscarDenunciasPorUsuario(uid),
+        ]);
+
+        const observacoes: Contribuicao[] = obsSnap.docs.map((doc) => {
+            const d = doc.data();
+            const { data, hora } = formatarData(d.dataCriacao);
+
+            return {
+                id: doc.id,
+                tipo: "observacao",
+                titulo: `Observação - ${d.corpoHidricoId ?? "Corpo hídrico"}`,
+                corpo: d.corpoHidricoId ?? "—",
+                detalhe: `Cor: ${d.cor ?? "—"} · Odor: ${d.odor ?? "—"}`,
+                data,
+                hora,
+                status: "Pendente",
+                statusBg: "#fff8e1",
+                statusColor: "#e6a817",
+                icon: "leaf-outline",
+                iconBg: "rgba(230,168,23,0.12)",
+                iconColor: "#e6a817",
+            };
+        });
+
+        const denunciasFormatadas: Contribuicao[] = denuncias.map((d: any) => {
+            const { data, hora } = formatarData(d.dataCriacao);
+
+            let statusBg = "#fff8e1";
+            let statusColor = "#e6a817";
+
+            if (d.status === "Validada") {
+                statusBg = "#e6f4f1";
+                statusColor = "#1a8c80";
+            }
+
+            if (d.status === "Em análise") {
+                statusBg = "#fdecea";
+                statusColor = "#e05252";
+            }
+
+            return {
+                id: d.id,
+                tipo: "denuncia",
+                titulo: `Denúncia - ${d.titulo}`,
+                corpo: d.corpoHidricoId ?? "—",
+                detalhe: `Grau: ${d.grau}`,
+                data,
+                hora,
+                status: d.status ?? "Pendente",
+                statusBg,
+                statusColor,
+                icon: "megaphone-outline",
+                iconBg: "rgba(224,82,82,0.12)",
+                iconColor: "#e05252",
+            };
+        });
+
+        const listaFinal = [
+            ...observacoes,
+            ...denunciasFormatadas,
+        ].sort((a, b) => {
+            const dataA = new Date(`${a.data} ${a.hora}`).getTime();
+            const dataB = new Date(`${b.data} ${b.hora}`).getTime();
+
+            return dataB - dataA;
+        });
+
+        setContribuicoes(listaFinal);
+
+    } catch (e) {
+        console.error("Erro ao buscar contribuições:", e);
+    } finally {
+        setLoading(false);
     }
+}
 
     const filtradas = contribuicoes.filter((c) => {
         const buscaOk = c.titulo.toLowerCase().includes(search.toLowerCase());
@@ -133,7 +186,7 @@ export default function MyContributions() {
                                     Minhas contribuições
                                 </Text>
                                 <Text style={[styles.headerSubtitle, { fontFamily: questrial }]}>
-                                    Acompanhe aqui todas as suas medições e observações enviadas.
+                                    Acompanhe aqui todas as suas observações e denúncias enviadas.
                                 </Text>
                             </View>
                             <Image
