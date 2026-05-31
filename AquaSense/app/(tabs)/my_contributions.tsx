@@ -17,6 +17,7 @@ import { Stack, useRouter } from "expo-router";
 import { useFonts, Questrial_400Regular } from "@expo-google-fonts/questrial";
 import { collection, query, where, orderBy, getDocs } from "firebase/firestore";
 import { db, auth } from "../../config/firebase";
+import { buscarDenunciasPorUsuario } from "@/services/firestore/complaints";
 
 const PRIMARY = "#004d48";
 
