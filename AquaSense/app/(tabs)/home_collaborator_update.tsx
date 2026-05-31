@@ -463,7 +463,8 @@ export default function HomeColaborador() {
                                 </View>
                                 <View style={styles.bellWrap}>
                                     <View style={styles.iconCircle}>
-                                        <Ionicons name="notifications-outline" size={19} color="#e8f5f0" />
+                                        <Ionicons name="notifications-outline" size={19} color="#e8f5f0"
+                                        onPress={() => router.push("/alerts" as any)}/>
                                     </View>
                                     <View style={styles.badge}>
                                         <Text style={styles.badgeText}>3</Text>
@@ -548,24 +549,24 @@ export default function HomeColaborador() {
                                 onPress={() => router.push("/report_complaint" as any)}
                             />
                             <AcaoCard
-                                iconName="water-outline"
+                                iconName="book-outline"
                                 iconBg={BLUE_ACTION}
                                 cardBg="#f0f6ff"
                                 borderColor="#ccdcf0"
                                 arrowColor={BLUE_ACTION}
-                                title="Sugerir novo corpo hídrico"
-                                subtitle="Ajude a mapear novos pontos da região"
+                                title="Central de Aprendizagem"
+                                subtitle="Aprenda a realizar medições simples"
                                 fontFamily={questrial}
-                                onPress={() => router.push("/register_water_body" as any)}
+                                onPress={() => router.push("/learning_center" as any)}
                             />
                         </View>
 
                         {/* ── ATIVIDADES RECENTES ────────────────────────── */}
                         <View style={styles.sectionHeader}>
                             <Text style={[styles.sectionTitle, { fontFamily: questrial, marginBottom: 0 }]}>
-                                Minhas atividades recentes
+                                Minhas Contribuições
                             </Text>
-                            <TouchableOpacity onPress={() => router.push("/activities" as any)} activeOpacity={0.7}>
+                            <TouchableOpacity onPress={() => router.push("/my_contributions" as any)} activeOpacity={0.7}>
                                 <View style={styles.verTodasRow}>
                                     <Text style={[styles.verTodasText, { fontFamily: questrial }]}>Ver todas</Text>
                                     <Ionicons name="chevron-forward" size={13} color={TEAL_MED} />
@@ -611,7 +612,7 @@ export default function HomeColaborador() {
                         {/* ── COMUNIDADE EM NÚMEROS ──────────────────────── */}
                         <View style={styles.sectionHeader}>
                             <Text style={[styles.sectionTitle, { fontFamily: questrial, marginBottom: 0 }]}>
-                                Sua comunidade em números
+                                Sua comunidade 
                             </Text>
                             <TouchableOpacity onPress={() => router.push("/community_panel" as any)} activeOpacity={0.7}>
                                 <View style={styles.verTodasRow}>
@@ -657,7 +658,7 @@ export default function HomeColaborador() {
                         <NavItem icon="home" iconOutline="home-outline" label="Home" active={activeTab === "home"} fontFamily={questrial} onPress={() => handleTabPress("home")} />
                         <NavItem icon="map" iconOutline="map-outline" label="Mapa" active={activeTab === "mapa"} fontFamily={questrial} onPress={() => handleTabPress("mapa")} />
                         <View style={styles.fabSpacer}>
-                            <TouchableOpacity style={styles.fab} onPress={() => router.push("/register_observation" as any)} activeOpacity={0.85}>
+                            <TouchableOpacity style={styles.fab} onPress={() => router.push("/register_water_body" as any)} activeOpacity={0.85}>
                                 <View style={styles.fabInner}>
                                     <Ionicons name="add" size={32} color="#FFFFFF" />
                                 </View>

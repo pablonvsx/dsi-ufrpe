@@ -1,13 +1,5 @@
-/**
- * services/firestore/measurements.ts
- *
- * Service para a coleção `medicoesColaborador`.
- * Fonte principal de medições feitas por colaboradores no AquaSense.
- */
-
 import {
     collection,
-    doc,
     addDoc,
     getDocs,
     query,
@@ -19,15 +11,10 @@ import {
 } from "firebase/firestore";
 import { db } from "@/config/firebase";
 
-// ─── Constantes ───────────────────────────────────────────────────────────────
-
 const COLECAO = "medicoesColaborador";
-
-// ─── Tipos ────────────────────────────────────────────────────────────────────
 
 export type StatusMedicao = "pendente" | "validada" | "rejeitada";
 
-/** Dados de entrada para criar uma nova medição */
 export interface CriarMedicaoColaboradorInput {
     usuarioId: string;
     usuarioNome?: string;
@@ -35,15 +22,15 @@ export interface CriarMedicaoColaboradorInput {
     corpoHidricoNome?: string;
     cidade?: string;
     estado?: string;
+    bairro?: string | null;
+    areaChave?: string;
     ph?: number;
     temperatura?: number;
     turbidez?: string;
     observacao?: string;
-    // Campos reservados para extensões futuras
     [key: string]: unknown;
 }
 
-/** Documento normalizado retornado pelos métodos de leitura */
 export interface MedicaoColaborador {
     id: string;
     usuarioId: string;
@@ -52,6 +39,8 @@ export interface MedicaoColaborador {
     corpoHidricoNome?: string;
     cidade?: string;
     estado?: string;
+    bairro?: string | null;
+    areaChave?: string;
     ph?: number;
     temperatura?: number;
     turbidez?: string;
@@ -62,25 +51,23 @@ export interface MedicaoColaborador {
     dataCriacao: Date;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 function normalizarDoc(id: string, data: Record<string, unknown>): MedicaoColaborador {
     const ts = data.dataCriacao;
     const dataCriacao =
-        ts instanceof Timestamp
-            ? ts.toDate()
-            : ts instanceof Date
-            ? ts
-            : new Date();
+        ts instanceof Timestamp ? ts.toDate() :
+        ts instanceof Date ? ts :
+        new Date();
 
     return {
         id,
         usuarioId: (data.usuarioId as string) ?? "",
-        usuarioNome: (data.usuarioNome as string | undefined),
-        corpoHidricoId: (data.corpoHidricoId as string | undefined),
-        corpoHidricoNome: (data.corpoHidricoNome as string | undefined),
-        cidade: (data.cidade as string | undefined),
-        estado: (data.estado as string | undefined),
+        usuarioNome: data.usuarioNome as string | undefined,
+        corpoHidricoId: data.corpoHidricoId as string | undefined,
+        corpoHidricoNome: data.corpoHidricoNome as string | undefined,
+        cidade: data.cidade as string | undefined,
+        estado: data.estado as string | undefined,
+        bairro: data.bairro as string | null | undefined,
+        areaChave: data.areaChave as string | undefined,
         ph: data.ph as number | undefined,
         temperatura: data.temperatura as number | undefined,
         turbidez: data.turbidez as string | undefined,
@@ -92,14 +79,6 @@ function normalizarDoc(id: string, data: Record<string, unknown>): MedicaoColabo
     };
 }
 
-// ─── Funções públicas ─────────────────────────────────────────────────────────
-
-/**
- * Salva uma nova medição do colaborador no Firestore.
- * A coleção `medicoesColaborador` é criada automaticamente no primeiro registro.
- *
- * @returns ID do documento criado
- */
 export async function createCollaboratorMeasurement(
     data: CriarMedicaoColaboradorInput
 ): Promise<string> {
@@ -109,14 +88,16 @@ export async function createCollaboratorMeasurement(
         corpoHidricoId: data.corpoHidricoId ?? null,
         corpoHidricoNome: data.corpoHidricoNome ?? null,
         cidade: data.cidade ?? null,
-        estado: data.estado ?? null,
+        estado: data.estado ?? "PE",
+        bairro: data.bairro ?? null,
+        areaChave: data.areaChave ?? null,
         ph: data.ph ?? null,
         temperatura: data.temperatura ?? null,
         turbidez: data.turbidez ?? null,
         observacao: data.observacao ?? null,
         tipoMedicao: "simples",
         origem: "colaborador",
-        status: "pendente",
+        status: "pendente" as StatusMedicao,
         dataCriacao: serverTimestamp(),
     };
 
@@ -124,10 +105,6 @@ export async function createCollaboratorMeasurement(
     return docRef.id;
 }
 
-/**
- * Retorna todas as medições de um colaborador específico,
- * ordenadas da mais recente para a mais antiga.
- */
 export async function getCollaboratorMeasurementsByUser(
     uid: string
 ): Promise<MedicaoColaborador[]> {
@@ -137,20 +114,15 @@ export async function getCollaboratorMeasurementsByUser(
             where("usuarioId", "==", uid),
             orderBy("dataCriacao", "desc")
         );
+
         const snap = await getDocs(q);
-        return snap.docs.map((d) =>
-            normalizarDoc(d.id, d.data() as Record<string, unknown>)
-        );
+        return snap.docs.map((d) => normalizarDoc(d.id, d.data()));
     } catch (err) {
         console.warn("[measurements] getCollaboratorMeasurementsByUser:", err);
         return [];
     }
 }
 
-/**
- * Retorna todas as medições associadas a um corpo hídrico específico,
- * ordenadas da mais recente para a mais antiga.
- */
 export async function getCollaboratorMeasurementsByWaterBody(
     corpoHidricoId: string
 ): Promise<MedicaoColaborador[]> {
@@ -160,22 +132,35 @@ export async function getCollaboratorMeasurementsByWaterBody(
             where("corpoHidricoId", "==", corpoHidricoId),
             orderBy("dataCriacao", "desc")
         );
+
         const snap = await getDocs(q);
-        return snap.docs.map((d) =>
-            normalizarDoc(d.id, d.data() as Record<string, unknown>)
-        );
+        return snap.docs.map((d) => normalizarDoc(d.id, d.data()));
     } catch (err) {
         console.warn("[measurements] getCollaboratorMeasurementsByWaterBody:", err);
         return [];
     }
 }
 
-/**
- * Retorna as N medições mais recentes (de todos os colaboradores).
- * Útil para feeds globais ou painéis administrativos.
- *
- * @param limitNumber Padrão: 20
- */
+export async function getCollaboratorMeasurementsByArea(
+    areaChave: string,
+    maxItems = 20
+): Promise<MedicaoColaborador[]> {
+    try {
+        const q = query(
+            collection(db, COLECAO),
+            where("areaChave", "==", areaChave),
+            orderBy("dataCriacao", "desc"),
+            limit(maxItems)
+        );
+
+        const snap = await getDocs(q);
+        return snap.docs.map((d) => normalizarDoc(d.id, d.data()));
+    } catch (err) {
+        console.warn("[measurements] getCollaboratorMeasurementsByArea:", err);
+        return [];
+    }
+}
+
 export async function getRecentCollaboratorMeasurements(
     limitNumber = 20
 ): Promise<MedicaoColaborador[]> {
@@ -185,10 +170,9 @@ export async function getRecentCollaboratorMeasurements(
             orderBy("dataCriacao", "desc"),
             limit(limitNumber)
         );
+
         const snap = await getDocs(q);
-        return snap.docs.map((d) =>
-            normalizarDoc(d.id, d.data() as Record<string, unknown>)
-        );
+        return snap.docs.map((d) => normalizarDoc(d.id, d.data()));
     } catch (err) {
         console.warn("[measurements] getRecentCollaboratorMeasurements:", err);
         return [];

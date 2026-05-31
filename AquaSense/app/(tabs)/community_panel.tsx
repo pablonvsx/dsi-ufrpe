@@ -25,8 +25,7 @@ import { useFonts, Questrial_400Regular } from "@expo-google-fonts/questrial";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useRouter } from "expo-router";
 import Svg, { Polyline, Rect } from "react-native-svg";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/config/firebase";
+
 
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -184,6 +183,7 @@ export default function CommunityPanel() {
     // ── Estado de dados ─────────────────────────────────────────────────────
     const [loading, setLoading] = useState(true);
     const [corpoHidrico, setCorpoHidrico] = useState<CorpoHidrico | null>(null);
+    const [areaLabel, setAreaLabel] = useState<string | null>(null);
     const [stats, setStats] = useState<CommunityStats>({
         contribuicoes: 0,
         denuncias: 0,
@@ -219,25 +219,32 @@ export default function CommunityPanel() {
             setLoading(true);
             try {
                 // 1. Resolve painel em uma única chamada
-                const { corpoHidricoId, stats: s, atividades: a } =
+                const { contexto, stats: s, atividades: a } =
                     await getCommunityPanelData(userProfile.uid);
 
                 setStats(s);
                 setAtividades(a);
 
-                // 2. Busca metadados do corpo hídrico para exibir nome/localização
-                if (corpoHidricoId) {
-                    const snap = await getDoc(doc(db, "corposHidricos", corpoHidricoId));
-                    if (snap.exists()) {
-                        const d = snap.data();
-                        setCorpoHidrico({
-                            id: snap.id,
-                            nome: d.nome ?? "Corpo hídrico",
-                            cidade: d.cidade ?? d.municipio ?? "",
-                            estado: d.estado ?? d.uf ?? "",
-                        });
-                    }
+                const area = [
+                    contexto.bairro,
+                    contexto.cidade,
+                    contexto.estado,
+                ].filter(Boolean).join(" - ");
+
+                setAreaLabel(area || contexto.areaChave || null);
+
+                
+                if (contexto.corpoHidrico) {
+                    setCorpoHidrico({
+                        id: contexto.corpoHidrico.id,
+                        nome: contexto.corpoHidrico.nome,
+                        cidade: contexto.corpoHidrico.cidade ?? "",
+                        estado: contexto.corpoHidrico.estado ?? "",
+                    });
+                } else {
+                    setCorpoHidrico(null);
                 }
+                
             } catch (err) {
                 console.error("[CommunityPanel] fetchData:", err);
             } finally {
@@ -333,15 +340,15 @@ export default function CommunityPanel() {
                                                 <Ionicons name="water" size={16} color={TEAL_MED} />
                                             </View>
                                             <Text style={[styles.corpoLabelText, { fontFamily: questrial }]}>
-                                                Corpo hídrico monitorado
+                                                Comunidade monitorada
                                             </Text>
                                         </View>
                                         <Text style={[styles.corpoNome, { fontFamily: questrial }]}>{corpoHidrico.nome}</Text>
-                                        {(corpoHidrico.cidade || corpoHidrico.estado) && (
+                                        {areaLabel && (
                                             <View style={styles.corpoLocRow}>
                                                 <Ionicons name="location-outline" size={11} color={TEXT_MUTED} />
                                                 <Text style={[styles.corpoLoc, { fontFamily: questrial }]}>
-                                                    {[corpoHidrico.cidade, corpoHidrico.estado].filter(Boolean).join(" - ")}
+                                                    {areaLabel}
                                                 </Text>
                                             </View>
                                         )}
@@ -368,8 +375,8 @@ export default function CommunityPanel() {
                             <View style={styles.corpoCard}>
                                 <EmptyState
                                     iconName="map-outline"
-                                    titulo="Nenhum corpo hídrico selecionado"
-                                    descricao="Tente explorar o mapa para acompanhar um corpo hídrico."
+                                    titulo="Nenhuma comunidade identificada"
+                                    descricao="Complete sua localização no perfil ou acesse o mapa para gerar dados comunitários."
                                     fontFamily={questrial}
                                     onAction={() => router.push("/map" as any)}
                                     actionLabel="Abrir mapa"

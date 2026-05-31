@@ -1,13 +1,5 @@
-/**
- * services/firestore/complaints.ts
- *
- * Service para a coleção `denuncias`.
- * A coleção é criada automaticamente no Firestore ao salvar o primeiro documento.
- */
-
 import {
     collection,
-    doc,
     addDoc,
     getDocs,
     query,
@@ -15,14 +7,11 @@ import {
     orderBy,
     serverTimestamp,
     Timestamp,
+    limit,
 } from "firebase/firestore";
 import { db } from "@/config/firebase";
 
-// ─── Constantes ───────────────────────────────────────────────────────────────
-
 const COLECAO = "denuncias";
-
-// ─── Tipos ────────────────────────────────────────────────────────────────────
 
 export type StatusDenuncia = "pendente" | "em_analise" | "resolvida";
 
@@ -36,7 +25,8 @@ export interface CriarDenunciaInput {
     tipoProblema?: string;
     cidade?: string;
     estado?: string;
-    // Campos reservados para extensões futuras
+    bairro?: string | null;
+    areaChave?: string;
     [key: string]: unknown;
 }
 
@@ -51,20 +41,18 @@ export interface Denuncia {
     tipoProblema?: string;
     cidade?: string;
     estado?: string;
+    bairro?: string | null;
+    areaChave?: string;
     status: StatusDenuncia;
     dataCriacao: Date;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 function normalizarDoc(id: string, data: Record<string, unknown>): Denuncia {
     const ts = data.dataCriacao;
     const dataCriacao =
-        ts instanceof Timestamp
-            ? ts.toDate()
-            : ts instanceof Date
-            ? ts
-            : new Date();
+        ts instanceof Timestamp ? ts.toDate() :
+        ts instanceof Date ? ts :
+        new Date();
 
     return {
         id,
@@ -77,19 +65,13 @@ function normalizarDoc(id: string, data: Record<string, unknown>): Denuncia {
         tipoProblema: data.tipoProblema as string | undefined,
         cidade: data.cidade as string | undefined,
         estado: data.estado as string | undefined,
+        bairro: data.bairro as string | null | undefined,
+        areaChave: data.areaChave as string | undefined,
         status: (data.status as StatusDenuncia) ?? "pendente",
         dataCriacao,
     };
 }
 
-// ─── Funções públicas ─────────────────────────────────────────────────────────
-
-/**
- * Cria uma nova denúncia no Firestore.
- * A coleção `denuncias` é criada automaticamente no primeiro registro.
- *
- * @returns ID do documento criado
- */
 export async function createComplaint(data: CriarDenunciaInput): Promise<string> {
     const payload = {
         usuarioId: data.usuarioId,
@@ -100,7 +82,9 @@ export async function createComplaint(data: CriarDenunciaInput): Promise<string>
         descricao: data.descricao,
         tipoProblema: data.tipoProblema ?? null,
         cidade: data.cidade ?? null,
-        estado: data.estado ?? null,
+        estado: data.estado ?? "PE",
+        bairro: data.bairro ?? null,
+        areaChave: data.areaChave ?? null,
         status: "pendente" as StatusDenuncia,
         dataCriacao: serverTimestamp(),
     };
@@ -109,10 +93,6 @@ export async function createComplaint(data: CriarDenunciaInput): Promise<string>
     return docRef.id;
 }
 
-/**
- * Retorna todas as denúncias feitas por um usuário específico,
- * ordenadas da mais recente para a mais antiga.
- */
 export async function getComplaintsByUser(uid: string): Promise<Denuncia[]> {
     try {
         const q = query(
@@ -120,35 +100,44 @@ export async function getComplaintsByUser(uid: string): Promise<Denuncia[]> {
             where("usuarioId", "==", uid),
             orderBy("dataCriacao", "desc")
         );
+
         const snap = await getDocs(q);
-        return snap.docs.map((d) =>
-            normalizarDoc(d.id, d.data() as Record<string, unknown>)
-        );
+        return snap.docs.map((d) => normalizarDoc(d.id, d.data()));
     } catch (err) {
         console.warn("[complaints] getComplaintsByUser:", err);
         return [];
     }
 }
 
-/**
- * Retorna todas as denúncias associadas a um corpo hídrico específico,
- * ordenadas da mais recente para a mais antiga.
- */
-export async function getComplaintsByWaterBody(
-    corpoHidricoId: string
-): Promise<Denuncia[]> {
+export async function getComplaintsByWaterBody(corpoHidricoId: string): Promise<Denuncia[]> {
     try {
         const q = query(
             collection(db, COLECAO),
             where("corpoHidricoId", "==", corpoHidricoId),
             orderBy("dataCriacao", "desc")
         );
+
         const snap = await getDocs(q);
-        return snap.docs.map((d) =>
-            normalizarDoc(d.id, d.data() as Record<string, unknown>)
-        );
+        return snap.docs.map((d) => normalizarDoc(d.id, d.data()));
     } catch (err) {
         console.warn("[complaints] getComplaintsByWaterBody:", err);
+        return [];
+    }
+}
+
+export async function getComplaintsByArea(areaChave: string, maxItems = 20): Promise<Denuncia[]> {
+    try {
+        const q = query(
+            collection(db, COLECAO),
+            where("areaChave", "==", areaChave),
+            orderBy("dataCriacao", "desc"),
+            limit(maxItems)
+        );
+
+        const snap = await getDocs(q);
+        return snap.docs.map((d) => normalizarDoc(d.id, d.data()));
+    } catch (err) {
+        console.warn("[complaints] getComplaintsByArea:", err);
         return [];
     }
 }
