@@ -1,4 +1,4 @@
-import { collection, addDoc, serverTimestamp, doc, getDoc } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, getDoc, query, where, getDocs, updateDoc } from "firebase/firestore";
 import { db } from "@/config/firebase";
 import { CorpoHidrico, PontoDeUso } from "@/types/water_bodies";
 
@@ -64,5 +64,90 @@ export async function getWaterBodyById(id: string): Promise<CorpoHidrico | null>
   } catch (error) {
     console.error("Erro ao buscar corpo hídrico:", error);
     return null;
+  }
+}
+
+/**
+ * Busca todos os corpos hídricos validados (cadastroValido === true).
+ * @returns Array de CorpoHidrico validados
+ */
+export async function getValidatedWaterBodies(): Promise<CorpoHidrico[]> {
+  try {
+    const q = query(
+      collection(db, "corposHidricos"),
+      where("cadastroValido", "==", true)
+    );
+    const querySnapshot = await getDocs(q);
+    
+    const waterBodies = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    } as CorpoHidrico));
+
+    return waterBodies;
+  } catch (error) {
+    console.error("Erro ao buscar corpos hídricos validados:", error);
+    return [];
+  }
+}
+
+/**
+ * Busca todos os corpos hídricos não validados (cadastroValido === false).
+ * @returns Array de CorpoHidrico não validados
+ */
+export async function getUnvalidatedWaterBodies(): Promise<CorpoHidrico[]> {
+  try {
+    const q = query(
+      collection(db, "corposHidricos"),
+      where("cadastroValido", "==", false)
+    );
+    const querySnapshot = await getDocs(q);
+    
+    const waterBodies = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    } as CorpoHidrico));
+
+    return waterBodies;
+  } catch (error) {
+    console.error("Erro ao buscar corpos hídricos não validados:", error);
+    return [];
+  }
+}
+
+/**
+ * Valida um corpo hídrico (marca como válido e registra o validador).
+ * @param id - ID do corpo hídrico
+ * @param validatorId - ID do usuário gestor que está validando
+ * @returns Promise<void>
+ */
+export async function validateWaterBody(id: string, validatorId: string): Promise<void> {
+  try {
+    await updateDoc(doc(db, "corposHidricos", id), {
+      cadastroValido: true,
+      validadoPor: validatorId,
+    });
+  } catch (error) {
+    console.error("Erro ao validar corpo hídrico:", error);
+    throw error;
+  }
+}
+
+/**
+ * Descarta um corpo hídrico (marca como inválido e registra o motivo).
+ * @param id - ID do corpo hídrico
+ * @param rejectorId - ID do usuário gestor que está rejeitando
+ * @param reason - Motivo da rejeição
+ * @returns Promise<void>
+ */
+export async function rejectWaterBody(id: string, rejectorId: string, reason: string): Promise<void> {
+  try {
+    await updateDoc(doc(db, "corposHidricos", id), {
+      validadoPor: rejectorId,
+      comentario: reason,
+    });
+  } catch (error) {
+    console.error("Erro ao rejeitar corpo hídrico:", error);
+    throw error;
   }
 }

@@ -2,6 +2,21 @@ import { createUserWithEmailAndPassword, reload } from "firebase/auth";
 import { doc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "@/config/firebase";
 
+function normalizeAreaKey(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9\s]/g, "")
+    .trim()
+    .replace(/\s+/g, "_")
+    .toUpperCase();
+}
+
+function generateCityAreaKey(cidade: string): string {
+  return `PE_${normalizeAreaKey(cidade)}`;
+}
+
+
 // ==========================================
 // USUÁRIO COMUM
 // ==========================================
@@ -25,6 +40,9 @@ export async function registerCommonUser(
     nome: nome.trim(),
     email: email.toLowerCase().trim(),
     cidade,
+    estado: "PE",
+    bairro: null,
+    areaChave: generateCityAreaKey(cidade),
     tipoUsuario: "comum",
     statusConta: "pendente_verificacao",
     hasSeenTutorial: false,
@@ -57,6 +75,9 @@ export async function registerCollaboratorUser(
     email: email.toLowerCase().trim(),
     organizacao: organizacao.trim(),
     cidade,
+    estado: "PE",
+    bairro: null,
+    areaChave: generateCityAreaKey(cidade),
     tipoUsuario: "colaborador",
     statusConta: "pendente_verificacao",
     hasSeenTutorial: false,

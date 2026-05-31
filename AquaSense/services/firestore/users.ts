@@ -1,6 +1,6 @@
-import { doc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, updateDoc, serverTimestamp, collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/config/firebase";
-import { Usuario } from "@/types";
+import { Usuario, UsuarioColaborador, UsuarioTecnico } from "@/types";
 
 // Salva um usuario na colecao "usuarios" usando o uid como ID do documento.
 export async function salvarUsuario(uid: string, dados: Usuario) {
@@ -43,3 +43,61 @@ export async function updateLastWaterBody(uid: string, corpoHidricoId: string): 
         console.warn("[AquaSense] updateLastWaterBody erro:", err);
     }
 }
+
+/**
+ * Busca todos os usuários colaboradores da coleção "usuarios" do Firestore.
+ * @returns Promise com array de UsuarioColaborador
+ */
+export async function getCollaborators(): Promise<UsuarioColaborador[]> {
+    try {
+        const q = query(collection(db, "usuarios"), where("tipoUsuario", "==", "colaborador"));
+        const querySnapshot = await getDocs(q);
+        return querySnapshot.docs.map((doc) => ({
+            ...doc.data(),
+            uid: doc.id,
+        } as UsuarioColaborador));
+    } catch (error) {
+        console.error("Erro ao buscar colaboradores:", error);
+        throw error;
+    }
+}
+
+/**
+ * Busca todos os usuários técnicos da coleção "usuarios" do Firestore.
+ * @returns Promise com array de UsuarioTecnico
+ */
+export async function getTechnicians(): Promise<UsuarioTecnico[]> {
+    try {
+        const q = query(collection(db, "usuarios"), where("tipoUsuario", "==", "tecnico"));
+        const querySnapshot = await getDocs(q);
+        return querySnapshot.docs.map((doc) => ({
+            ...doc.data(),
+            uid: doc.id,
+        } as UsuarioTecnico));
+    } catch (error) {
+        console.error("Erro ao buscar técnicos:", error);
+        throw error;
+    }
+}
+
+/**
+ * Atualiza o status de um usuário (ativa/inativa).
+ * @param uid - ID do usuário
+ * @param newStatus - Novo status da conta
+ */
+export async function updateUserStatus(uid: string, newStatus: "ativa" | "inativa"): Promise<void> {
+    try {
+        await updateDoc(doc(db, "usuarios", uid), {
+            statusConta: newStatus,
+        });
+    } catch (error) {
+        console.error("Erro ao atualizar status do usuário:", error);
+        throw error;
+    }
+}
+
+export async function markTutorialColaboradorAsSeen(uid: string) {
+    const ref = doc(db, "usuarios", uid);
+    await updateDoc(ref, { hasSeenTutorialColaborador: true });
+}
+

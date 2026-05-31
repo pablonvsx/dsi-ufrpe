@@ -11,6 +11,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import { collection, getDocs } from 'firebase/firestore';
 import { db, auth } from '../config/firebase';
+import { salvarDenuncia } from "@/services/firestore/complaints";
+
 
 const PRIMARY = '#004d48';
 const TEAL_MID = '#0d9080';
@@ -111,20 +113,25 @@ export default function ReportComplaint() {
     setSaving(true);
     
     try {
-      const userId = auth.currentUser?.uid ?? 'anonymous';
-      
-      // =========================================================================
-      // TO DO: INTEGRAR COM O FIREBASE AQUI
-      // Criar o arquivo @/services/firestore/complaints.ts com uma função:
-      // export async function salvarDenuncia(dados: any) {
-      //    return await addDoc(collection(db, 'denuncias'), { ...dados, data: serverTimestamp() });
-      // }
-      // E chamar ela aqui:
-      // await salvarDenuncia({ corpoHidricoId: selected?.id, titulo, grau, descricao, userId });
-      // =========================================================================
-      
-      // Simulando delay de rede para o Mock
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const userId = auth.currentUser?.uid;
+
+      if (!userId) {
+        setErrorMsg('Usuário não autenticado.');
+         return;
+      }
+
+      if (!selected?.id) {
+        setErrorMsg('Selecione um corpo hídrico.');
+         return;
+      }
+
+      await salvarDenuncia({
+        corpoHidricoId: selected.id,
+        criadoPor: userId,
+        titulo: titulo.trim(),
+        grau,
+        descricao: descricao.trim(),
+      });
       
       setSuccessVisible(true);
     } catch (e) {

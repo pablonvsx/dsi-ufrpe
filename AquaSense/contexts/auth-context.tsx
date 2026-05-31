@@ -24,9 +24,15 @@ export interface UserProfile {
     nome: string;
     email: string;
     cidade: string;
+    estado?: string;
+    bairro?: string;
+    areaChave?: string;
+    latitude?: number;
+    longitude?: number;
     tipoUsuario: string;
     statusConta: string;
     hasSeenTutorial: boolean;
+    hasseenTutorialColaborador: boolean;
 
     /**
      * Referência ao último corpo hídrico acessado pelo usuário.

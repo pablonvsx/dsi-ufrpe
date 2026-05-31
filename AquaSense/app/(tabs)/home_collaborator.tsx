@@ -233,10 +233,56 @@ export default function HomeColaborador() {
                          </TouchableOpacity>
                     </Animated.View>
 
-                    <Animated.View style={[styles.actionsTerciaryRow, { opacity: cardFade, transform: [{ translateY: cardSlide }] }]}>
-                         <TouchableOpacity style={[styles.actionButton, styles.actionTertiary]} onPress={() => {}} activeOpacity={0.82}>
-                             <Ionicons name="flask-outline" size={28} color={PRIMARY} style={styles.actionIcon} />
-                             <Text style={[styles.actionTextTertiary, { fontFamily: questrial }]}>{"Realizar\nmedições simples"}</Text>
+                    <Animated.View
+                       style={[
+                          styles.actionsRow,
+                          {
+                               opacity: cardFade,
+                               transform: [{ translateY: cardSlide }],
+                               marginTop: 14,
+                          },
+                        ]}
+                    >
+                       <TouchableOpacity
+                          style={[styles.actionButton, styles.actionTertiary]}
+                          onPress={() => {}}
+                          activeOpacity={0.82}
+                        >
+                          <Ionicons
+                              name="flask-outline"
+                              size={28}
+                              color={PRIMARY}
+                              style={styles.actionIcon}
+                          />
+                          <Text
+                              style={[
+                                  styles.actionTextTertiary,
+                                  { fontFamily: questrial },
+                              ]}
+                           >
+                              {"Realizar\nmedições simples"}
+                           </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                             style={[styles.actionButton, styles.actionTertiary]}
+                             onPress={() => router.push("/my_contributions" as any)}
+                             activeOpacity={0.82}
+                        >
+                            <Ionicons
+                                name="list-outline"
+                                size={28}
+                                color={PRIMARY}
+                                style={styles.actionIcon}
+                            />
+                            <Text
+                                style={[
+                                    styles.actionTextTertiary,
+                                    { fontFamily: questrial },
+                                ]}
+                            >
+                                {"Minhas\ncontribuições"}
+                            </Text>
                         </TouchableOpacity>
                     </Animated.View>
                 </ScrollView>
@@ -275,15 +321,14 @@ function WelcomeCard({ userName, fontFamily }: { userName: string; fontFamily?: 
             <View style={styles.welcomeIconCircle}>
                 <Ionicons name="water-outline" size={28} color={PRIMARY} />
             </View>
-            <Text style={[styles.welcomeTitle, { fontFamily }]}>Bem-vindo, Colaborador {userName}</Text>
+            <Text style={[styles.welcomeTitle, { fontFamily }]}>Olá, {userName}!</Text>
             <View style={styles.cardDivider} />
             <Text style={[styles.welcomeBody, { fontFamily }]}>
-                Explore os corpos hídricos, registre observações e acompanhe alertas da sua região.
+                Como colaborador, você pode registrar observações, realizar medições simples e contribuir com a qualidade da água da sua região.
             </Text>
         </View>
     );
 }
-
 // ─────────────────────────────────────────────
 // CARD: RESUMO DO ÚLTIMO CORPO HÍDRICO
 // visual do modal de detalhes do mapa.
@@ -468,13 +513,14 @@ function TutorialModal({ visible, fontFamily, loading, onFinish }: {
     visible: boolean; fontFamily?: string; loading: boolean; onFinish: () => void;
 }) {
     const steps = [
-        { icon: "home-outline" as const,          title: "Home",                    desc: "Acompanhe informações e acesse as funcionalidades principais." },
-        { icon: "create-outline" as const,        title: "Registrar observação",    desc: "Relate o que você observou em um corpo hídrico." },
-        { icon: "warning-outline" as const,       title: "Fazer denúncia",          desc: "Reporte problemas ambientais na sua região." },
-        { icon: "add-circle-outline" as const,    title: "Registrar corpo hídrico", desc: "Cadastre um novo rio, lago ou açude." },
-        { icon: "map-outline" as const,           title: "Mapa",                    desc: "Visualize corpos hídricos e alertas no mapa." },
-        { icon: "notifications-outline" as const, title: "Alertas",                 desc: "Receba notificações sobre qualidade da água." },
-        { icon: "person-outline" as const,        title: "Perfil",                  desc: "Gerencie sua conta e configurações." },
+    { icon: "home-outline" as const,          title: "Home",                       desc: "Acompanhe informações e acesse as funcionalidades principais." },
+    { icon: "create-outline" as const,        title: "Registrar observação",       desc: "Relate o que você observou em um corpo hídrico." },
+    { icon: "flask-outline" as const,         title: "Realizar medições simples",  desc: "Exclusivo para colaboradores — registre medições básicas de qualidade da água." },
+    { icon: "warning-outline" as const,       title: "Fazer denúncia",             desc: "Reporte problemas ambientais na sua região." },
+    { icon: "add-circle-outline" as const,    title: "Registrar corpo hídrico",    desc: "Cadastre um novo rio, lago ou açude." },
+    { icon: "map-outline" as const,           title: "Mapa",                       desc: "Visualize corpos hídricos e alertas no mapa." },
+    { icon: "notifications-outline" as const, title: "Alertas",                    desc: "Receba notificações sobre qualidade da água." },
+    { icon: "person-outline" as const,        title: "Perfil",                     desc: "Gerencie sua conta e configurações." },
     ];
     return (
         <Modal visible={visible} transparent animationType="slide" onRequestClose={onFinish}>
@@ -571,8 +617,7 @@ const styles = StyleSheet.create({
     skeletonLine: { backgroundColor: "#E8F0EF", borderRadius: 6, alignSelf: "flex-start" },
 
     // Actions
-    actionsRow: { flexDirection: "row", gap: 14 },
-    actionsTerciaryRow: { marginTop: 14, alignItems: "center" },
+
     actionButton: { flex: 1, borderRadius: 16, paddingVertical: 22, paddingHorizontal: 14, alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.09, shadowRadius: 8, elevation: 4 },
     actionPrimary: { backgroundColor: PRIMARY },
     actionSecondary: { backgroundColor: "#F2F7F6" },
