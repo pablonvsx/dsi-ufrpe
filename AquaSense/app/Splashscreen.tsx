@@ -71,7 +71,9 @@ export default function Splashscreen() {
     ]).start(() => {
       // Só redireciona depois que o Firebase terminou de verificar a sessão
       if (loadingAuth) return;
-
+      console.log("user:", user?.email);
+      console.log("emailVerified:", user?.emailVerified);
+      
       if (user && user.emailVerified) {
         router.replace('/(tabs)' as any);
       } else {
