@@ -95,3 +95,9 @@ export async function updateUserStatus(uid: string, newStatus: "ativa" | "inativ
         throw error;
     }
 }
+
+export async function markTutorialColaboradorAsSeen(uid: string) {
+    const ref = doc(db, "usuarios", uid);
+    await updateDoc(ref, { hasSeenTutorialColaborador: true });
+}
+

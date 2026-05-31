@@ -149,7 +149,7 @@ export default function AlertsScreen() {
       {/* ══ NAVBAR INFERIOR (Mesmo da Home) ══ */}
       <SafeAreaView edges={["bottom"]} style={styles.navBarWrapper}>
         <View style={styles.navBar}>
-          <NavBarItem icon="home" iconOutline="home-outline" label="Home" active={false} fontFamily={questrial} onPress={() => router.replace('/home' as any)} />
+          <NavBarItem icon="home" iconOutline="home-outline" label="Home" active={false} fontFamily={questrial} onPress={() => router.replace('/home_collaborator_update' as any)} />
           <NavBarItem icon="map" iconOutline="map-outline" label="Mapa" active={false} fontFamily={questrial} onPress={() => router.replace('/map' as any)} />
           <TouchableOpacity style={styles.fabButton} onPress={() => router.push('/register_water_body' as any)} activeOpacity={0.85}>
             <View style={styles.fabInner}><Ionicons name="add" size={32} color="#FFFFFF" /></View>
