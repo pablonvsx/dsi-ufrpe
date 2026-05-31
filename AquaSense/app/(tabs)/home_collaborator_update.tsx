@@ -419,7 +419,7 @@ export default function HomeColaborador() {
             case "home": router.replace("/home_collaborator_update" as any); break;
             case "mapa": router.push("/map" as any); break;
             case "painel": router.push("/community_panel" as any); break;
-            case "perfil": router.push("/profile" as any); break;
+            case "perfil": router.push("/profile_collaborator" as any); break;
         }
     }
 
@@ -658,7 +658,7 @@ export default function HomeColaborador() {
                         <NavItem icon="home" iconOutline="home-outline" label="Home" active={activeTab === "home"} fontFamily={questrial} onPress={() => handleTabPress("home")} />
                         <NavItem icon="map" iconOutline="map-outline" label="Mapa" active={activeTab === "mapa"} fontFamily={questrial} onPress={() => handleTabPress("mapa")} />
                         <View style={styles.fabSpacer}>
-                            <TouchableOpacity style={styles.fab} onPress={() => router.push("/register_water_body" as any)} activeOpacity={0.85}>
+                            <TouchableOpacity style={styles.fab} onPress={() => router.push("/manage_water_bodies_collaborator" as any)} activeOpacity={0.85}>
                                 <View style={styles.fabInner}>
                                     <Ionicons name="add" size={32} color="#FFFFFF" />
                                 </View>

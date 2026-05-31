@@ -27,6 +27,7 @@ import {
   reauthenticateWithCredential,
   EmailAuthProvider,
   deleteUser,
+  signOut,
 } from 'firebase/auth';
 import { sendPasswordResetEmail } from '@/services/emailService';
 
@@ -145,6 +146,7 @@ export default function PerfilScreen() {
   const [modalDeactivateVisible, setModalDeactivateVisible] = useState(false);
   const [modalDeleteVisible,     setModalDeleteVisible]     = useState(false);
   const [modalPasswordSentVisible, setModalPasswordSentVisible] = useState(false);
+  const [modalSignOutVisible, setModalSignOutVisible] = useState(false);
 
   const [newEmail,       setNewEmail]       = useState('');
   const [newPassword,    setNewPassword]    = useState('');
@@ -230,7 +232,7 @@ export default function PerfilScreen() {
         const userRef = doc(db, 'usuarios', user.uid);
         await updateDoc(userRef, { desativada: true, desativadaEm: new Date().toISOString() });
         Alert.alert('Conta desativada', 'Sua conta foi desativada. Você pode reativá-la fazendo login novamente.');
-        router.replace('/login'); 
+        router.replace('/login');
       } else if (pendingAction === 'DELETE') {
         const batch = writeBatch(db);
 
@@ -267,29 +269,40 @@ export default function PerfilScreen() {
   };
 
   // ── Enviar e-mail de redefinição de senha ───────────────────
- const handlePasswordReset = async () => {
-  const auth = getAuth();
-  const user = auth.currentUser;
-  if (!user?.email) return;
+  const handlePasswordReset = async () => {
+    const auth = getAuth();
+    const user = auth.currentUser;
+    if (!user?.email) return;
 
-  try {
-    await sendPasswordResetEmail({ email: user.email });
-    setModalPasswordSentVisible(true);
-  } catch (err: any) {
-    const code = err?.code;
-    const msg =
-      code === 'auth/too-many-requests'
-        ? 'Muitas tentativas. Tente novamente mais tarde.'
-        : 'Não foi possível enviar o e-mail. Tente novamente.';
-    Alert.alert('Erro', msg);
-  }
-};
+    try {
+      await sendPasswordResetEmail({ email: user.email });
+      setModalPasswordSentVisible(true);
+    } catch (err: any) {
+      const code = err?.code;
+      const msg =
+        code === 'auth/too-many-requests'
+          ? 'Muitas tentativas. Tente novamente mais tarde.'
+          : 'Não foi possível enviar o e-mail. Tente novamente.';
+      Alert.alert('Erro', msg);
+    }
+  };
 
   // ── Desativar conta ──────────────────────────────────────────
   const handleDeactivate = () => setModalDeactivateVisible(true);
 
   // ── Excluir conta ────────────────────────────────────────────
   const handleDelete = () => setModalDeleteVisible(true);
+
+  // ── Sair da conta ────────────────────────────────────────────
+  const handleSignOut = async () => {
+    const auth = getAuth();
+    try {
+      await signOut(auth);
+      router.replace('/login');
+    } catch (error) {
+      Alert.alert('Erro', 'Não foi possível sair da conta. Tente novamente.');
+    }
+  };
 
   const initials    = userData.nome ? userData.nome.charAt(0).toUpperCase() : '?';
   const localizacao = `${userData.cidade} - ${userData.uf}`;
@@ -488,6 +501,23 @@ export default function PerfilScreen() {
                 </View>
               </View>
 
+              {/* ── Botão Sair da conta ── */}
+              <TouchableOpacity
+                activeOpacity={0.82}
+                onPress={() => setModalSignOutVisible(true)}
+                style={styles.signOutBtnWrapper}
+              >
+                <LinearGradient
+                  colors={['#004d48', '#0a6b5e']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.signOutBtn}
+                >
+                  <Ionicons name="log-out-outline" size={20} color="#FFFFFF" style={{ marginRight: 10 }} />
+                  <Text style={[styles.signOutBtnText, { fontFamily: questrial }]}>Sair da conta</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+
               {/* ── Botões de ação ── */}
               <View style={styles.actionRow}>
                 <TouchableOpacity style={styles.actionBtnWrapper} activeOpacity={0.82} onPress={handleDeactivate}>
@@ -598,6 +628,21 @@ export default function PerfilScreen() {
             setModalReauthVisible(true);
           }}
         />
+
+        {/* ── 6. Modal: Confirmar Saída ── */}
+        <AquaConfirmModal
+          visible={modalSignOutVisible}
+          title="Sair da conta"
+          description="Tem certeza que deseja sair? Você precisará fazer login novamente para acessar o aplicativo."
+          confirmLabel="Sair"
+          icon="log-out-outline"
+          fontFamily={questrial}
+          onCancel={() => setModalSignOutVisible(false)}
+          onConfirm={() => {
+            setModalSignOutVisible(false);
+            handleSignOut();
+          }}
+        />
       </View>
     </>
   );
@@ -686,6 +731,32 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25, shadowRadius: 6, elevation: 3,
   },
   configBtnText: { fontSize: 12, color: '#FFFFFF', fontWeight: '700', letterSpacing: 0.2 },
+
+  // Botão Sair da conta
+  signOutBtnWrapper: {
+    marginTop: 8,
+    marginBottom: 14,
+    borderRadius: 16,
+    shadowColor: '#2c3e50',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  signOutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+  },
+  signOutBtnText: {
+    fontSize: 15,
+    color: '#FFFFFF',
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
 
   // Botões de ação
   actionRow: { flexDirection: 'row', gap: 14, marginTop: 8 },
