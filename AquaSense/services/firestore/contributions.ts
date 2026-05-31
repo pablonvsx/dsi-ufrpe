@@ -42,7 +42,7 @@ export async function criarContribuicao(
   try {
     const agora = new Date();
 
-    const novaContribuicao: ContribuicaoAmbiental = {
+    const novaContribuicao: any = {
       // Localização
       latitude: dados.latitude,
       longitude: dados.longitude,
@@ -55,14 +55,14 @@ export async function criarContribuicao(
       tipo: dados.tipo,
       descricao: dados.descricao,
 
-      // Medições
-      pH: dados.pH,
-      cor: dados.cor,
-      odor: dados.odor,
-      temperatura: dados.temperatura,
+      // Medições (apenas se definidas)
+      ...(dados.pH !== undefined && { pH: dados.pH }),
+      ...(dados.cor && { cor: dados.cor }),
+      ...(dados.odor && { odor: dados.odor }),
+      ...(dados.temperatura !== undefined && { temperatura: dados.temperatura }),
 
-      // Observação visual
-      observacaoVisual: dados.observacaoVisual,
+      // Observação visual (apenas se definida)
+      ...(dados.observacaoVisual && { observacaoVisual: dados.observacaoVisual }),
 
       // Fotos
       fotos: dados.fotos || [],

@@ -4,7 +4,7 @@
  * Integração: Firestore + Supabase Storage
  */
 
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -23,6 +23,7 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Location from "expo-location";
 import Slider from "@react-native-community/slider";
 
@@ -87,6 +88,7 @@ const WHITE = "#ffffff";
 export default function NewEnvironmentalContribution() {
   const router = useRouter();
   const { user, userProfile } = useAuth();
+  const insets = useSafeAreaInsets();
 
   // ─────────────────────────────────────────────────────────────
   // STATE
@@ -177,9 +179,9 @@ export default function NewEnvironmentalContribution() {
     }
   };
 
-  const handleFotosChange = (urls: string[]) => {
+  const handleFotosChange = useCallback((urls: string[]) => {
     setFotosUrls(urls);
-  };
+  }, []);
 
   const handleSelecionarCorpo = (corpo: CorpoHidrico) => {
     setFormData({
@@ -192,10 +194,13 @@ export default function NewEnvironmentalContribution() {
     setModalCorposVisible(false);
   };
 
-  const corposFiltrados = corposHidricos.filter((corpo) =>
-    `${corpo.nome} ${corpo.municipio}`
-      .toLowerCase()
-      .includes(searchCorpos.toLowerCase())
+  const corposFiltrados = useMemo(() => 
+    corposHidricos.filter((corpo) =>
+      `${corpo.nome} ${corpo.municipio}`
+        .toLowerCase()
+        .includes(searchCorpos.toLowerCase())
+    ),
+    [corposHidricos, searchCorpos]
   );
 
   const validarFormulario = (): boolean => {
@@ -248,7 +253,15 @@ export default function NewEnvironmentalContribution() {
           odor: formData.odor === "sem_odor" ? "sem cheiro" : formData.odor,
         }),
         ...(formData.tipo === "observacao" && {
-          observacaoVisual: formData.observacaoVisual,
+          observacaoVisual: formData.observacaoVisual || {
+            lixo: false,
+            animaisMortos: false,
+            despejosEsgoto: false,
+            esgotoVisivel: false,
+            coloracaoAnormal: false,
+            odorAnormal: false,
+            espumaOuResiduos: false,
+          },
         }),
       };
 
@@ -305,6 +318,9 @@ export default function NewEnvironmentalContribution() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      {/* Overlay para tornar ícones da status bar visíveis */}
+      <View style={styles.statusBarOverlay} />
+      
       <LinearGradient
         colors={[PRIMARY, PRIMARY_LIGHT]}
         start={{ x: 0, y: 0 }}
@@ -544,25 +560,21 @@ export default function NewEnvironmentalContribution() {
                   {
                     id: "clara",
                     label: "Clara",
-                    icon: "💧",
                     color: "#e0f2f1",
                   },
                   {
                     id: "levemente_turva",
                     label: "Levemente\nturva",
-                    icon: "💛",
                     color: "#fff3e0",
                   },
                   {
                     id: "turva",
                     label: "Turva",
-                    icon: "🧡",
                     color: "#ffe0b2",
                   },
                   {
                     id: "muito_turva",
                     label: "Muito\nturva",
-                    icon: "❤️",
                     color: "#ffcccc",
                   },
                 ].map((item) => (
@@ -580,7 +592,6 @@ export default function NewEnvironmentalContribution() {
                       })
                     }
                   >
-                    <Text style={styles.colorIcon}>{item.icon}</Text>
                     <Text style={styles.colorLabel}>{item.label}</Text>
                     {formData.cor === item.id && (
                       <View style={styles.colorCheck}>
@@ -609,9 +620,9 @@ export default function NewEnvironmentalContribution() {
 
               <View style={styles.odorGrid}>
                 {[
-                  { id: "sem_odor", label: "Sem odor", emoji: "😊" },
-                  { id: "leve", label: "Odor leve", emoji: "😐" },
-                  { id: "forte", label: "Odor forte", emoji: "😖" },
+                  { id: "sem_odor", label: "Sem odor" },
+                  { id: "leve", label: "Odor leve" },
+                  { id: "forte", label: "Odor forte" },
                 ].map((item) => (
                   <TouchableOpacity
                     key={item.id}
@@ -626,7 +637,6 @@ export default function NewEnvironmentalContribution() {
                       })
                     }
                   >
-                    <Text style={styles.odorEmoji}>{item.emoji}</Text>
                     <Text style={styles.odorLabel}>{item.label}</Text>
                     {formData.odor === item.id && (
                       <View style={styles.odorCheck}>
@@ -662,24 +672,21 @@ export default function NewEnvironmentalContribution() {
             </View>
 
             {[
-              { key: "lixo", label: "Lixo na água ou margem", emoji: "🗑️" },
-              { key: "animaisMortos", label: "Animais mortos", emoji: "🐟" },
-              { key: "despejosEsgoto", label: "Despejos/Esgoto", emoji: "💧" },
+              { key: "lixo", label: "Lixo na água ou margem" },
+              { key: "animaisMortos", label: "Animais mortos" },
+              { key: "despejosEsgoto", label: "Despejos/Esgoto" },
               {
                 key: "esgotoVisivel",
                 label: "Esgoto visível",
-                emoji: "⚠️",
               },
               {
                 key: "coloracaoAnormal",
                 label: "Coloração anormal",
-                emoji: "🎨",
               },
-              { key: "odorAnormal", label: "Odor anormal", emoji: "👃" },
+              { key: "odorAnormal", label: "Odor anormal" },
               {
                 key: "espumaOuResiduos",
                 label: "Espuma ou resíduos",
-                emoji: "🫧",
               },
             ].map((item) => (
               <TouchableOpacity
@@ -714,7 +721,7 @@ export default function NewEnvironmentalContribution() {
                 </View>
 
                 <Text style={styles.checkboxLabel}>
-                  {item.emoji} {item.label}
+                  {item.label}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -875,7 +882,13 @@ export default function NewEnvironmentalContribution() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: SURFACE,
+    backgroundColor: "#e0f2f1",
+    paddingTop: 0,
+  },
+
+  statusBarOverlay: {
+    height: 32,
+    backgroundColor: PRIMARY,
   },
 
   headerGradient: {
@@ -918,7 +931,8 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 16,
-    paddingTop: 20,
+    paddingTop: 28,
+    marginTop: 16,
   },
 
   section: {
@@ -1166,10 +1180,6 @@ const styles = StyleSheet.create({
     borderColor: PRIMARY,
   },
 
-  colorIcon: {
-    fontSize: 32,
-  },
-
   colorLabel: {
     fontSize: 13,
     fontWeight: "500",
@@ -1205,11 +1215,6 @@ const styles = StyleSheet.create({
   odorOptionSelected: {
     borderColor: PRIMARY,
     backgroundColor: "rgba(0, 105, 92, 0.1)",
-  },
-
-  odorEmoji: {
-    fontSize: 32,
-    marginBottom: 8,
   },
 
   odorLabel: {

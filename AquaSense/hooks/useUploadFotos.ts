@@ -3,7 +3,7 @@
  * Integração entre câmera/galeria e Supabase
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import * as ImagePicker from "expo-image-picker";
 import { uploadImagem, uploadMultiplosImagens } from "@/services/storage/supabaseStorage";
 import { supabaseEstaConfigurado } from "@/config/supabase";
@@ -44,10 +44,12 @@ export function useUploadFotos(options: UseUploadFotosOptions) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Validar se Supabase está disponível
-  if (!supabaseEstaConfigurado()) {
-    console.warn("⚠️  Supabase não está configurado. Uploads não funcionarão.");
-  }
+  // Validar se Supabase está disponível (dentro de useEffect)
+  useEffect(() => {
+    if (!supabaseEstaConfigurado()) {
+      console.warn("⚠️  Supabase não está configurado. Uploads não funcionarão.");
+    }
+  }, []);
 
   /**
    * Processar imagem selecionada

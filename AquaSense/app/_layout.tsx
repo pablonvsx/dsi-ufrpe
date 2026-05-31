@@ -29,6 +29,7 @@ export default function RootLayout() {
               confirmou o e-mail. Fica fora das tabs pois é um passo
               intermediário do fluxo de autenticação. */}
           <Stack.Screen name="awaiting-verification" options={{ headerShown: false }} />
+          <Stack.Screen name="new_environmental_contribution" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false}} />
         </Stack>
         <StatusBar style="auto" />

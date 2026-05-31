@@ -65,7 +65,7 @@ export function GaleriaUpload({
     <View style={[styles.container, estilo]}>
       {/* Título e contador */}
       <View style={styles.header}>
-        <Text style={styles.titulo}>📷 Fotos</Text>
+        <Text style={styles.titulo}>Fotos</Text>
         <Text style={styles.contador}>
           {totalFotos}/{maxFotos}
         </Text>
@@ -132,10 +132,10 @@ export function GaleriaUpload({
       {/* Informações */}
       <View style={styles.info}>
         <Text style={styles.infoTexto}>
-          📏 Máx. {maxTamanhoMB}MB por foto
+          Máx. {maxTamanhoMB}MB por foto
         </Text>
         <Text style={styles.infoTexto}>
-          🖼️ Até {maxFotos} fotos
+          Até {maxFotos} fotos
         </Text>
       </View>
     </View>

@@ -5,7 +5,7 @@
  */
 
 import { InfoAmbientalGeo } from "@/types/contribution";
-import { obterInfoGeolocalizacao } from "@/services/geoService";
+import { obterContextoGeografico } from "@/services/geoService";
 
 /**
  * Interface para resposta de geocodificação reversa
@@ -31,18 +31,18 @@ export async function obterInfoAmbientalCompleta(
     );
 
     // Obter informações base do serviço de geo
-    const geoInfo = await obterInfoGeolocalizacao(latitude, longitude);
+    const geoInfo = obterContextoGeografico(latitude, longitude);
 
     // TODO: Integrar com API de regiões hidricas de Pernambuco
     // Por agora, usando dados mockados que podem ser melhorados
 
     const infoAmbiental: InfoAmbientalGeo = {
       municipio: geoInfo.municipio || "Desconhecido",
-      regiaoHidrica: aguardarRegiao(latitude, longitude),
-      bioma: "Caatinga", // PE está principalmente em Caatinga, com Mata Atlântica no litoral
-      macrorregiao: obterMacrorregiao(latitude, longitude),
-      mesorregiao: obterMesorregiao(latitude, longitude),
-      microrregiao: obterMicrorregiao(latitude, longitude),
+      regiaoHidrica: geoInfo.microRH || "Desconhecida",
+      bioma: geoInfo.bioma || "Caatinga",
+      macrorregiao: geoInfo.macroRH || "Desconhecida",
+      mesorregiao: geoInfo.mesoRH || "Desconhecida",
+      microrregiao: geoInfo.microRH || "Desconhecida",
     };
 
     console.log("✅ Informações ambientais obtidas:", infoAmbiental);
