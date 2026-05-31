@@ -5,49 +5,53 @@ import {
     query,
     where,
     orderBy,
+    limit,
     serverTimestamp,
     Timestamp,
-    limit,
 } from "firebase/firestore";
 import { db } from "@/config/firebase";
 
-const COLECAO = "denuncias";
+const COLECAO = "medicoesColaborador";
 
-export type StatusDenuncia = "pendente" | "em_analise" | "resolvida";
+export type StatusMedicao = "pendente" | "validada" | "rejeitada";
 
-export interface CriarDenunciaInput {
+export interface CriarMedicaoColaboradorInput {
     usuarioId: string;
     usuarioNome?: string;
     corpoHidricoId?: string;
     corpoHidricoNome?: string;
-    titulo: string;
-    descricao: string;
-    tipoProblema?: string;
     cidade?: string;
     estado?: string;
     bairro?: string | null;
     areaChave?: string;
+    ph?: number;
+    temperatura?: number;
+    turbidez?: string;
+    observacao?: string;
     [key: string]: unknown;
 }
 
-export interface Denuncia {
+export interface MedicaoColaborador {
     id: string;
     usuarioId: string;
     usuarioNome?: string;
     corpoHidricoId?: string;
     corpoHidricoNome?: string;
-    titulo: string;
-    descricao: string;
-    tipoProblema?: string;
     cidade?: string;
     estado?: string;
     bairro?: string | null;
     areaChave?: string;
-    status: StatusDenuncia;
+    ph?: number;
+    temperatura?: number;
+    turbidez?: string;
+    observacao?: string;
+    tipoMedicao: "simples";
+    origem: "colaborador";
+    status: StatusMedicao;
     dataCriacao: Date;
 }
 
-function normalizarDoc(id: string, data: Record<string, unknown>): Denuncia {
+function normalizarDoc(id: string, data: Record<string, unknown>): MedicaoColaborador {
     const ts = data.dataCriacao;
     const dataCriacao =
         ts instanceof Timestamp ? ts.toDate() :
@@ -60,32 +64,40 @@ function normalizarDoc(id: string, data: Record<string, unknown>): Denuncia {
         usuarioNome: data.usuarioNome as string | undefined,
         corpoHidricoId: data.corpoHidricoId as string | undefined,
         corpoHidricoNome: data.corpoHidricoNome as string | undefined,
-        titulo: (data.titulo as string) ?? "Denúncia",
-        descricao: (data.descricao as string) ?? "",
-        tipoProblema: data.tipoProblema as string | undefined,
         cidade: data.cidade as string | undefined,
         estado: data.estado as string | undefined,
         bairro: data.bairro as string | null | undefined,
         areaChave: data.areaChave as string | undefined,
-        status: (data.status as StatusDenuncia) ?? "pendente",
+        ph: data.ph as number | undefined,
+        temperatura: data.temperatura as number | undefined,
+        turbidez: data.turbidez as string | undefined,
+        observacao: data.observacao as string | undefined,
+        tipoMedicao: "simples",
+        origem: "colaborador",
+        status: (data.status as StatusMedicao) ?? "pendente",
         dataCriacao,
     };
 }
 
-export async function createComplaint(data: CriarDenunciaInput): Promise<string> {
+export async function createCollaboratorMeasurement(
+    data: CriarMedicaoColaboradorInput
+): Promise<string> {
     const payload = {
         usuarioId: data.usuarioId,
         usuarioNome: data.usuarioNome ?? null,
         corpoHidricoId: data.corpoHidricoId ?? null,
         corpoHidricoNome: data.corpoHidricoNome ?? null,
-        titulo: data.titulo,
-        descricao: data.descricao,
-        tipoProblema: data.tipoProblema ?? null,
         cidade: data.cidade ?? null,
         estado: data.estado ?? "PE",
         bairro: data.bairro ?? null,
         areaChave: data.areaChave ?? null,
-        status: "pendente" as StatusDenuncia,
+        ph: data.ph ?? null,
+        temperatura: data.temperatura ?? null,
+        turbidez: data.turbidez ?? null,
+        observacao: data.observacao ?? null,
+        tipoMedicao: "simples",
+        origem: "colaborador",
+        status: "pendente" as StatusMedicao,
         dataCriacao: serverTimestamp(),
     };
 
@@ -93,7 +105,9 @@ export async function createComplaint(data: CriarDenunciaInput): Promise<string>
     return docRef.id;
 }
 
-export async function getComplaintsByUser(uid: string): Promise<Denuncia[]> {
+export async function getCollaboratorMeasurementsByUser(
+    uid: string
+): Promise<MedicaoColaborador[]> {
     try {
         const q = query(
             collection(db, COLECAO),
@@ -104,12 +118,14 @@ export async function getComplaintsByUser(uid: string): Promise<Denuncia[]> {
         const snap = await getDocs(q);
         return snap.docs.map((d) => normalizarDoc(d.id, d.data()));
     } catch (err) {
-        console.warn("[complaints] getComplaintsByUser:", err);
+        console.warn("[measurements] getCollaboratorMeasurementsByUser:", err);
         return [];
     }
 }
 
-export async function getComplaintsByWaterBody(corpoHidricoId: string): Promise<Denuncia[]> {
+export async function getCollaboratorMeasurementsByWaterBody(
+    corpoHidricoId: string
+): Promise<MedicaoColaborador[]> {
     try {
         const q = query(
             collection(db, COLECAO),
@@ -120,12 +136,15 @@ export async function getComplaintsByWaterBody(corpoHidricoId: string): Promise<
         const snap = await getDocs(q);
         return snap.docs.map((d) => normalizarDoc(d.id, d.data()));
     } catch (err) {
-        console.warn("[complaints] getComplaintsByWaterBody:", err);
+        console.warn("[measurements] getCollaboratorMeasurementsByWaterBody:", err);
         return [];
     }
 }
 
-export async function getComplaintsByArea(areaChave: string, maxItems = 20): Promise<Denuncia[]> {
+export async function getCollaboratorMeasurementsByArea(
+    areaChave: string,
+    maxItems = 20
+): Promise<MedicaoColaborador[]> {
     try {
         const q = query(
             collection(db, COLECAO),
@@ -137,7 +156,25 @@ export async function getComplaintsByArea(areaChave: string, maxItems = 20): Pro
         const snap = await getDocs(q);
         return snap.docs.map((d) => normalizarDoc(d.id, d.data()));
     } catch (err) {
-        console.warn("[complaints] getComplaintsByArea:", err);
+        console.warn("[measurements] getCollaboratorMeasurementsByArea:", err);
+        return [];
+    }
+}
+
+export async function getRecentCollaboratorMeasurements(
+    limitNumber = 20
+): Promise<MedicaoColaborador[]> {
+    try {
+        const q = query(
+            collection(db, COLECAO),
+            orderBy("dataCriacao", "desc"),
+            limit(limitNumber)
+        );
+
+        const snap = await getDocs(q);
+        return snap.docs.map((d) => normalizarDoc(d.id, d.data()));
+    } catch (err) {
+        console.warn("[measurements] getRecentCollaboratorMeasurements:", err);
         return [];
     }
 }

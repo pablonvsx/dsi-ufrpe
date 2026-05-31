@@ -5,32 +5,48 @@ export interface UsuarioBase {
     nome: string;
     email: string;
     tipoUsuario: TipoUsuario;
-    statusConta: "ativa" | "inativa" | "pendente_verificacao" | "ativo";
+
+    statusConta:
+        | "ativa"
+        | "inativa"
+        | "pendente_verificacao"
+        | "ativo";
+
     dataCriacao?: any;
-    hasSeenTutorial: boolean;   // ← adicionado aqui
+
+    hasSeenTutorial: boolean;
+
+    cidade?: string;
+    estado?: string;
+    bairro?: string;
+
+    areaChave?: string;
+
+    latitude?: number;
+    longitude?: number;
 }
 
 export interface UsuarioComum extends UsuarioBase {
     tipoUsuario: "comum";
-    cidade: string;
+    
 }
 
 export interface UsuarioColaborador extends UsuarioBase {
     tipoUsuario: "colaborador";
     organizacao: string;
-    cidade: string;
+    
 }
 
 export interface UsuarioTecnico extends UsuarioBase {
     tipoUsuario: "tecnico";
     equipeId: string;
-    codigoEquipe: string;
+    
 }
 
 export interface UsuarioGestor extends UsuarioBase {
     tipoUsuario: "gestor";
     organizacao: string;
-    cidade: string;
+    
 }
 
 export type Usuario =

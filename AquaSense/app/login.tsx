@@ -111,8 +111,17 @@ export default function Login() {
                 router.replace(jaViuTutorial ? "/(tabs)" : "/(tabs)?tutorial=1" as any);
             } else if (tipoUsuario === "gestor") {
                 router.replace("/(tabs)/home_manager" as any);
+            } else if (tipoUsuario === "colaborador") {
+                const jaViuTutorialColaborador = userData?.hasSeenTutorialColaborador === true;
+
+                router.replace(
+                    jaViuTutorialColaborador
+                        ? "/(tabs)/home_collaborator_update"
+                        : "/(tabs)/home_collaborator_update?tutorial=1" as any
+                );
+            } else if (tipoUsuario === "tecnico") {
+                router.replace("/under-development" as any);
             } else {
-                // colaborador, tecnico
                 router.replace("/under-development" as any);
             }
 

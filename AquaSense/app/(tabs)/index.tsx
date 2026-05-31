@@ -12,7 +12,7 @@ export default function TabsIndex() {
 
     switch (userProfile?.tipoUsuario) {
         case "colaborador":
-            return <Redirect href={tutorialParam ? "/home_collaborator?tutorial=1" : "/home_collaborator"} />;
+            return <Redirect href={tutorialParam ? "/home_collaborator?tutorial=1" : "/home_collaborator_update"} />;
         default:
             return <Redirect href={tutorialParam ? "/home?tutorial=1" : "/home"} />;
     }
