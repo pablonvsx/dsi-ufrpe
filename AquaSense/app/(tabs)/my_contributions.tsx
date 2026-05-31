@@ -6,13 +6,13 @@ import {
     StatusBar,
     TouchableOpacity,
     TextInput,
+    Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useRouter } from "expo-router";
 import { useFonts, Questrial_400Regular } from "@expo-google-fonts/questrial";
-import { Image } from "react-native";
 
 const PRIMARY = "#004d48";
 
@@ -80,6 +80,25 @@ export default function MyContributions() {
                     </TouchableOpacity>
                 </View>
 
+                {/* ══ FILTROS ══ */}
+                <View style={styles.filtersWrapper}>
+                    {["Todas", "Validadas", "Pendentes", "Em análise", "Rascunhos"].map((filtro) => (
+                        <TouchableOpacity
+                            key={filtro}
+                            style={[styles.filterChip, filtro === "Todas" && styles.filterChipActive]}
+                            activeOpacity={0.8}
+                        >
+                            <Text style={[
+                                styles.filterChipText,
+                                { fontFamily: questrial },
+                                filtro === "Todas" && styles.filterChipTextActive,
+                            ]}>
+                                {filtro}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
+
                 {/* Conteúdo virá nos próximos commits */}
                 <View style={styles.body} />
             </View>
@@ -121,5 +140,18 @@ const styles = StyleSheet.create({
         paddingHorizontal: 14, paddingVertical: 10,
     },
     filterText: { fontSize: 13, color: PRIMARY, fontWeight: "600" },
+    filtersWrapper: {
+        flexDirection: "row", gap: 8, paddingHorizontal: 20,
+        paddingVertical: 12, backgroundColor: "#FFFFFF",
+        borderBottomWidth: 1, borderBottomColor: "#e0f2f1",
+    },
+    filterChip: {
+        paddingHorizontal: 14, paddingVertical: 7,
+        borderRadius: 50, backgroundColor: "#F5F9F8",
+        borderWidth: 1, borderColor: "#e0f2f1",
+    },
+    filterChipActive: { backgroundColor: PRIMARY, borderColor: PRIMARY },
+    filterChipText: { fontSize: 12, color: "#6b7a7a", fontWeight: "600" },
+    filterChipTextActive: { color: "#FFFFFF" },
     body: { flex: 1 },
 });
