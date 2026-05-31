@@ -7,6 +7,7 @@ export * as coletas from "./coletas";
 export * as users from "./firestore/users";
 export * as waterBodies from "./firestore/water_bodies";
 export * as contributions from "./firestore/contributions";
+export * as complaints from "./firestore/complaints";
 
 // Storage & Files
 export * as storage from "./storage/supabaseStorage";

@@ -233,10 +233,56 @@ export default function HomeColaborador() {
                          </TouchableOpacity>
                     </Animated.View>
 
-                    <Animated.View style={[styles.actionsTerciaryRow, { opacity: cardFade, transform: [{ translateY: cardSlide }] }]}>
-                         <TouchableOpacity style={[styles.actionButton, styles.actionTertiary]} onPress={() => {}} activeOpacity={0.82}>
-                             <Ionicons name="flask-outline" size={28} color={PRIMARY} style={styles.actionIcon} />
-                             <Text style={[styles.actionTextTertiary, { fontFamily: questrial }]}>{"Realizar\nmedições simples"}</Text>
+                    <Animated.View
+                       style={[
+                          styles.actionsRow,
+                          {
+                               opacity: cardFade,
+                               transform: [{ translateY: cardSlide }],
+                               marginTop: 14,
+                          },
+                        ]}
+                    >
+                       <TouchableOpacity
+                          style={[styles.actionButton, styles.actionTertiary]}
+                          onPress={() => {}}
+                          activeOpacity={0.82}
+                        >
+                          <Ionicons
+                              name="flask-outline"
+                              size={28}
+                              color={PRIMARY}
+                              style={styles.actionIcon}
+                          />
+                          <Text
+                              style={[
+                                  styles.actionTextTertiary,
+                                  { fontFamily: questrial },
+                              ]}
+                           >
+                              {"Realizar\nmedições simples"}
+                           </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                             style={[styles.actionButton, styles.actionTertiary]}
+                             onPress={() => router.push("/my_contributions" as any)}
+                             activeOpacity={0.82}
+                        >
+                            <Ionicons
+                                name="list-outline"
+                                size={28}
+                                color={PRIMARY}
+                                style={styles.actionIcon}
+                            />
+                            <Text
+                                style={[
+                                    styles.actionTextTertiary,
+                                    { fontFamily: questrial },
+                                ]}
+                            >
+                                {"Minhas\ncontribuições"}
+                            </Text>
                         </TouchableOpacity>
                     </Animated.View>
                 </ScrollView>
@@ -571,8 +617,7 @@ const styles = StyleSheet.create({
     skeletonLine: { backgroundColor: "#E8F0EF", borderRadius: 6, alignSelf: "flex-start" },
 
     // Actions
-    actionsRow: { flexDirection: "row", gap: 14 },
-    actionsTerciaryRow: { marginTop: 14, alignItems: "center" },
+
     actionButton: { flex: 1, borderRadius: 16, paddingVertical: 22, paddingHorizontal: 14, alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.09, shadowRadius: 8, elevation: 4 },
     actionPrimary: { backgroundColor: PRIMARY },
     actionSecondary: { backgroundColor: "#F2F7F6" },

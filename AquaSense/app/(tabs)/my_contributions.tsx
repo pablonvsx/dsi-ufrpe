@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
     View,
     Text,
@@ -8,26 +8,103 @@ import {
     TextInput,
     Image,
     ScrollView,
+    ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useRouter } from "expo-router";
 import { useFonts, Questrial_400Regular } from "@expo-google-fonts/questrial";
+import { collection, query, where, orderBy, getDocs } from "firebase/firestore";
+import { db, auth } from "../../config/firebase";
+import { buscarDenunciasPorUsuario } from "@/services/firestore/complaints";
 
 const PRIMARY = "#004d48";
 
-const CONTRIBUICOES_MOCK = [
-    { id: "1", titulo: "Medição simples - Canal do Fragoso", corpo: "Canal do Fragoso", detalhe: "pH: 6.8 · Turbidez: Baixa · Temp.: 26°C", data: "08/05/2025", hora: "16:30", status: "Validada", statusBg: "#e6f4f1", statusColor: "#1a8c80", icon: "flask-outline", iconBg: "rgba(26,140,128,0.12)", iconColor: "#1a8c80" },
-    { id: "2", titulo: "Observação - Presença de resíduos", corpo: "Canal do Fragoso", detalhe: "Resíduos sólidos nas margens", data: "08/05/2025", hora: "10:15", status: "Pendente", statusBg: "#fff8e1", statusColor: "#e6a817", icon: "leaf-outline", iconBg: "rgba(230,168,23,0.12)", iconColor: "#e6a817" },
-    { id: "3", titulo: "Denúncia - Esgoto irregular", corpo: "Canal do Fragoso", detalhe: "Ponto de descarte identificado", data: "06/05/2025", hora: "14:20", status: "Em análise", statusBg: "#fdecea", statusColor: "#e05252", icon: "megaphone-outline", iconBg: "rgba(224,82,82,0.12)", iconColor: "#e05252" },
-];
+interface Contribuicao {
+    id: string;
+    tipo: "observacao" | "denuncia" | "medicao";
+    titulo: string;
+    corpo: string;
+    detalhe: string;
+    data: string;
+    hora: string;
+    status: string;
+    statusBg: string;
+    statusColor: string;
+    icon: string;
+    iconBg: string;
+    iconColor: string;
+}
+
+function formatarData(timestamp: any): { data: string; hora: string } {
+    if (!timestamp) return { data: "—", hora: "—" };
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    const data = date.toLocaleDateString("pt-BR");
+    const hora = date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    return { data, hora };
+}
 
 export default function MyContributions() {
     const router = useRouter();
     const [search, setSearch] = useState("");
+    const [filtroAtivo, setFiltroAtivo] = useState("Todas");
+    const [contribuicoes, setContribuicoes] = useState<Contribuicao[]>([]);
+    const [loading, setLoading] = useState(true);
     const [fontsLoaded] = useFonts({ Questrial_400Regular });
     const questrial = fontsLoaded ? "Questrial_400Regular" : undefined;
+
+    useEffect(() => {
+        buscarContribuicoes();
+    }, []);
+
+    async function buscarContribuicoes() {
+        setLoading(true);
+        try {
+            const uid = auth.currentUser?.uid;
+            if (!uid) return;
+
+            // Busca observações reais do Firestore
+            const q = query(
+                collection(db, "observacoes"),
+                where("criadoPor", "==", uid),
+                orderBy("dataCriacao", "desc")
+            );
+            const snap = await getDocs(q);
+
+            const lista: Contribuicao[] = snap.docs.map((doc) => {
+                const d = doc.data();
+                const { data, hora } = formatarData(d.dataCriacao);
+                return {
+                    id: doc.id,
+                    tipo: "observacao",
+                    titulo: `Observação - ${d.corpoHidricoId ?? "Corpo hídrico"}`,
+                    corpo: d.corpoHidricoId ?? "—",
+                    detalhe: `Cor: ${d.cor ?? "—"} · Odor: ${d.odor ?? "—"}`,
+                    data,
+                    hora,
+                    status: "Pendente",
+                    statusBg: "#fff8e1",
+                    statusColor: "#e6a817",
+                    icon: "leaf-outline",
+                    iconBg: "rgba(230,168,23,0.12)",
+                    iconColor: "#e6a817",
+                };
+            });
+
+            setContribuicoes(lista);
+        } catch (e) {
+            console.error("Erro ao buscar contribuições:", e);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    const filtradas = contribuicoes.filter((c) => {
+        const buscaOk = c.titulo.toLowerCase().includes(search.toLowerCase());
+        const filtroOk = filtroAtivo === "Todas" || c.status === filtroAtivo;
+        return buscaOk && filtroOk;
+    });
 
     return (
         <>
@@ -81,64 +158,79 @@ export default function MyContributions() {
                             onChangeText={setSearch}
                         />
                     </View>
-                    <TouchableOpacity style={styles.filterBtn} activeOpacity={0.8}>
-                        <Ionicons name="options-outline" size={18} color={PRIMARY} />
-                        <Text style={[styles.filterText, { fontFamily: questrial }]}>Filtrar</Text>
-                    </TouchableOpacity>
                 </View>
 
                 {/* ══ FILTROS ══ */}
-                <View style={styles.filtersWrapper}>
-                    {["Todas", "Validadas", "Pendentes", "Em análise", "Rascunhos"].map((filtro) => (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersScroll} contentContainerStyle={styles.filtersWrapper}>
+                    {["Todas", "Validada", "Pendente", "Em análise"].map((filtro) => (
                         <TouchableOpacity
                             key={filtro}
-                            style={[styles.filterChip, filtro === "Todas" && styles.filterChipActive]}
+                            style={[styles.filterChip, filtroAtivo === filtro && styles.filterChipActive]}
+                            onPress={() => setFiltroAtivo(filtro)}
                             activeOpacity={0.8}
                         >
                             <Text style={[
                                 styles.filterChipText,
                                 { fontFamily: questrial },
-                                filtro === "Todas" && styles.filterChipTextActive,
+                                filtroAtivo === filtro && styles.filterChipTextActive,
                             ]}>
                                 {filtro}
                             </Text>
                         </TouchableOpacity>
                     ))}
-                </View>
+                </ScrollView>
 
                 {/* ══ LISTA ══ */}
-                <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator={false}>
-                    <Text style={[styles.resultados, { fontFamily: questrial }]}>Resultados: 0 contribuições</Text>
+                {loading ? (
+                    <View style={styles.loadingWrapper}>
+                        <ActivityIndicator size="large" color={PRIMARY} />
+                        <Text style={[styles.loadingText, { fontFamily: questrial }]}>Carregando contribuições...</Text>
+                    </View>
+                ) : (
+                    <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator={false}>
+                        <Text style={[styles.resultados, { fontFamily: questrial }]}>
+                            Resultados: {filtradas.length} contribuiç{filtradas.length === 1 ? "ão" : "ões"}
+                        </Text>
 
-                    {CONTRIBUICOES_MOCK.map((item) => (
-                        <TouchableOpacity key={item.id} style={styles.card} activeOpacity={0.82}>
-                            <View style={styles.cardLeft}>
-                                <View style={[styles.cardIconCircle, { backgroundColor: item.iconBg }]}>
-                                    <Ionicons name={item.icon as any} size={22} color={item.iconColor} />
-                                </View>
-                                <View style={styles.cardInfo}>
-                                    <Text style={[styles.cardTitle, { fontFamily: questrial }]} numberOfLines={1}>
-                                        {item.titulo}
-                                    </Text>
-                                    <Text style={[styles.cardSub, { fontFamily: questrial }]} numberOfLines={1}>
-                                        {item.corpo} · {item.detalhe}
-                                    </Text>
-                                    <Text style={[styles.cardData, { fontFamily: questrial }]}>
-                                        {item.data} · {item.hora}
-                                    </Text>
-                                </View>
+                        {filtradas.length === 0 ? (
+                            <View style={styles.emptyWrapper}>
+                                <Ionicons name="leaf-outline" size={40} color="#e0f2f1" />
+                                <Text style={[styles.emptyText, { fontFamily: questrial }]}>
+                                    Nenhuma contribuição encontrada.
+                                </Text>
                             </View>
-                            <View style={styles.cardRight}>
-                                <View style={[styles.statusPill, { backgroundColor: item.statusBg }]}>
-                                    <Text style={[styles.statusText, { fontFamily: questrial, color: item.statusColor }]}>
-                                        {item.status}
-                                    </Text>
-                                </View>
-                                <Ionicons name="chevron-forward" size={16} color="#aaa" style={{ marginTop: 8 }} />
-                            </View>
-                        </TouchableOpacity>
-                    ))}
-                </ScrollView>
+                        ) : (
+                            filtradas.map((item) => (
+                                <TouchableOpacity key={item.id} style={styles.card} activeOpacity={0.82}>
+                                    <View style={styles.cardLeft}>
+                                        <View style={[styles.cardIconCircle, { backgroundColor: item.iconBg }]}>
+                                            <Ionicons name={item.icon as any} size={22} color={item.iconColor} />
+                                        </View>
+                                        <View style={styles.cardInfo}>
+                                            <Text style={[styles.cardTitle, { fontFamily: questrial }]} numberOfLines={1}>
+                                                {item.titulo}
+                                            </Text>
+                                            <Text style={[styles.cardSub, { fontFamily: questrial }]} numberOfLines={1}>
+                                                {item.detalhe}
+                                            </Text>
+                                            <Text style={[styles.cardData, { fontFamily: questrial }]}>
+                                                {item.data} · {item.hora}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                    <View style={styles.cardRight}>
+                                        <View style={[styles.statusPill, { backgroundColor: item.statusBg }]}>
+                                            <Text style={[styles.statusText, { fontFamily: questrial, color: item.statusColor }]}>
+                                                {item.status}
+                                            </Text>
+                                        </View>
+                                        <Ionicons name="chevron-forward" size={16} color="#aaa" style={{ marginTop: 8 }} />
+                                    </View>
+                                </TouchableOpacity>
+                            ))
+                        )}
+                    </ScrollView>
+                )}
             </View>
         </>
     );
@@ -172,16 +264,9 @@ const styles = StyleSheet.create({
         borderWidth: 1, borderColor: "#e0f2f1",
     },
     searchInput: { flex: 1, fontSize: 14, color: "#333" },
-    filterBtn: {
-        flexDirection: "row", alignItems: "center", gap: 6,
-        backgroundColor: "#e0f2f1", borderRadius: 50,
-        paddingHorizontal: 14, paddingVertical: 10,
-    },
-    filterText: { fontSize: 13, color: PRIMARY, fontWeight: "600" },
+    filtersScroll: { backgroundColor: "#FFFFFF", borderBottomWidth: 1, borderBottomColor: "#e0f2f1" },
     filtersWrapper: {
-        flexDirection: "row", gap: 8, paddingHorizontal: 20,
-        paddingVertical: 12, backgroundColor: "#FFFFFF",
-        borderBottomWidth: 1, borderBottomColor: "#e0f2f1",
+        flexDirection: "row", gap: 8, paddingHorizontal: 20, paddingVertical: 12,
     },
     filterChip: {
         paddingHorizontal: 14, paddingVertical: 7,
@@ -191,9 +276,13 @@ const styles = StyleSheet.create({
     filterChipActive: { backgroundColor: PRIMARY, borderColor: PRIMARY },
     filterChipText: { fontSize: 12, color: "#6b7a7a", fontWeight: "600" },
     filterChipTextActive: { color: "#FFFFFF" },
+    loadingWrapper: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
+    loadingText: { fontSize: 14, color: "#6b7a7a" },
     body: { flex: 1 },
     bodyContent: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 40 },
     resultados: { fontSize: 13, color: "#6b7a7a", marginBottom: 12, fontWeight: "600" },
+    emptyWrapper: { alignItems: "center", paddingTop: 40, gap: 12 },
+    emptyText: { fontSize: 14, color: "#6b7a7a", textAlign: "center" },
     card: {
         backgroundColor: "#FFFFFF", borderRadius: 16, padding: 14,
         marginBottom: 12, flexDirection: "row", alignItems: "center",
