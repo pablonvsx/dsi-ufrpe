@@ -40,7 +40,7 @@ const TEAL_MED = "#0d6e52";
 const TEXT_MUTED = "#6b7a7a";
 const ORANGE = "#e07b1e";
 
-type TabKey = "home" | "mapa" | "painel" | "perfil";
+type TabKey = "home" | "mapa" | "alertas" | "perfil";
 type FilterKey = "todas" | "contribuicoes" | "denuncias" | "acoes";
 
 interface CorpoHidrico {
@@ -177,7 +177,7 @@ export default function CommunityPanel() {
     const [fontsLoaded] = useFonts({ Questrial_400Regular });
     const questrial = fontsLoaded ? "Questrial_400Regular" : undefined;
 
-    const [activeTab, setActiveTab] = useState<TabKey>("painel");
+    const [activeTab, setActiveTab] = useState<TabKey>("alertas");
     const [activeFilter, setActiveFilter] = useState<FilterKey>("todas");
 
     // ── Estado de dados ─────────────────────────────────────────────────────
@@ -269,8 +269,8 @@ export default function CommunityPanel() {
         switch (tab) {
             case "home": router.replace("/home_collaborator_update" as any); break;
             case "mapa": router.push("/map" as any); break;
-            case "painel": break;
-            case "perfil": router.push("/profile" as any); break;
+            case "alertas": router.push("/alerts" as any); break;
+            case "perfil": router.push("/profile_collaborator" as any); break;
         }
     }
 
@@ -523,16 +523,60 @@ export default function CommunityPanel() {
                         ) : atividadesFiltradas.length === 0 ? (
                             <View style={styles.atividadesCard}>
                                 <EmptyState
-                                    iconName="people-outline"
-                                    titulo="Nenhuma atividade comunitária encontrada."
-                                    descricao="Quando a comunidade começar a contribuir, as atualizações aparecerão aqui."
+                                    iconName={activeFilter === "denuncias" ? "megaphone-outline" : "people-outline"}
+                                    titulo={activeFilter === "denuncias" ? "Nenhuma denúncia registrada na região." : "Nenhuma atividade comunitária encontrada."}
+                                    descricao={activeFilter === "denuncias" ? "Quando alguém registrar uma denúncia na sua região, ela aparecerá aqui." : "Quando a comunidade começar a contribuir, as atualizações aparecerão aqui."}
                                     fontFamily={questrial}
+                                    onAction={activeFilter === "denuncias" ? () => router.push("/report_complaint" as any) : undefined}
+                                    actionLabel={activeFilter === "denuncias" ? "Fazer denúncia" : undefined}
                                 />
                             </View>
                         ) : (
                             <View style={styles.atividadesCard}>
                                 {atividadesFiltradas.map((act, index) => {
                                     const { iconName, iconBg, iconColor, thumbBg, thumbIcon } = tipoIcone(act.tipo);
+                                    const isDenuncia = act.tipo === "denuncia";
+
+                                    if (isDenuncia) {
+                                        return (
+                                            <View
+                                                key={act.id}
+                                                style={[
+                                                    styles.denunciaItem,
+                                                    index < atividadesFiltradas.length - 1 && styles.atividadeItemBorder,
+                                                ]}
+                                            >
+                                                <View style={styles.denunciaTop}>
+                                                    <View style={[styles.atividadeIconBox, { backgroundColor: iconBg }]}>
+                                                        <Ionicons name={iconName} size={17} color={iconColor} />
+                                                    </View>
+                                                    <View style={{ flex: 1, minWidth: 0 }}>
+                                                        <Text style={[styles.atividadeTitulo, { fontFamily: questrial }]} numberOfLines={1}>
+                                                            {act.titulo}
+                                                        </Text>
+                                                        <Text style={[styles.atividadeDetalhe, { fontFamily: questrial }]} numberOfLines={2}>
+                                                            {act.descricao}
+                                                        </Text>
+                                                    </View>
+                                                </View>
+                                                <View style={styles.denunciaBottom}>
+                                                    <View style={styles.atividadeLocalRow}>
+                                                        <Ionicons name="calendar-outline" size={10} color="#aaa" />
+                                                        <Text style={[styles.atividadeData, { fontFamily: questrial }]}>
+                                                            {act.corpoHidricoNome ? `${act.corpoHidricoNome} • ` : ""}{formatarData(act.dataCriacao)}
+                                                        </Text>
+                                                    </View>
+                                                    {act.cidade && (
+                                                        <View style={styles.locTag}>
+                                                            <Ionicons name="location-outline" size={10} color="#888" />
+                                                            <Text style={[styles.locTagText, { fontFamily: questrial }]}>{act.cidade}</Text>
+                                                        </View>
+                                                    )}
+                                                </View>
+                                            </View>
+                                        );
+                                    }
+
                                     return (
                                         <View
                                             key={act.id}
@@ -616,7 +660,7 @@ export default function CommunityPanel() {
                                 </View>
                             </TouchableOpacity>
                         </View>
-                        <NavItem icon="people" iconOutline="people-outline" label="Painel" active={activeTab === "painel"} fontFamily={questrial} onPress={() => handleTabPress("painel")} />
+                        <NavItem icon="notifications" iconOutline="notifications-outline" label="Alertas" active={activeTab === "alertas"} fontFamily={questrial} onPress={() => handleTabPress("alertas")} />
                         <NavItem icon="person" iconOutline="person-outline" label="Perfil" active={activeTab === "perfil"} fontFamily={questrial} onPress={() => handleTabPress("perfil")} />
                     </View>
                 </SafeAreaView>
@@ -774,6 +818,15 @@ const styles = StyleSheet.create({
         width: 52, height: 48, borderRadius: 10,
         alignItems: "center", justifyContent: "center", flexShrink: 0,
     },
+    denunciaItem: {
+        paddingVertical: 14, paddingHorizontal: 2,
+        borderLeftWidth: 3, borderLeftColor: "#e07b1e",
+        paddingLeft: 10, marginLeft: -2,
+    },
+    denunciaTop: { flexDirection: "row", alignItems: "flex-start", gap: 10, marginBottom: 8 },
+    denunciaBottom: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingLeft: 42 },
+    locTag: { flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "#f5f5f5", borderRadius: 50, paddingHorizontal: 8, paddingVertical: 3 },
+    locTagText: { fontSize: 10, color: "#888" },
     emptyState: { alignItems: "center", paddingVertical: 24, paddingHorizontal: 16 },
     emptyIconCircle: {
         width: 52, height: 52, borderRadius: 26,

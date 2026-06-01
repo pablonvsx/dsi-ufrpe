@@ -2,6 +2,8 @@ import {
     collection,
     addDoc,
     getDocs,
+    updateDoc,
+    doc,
     query,
     where,
     orderBy,
@@ -13,7 +15,13 @@ import { db } from "@/config/firebase";
 
 const COLECAO = "denuncias";
 
-export type StatusDenuncia = "pendente" | "em_analise" | "resolvida";
+export type StatusDenuncia =
+    | "recebida"
+    | "em_analise"
+    | "encaminhada_equipe"
+    | "resolvida"
+    | "arquivada"
+    | "pendente"; // mantido para retrocompatibilidade
 
 export interface CriarDenunciaInput {
     usuarioId: string;
@@ -140,4 +148,18 @@ export async function getComplaintsByArea(areaChave: string, maxItems = 20): Pro
         console.warn("[complaints] getComplaintsByArea:", err);
         return [];
     }
+}
+
+// Alias para compatibilidade com my_contributions.tsx
+export const buscarDenunciasPorUsuario = getComplaintsByUser;
+
+export async function updateComplaintStatus(
+    id: string,
+    status: StatusDenuncia
+): Promise<void> {
+    await updateDoc(doc(db, COLECAO, id), { status });
+}
+
+export async function archiveComplaint(id: string): Promise<void> {
+    await updateDoc(doc(db, COLECAO, id), { status: "arquivada" as StatusDenuncia });
 }

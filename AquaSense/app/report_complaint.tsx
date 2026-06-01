@@ -12,7 +12,8 @@ import { Stack, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
-import { auth } from '../config/firebase';
+import { auth, db } from '../config/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 import { createComplaint } from '@/services/firestore/complaints';
 
 const PRIMARY = '#004d48';
@@ -160,14 +161,26 @@ export default function ReportComplaint() {
         ? `${descricao.trim()}\n\nObservações: ${observacoes.trim()}`
         : descricao.trim();
 
+      // Busca areaChave do perfil do usuário para o filtro do painel comunitário
+      let userAreaChave: string | undefined;
+      let userCidade = cidade ?? undefined;
+      try {
+        const userSnap = await getDoc(doc(db, 'usuarios', userId));
+        if (userSnap.exists()) {
+          const ud = userSnap.data();
+          userAreaChave = ud.areaChave ?? undefined;
+          if (!userCidade) userCidade = ud.cidade ?? undefined;
+        }
+      } catch { /* não bloqueia o envio */ }
+
       await createComplaint({
         usuarioId: userId,
         titulo: tipo?.label ?? 'Denúncia',
         descricao: descFinal,
         tipoProblema: tipoSelecionado,
-        cidade: cidade ?? undefined,
+        cidade: userCidade,
         estado: 'PE',
-        areaChave: coords ? `${coords.lat.toFixed(4)},${coords.lng.toFixed(4)}` : undefined,
+        areaChave: userAreaChave,
       });
 
       setSuccessVisible(true);

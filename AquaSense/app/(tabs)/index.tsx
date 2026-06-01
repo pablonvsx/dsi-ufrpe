@@ -5,15 +5,28 @@ export default function TabsIndex() {
     const { tutorial } = useLocalSearchParams<{ tutorial?: string }>();
     const { userProfile, loadingAuth } = useAuth();
 
-    // Aguarda carregar o perfil antes de redirecionar
     if (loadingAuth) return null;
 
     const tutorialParam = tutorial === "1";
+    const tipo = userProfile?.tipoUsuario;
 
-    switch (userProfile?.tipoUsuario) {
-        case "colaborador":
-            return <Redirect href={tutorialParam ? "/home_collaborator?tutorial=1" : "/home_collaborator_update"} />;
-        default:
-            return <Redirect href={tutorialParam ? "/home?tutorial=1" : "/home"} />;
+    if (tipo === "colaborador") {
+        const jaViu = userProfile?.hasseenTutorialColaborador === true;
+        const href = (!jaViu || tutorialParam)
+            ? "/(tabs)/home_collaborator_update?tutorial=1"
+            : "/(tabs)/home_collaborator_update";
+        return <Redirect href={href as any} />;
     }
+
+    if (tipo === "gestor") {
+        return <Redirect href={"/(tabs)/home_manager" as any} />;
+    }
+
+    if (tipo === "tecnico") {
+        return <Redirect href={"/under-development" as any} />;
+    }
+
+    // "comum" ou sem perfil
+    const jaViu = userProfile?.hasSeenTutorial === true;
+    return <Redirect href={(!jaViu || tutorialParam) ? ("/(tabs)/home?tutorial=1" as any) : ("/(tabs)/home" as any)} />;
 }

@@ -42,7 +42,7 @@ const BLUE_ACTION = "#2563c7";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 
-type TabKey = "home" | "mapa" | "painel" | "perfil";
+type TabKey = "home" | "mapa" | "alertas" | "perfil";
 
 const TUTORIAL_STEPS = [
     {
@@ -418,7 +418,7 @@ export default function HomeColaborador() {
         switch (tab) {
             case "home": router.replace("/home_collaborator_update" as any); break;
             case "mapa": router.push("/map" as any); break;
-            case "painel": router.push("/community_panel" as any); break;
+            case "alertas": router.push("/alerts" as any); break;
             case "perfil": router.push("/profile_collaborator" as any); break;
         }
     }
@@ -664,7 +664,7 @@ export default function HomeColaborador() {
                                 </View>
                             </TouchableOpacity>
                         </View>
-                        <NavItem icon="people" iconOutline="people-outline" label="Painel" active={activeTab === "painel"} fontFamily={questrial} onPress={() => handleTabPress("painel")} />
+                        <NavItem icon="notifications" iconOutline="notifications-outline" label="Alertas" active={activeTab === "alertas"} fontFamily={questrial} onPress={() => handleTabPress("alertas")} />
                         <NavItem icon="person" iconOutline="person-outline" label="Perfil" active={activeTab === "perfil"} fontFamily={questrial} onPress={() => handleTabPress("perfil")} />
                     </View>
                 </SafeAreaView>
