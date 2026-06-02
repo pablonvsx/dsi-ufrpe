@@ -1,342 +1,487 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, StatusBar, Platform, Animated, KeyboardAvoidingView,
-  ActivityIndicator, Modal,
+  ScrollView, StatusBar, Platform, ActivityIndicator,
+  Modal, Image, FlatList, Dimensions, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, Questrial_400Regular } from '@expo-google-fonts/questrial';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
-import { collection, getDocs } from 'firebase/firestore';
-import { db, auth } from '../config/firebase';
-import { salvarDenuncia } from "@/services/firestore/complaints";
-
+import * as Location from 'expo-location';
+import * as ImagePicker from 'expo-image-picker';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import { auth, db } from '../config/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { createComplaint } from '@/services/firestore/complaints';
 
 const PRIMARY = '#004d48';
 const TEAL_MID = '#0d9080';
 const SURFACE = '#F5F9F8';
 const BORDER_LIGHT = '#e0f2f1';
 const TEXT_MUTED = '#6b7a7a';
+const ACCENT_ORANGE = '#F5A623';
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-type Step = 'select' | 'form';
+const MAX_FOTOS = 5;
+const MAX_DESC = 300;
+const MAX_OBS = 250;
 
-interface WaterBody {
+interface TipoProblema {
   id: string;
-  name: string;
-  municipio?: string;
-  cadastroValido: boolean;
+  label: string;
+  iconName: string;
+  iconLib: 'ionicons' | 'material';
+  color: string;
+}
+
+const TIPOS_PROBLEMA: TipoProblema[] = [
+  { id: 'esgoto',        label: 'Esgoto irregular',  iconName: 'pipe-leak',        iconLib: 'material',  color: ACCENT_ORANGE },
+  { id: 'lixo',          label: 'Lixo / Resíduos',   iconName: 'trash-outline',    iconLib: 'ionicons',  color: TEAL_MID },
+  { id: 'poluicao_agua', label: 'Poluição da água',  iconName: 'water',            iconLib: 'ionicons',  color: '#2196F3' },
+  { id: 'desmatamento',  label: 'Desmatamento',       iconName: 'forest',           iconLib: 'material',  color: '#388E3C' },
+  { id: 'queimada',      label: 'Queimada',           iconName: 'flame-outline',    iconLib: 'ionicons',  color: ACCENT_ORANGE },
+  { id: 'fumaca',        label: 'Emissão de fumaça', iconName: 'smoke',            iconLib: 'material',  color: '#7B68EE' },
+  { id: 'outro',         label: 'Outro',              iconName: 'ellipsis-horizontal', iconLib: 'ionicons', color: TEXT_MUTED },
+];
+
+function ProblemaIcon({ item, size = 28 }: { item: TipoProblema; size?: number }) {
+  if (item.iconLib === 'material') {
+    return <MaterialCommunityIcons name={item.iconName as any} size={size} color={item.color} />;
+  }
+  return <Ionicons name={item.iconName as any} size={size} color={item.color} />;
+}
+
+function formatDate(d: Date) {
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+}
+function formatTime(d: Date) {
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 export default function ReportComplaint() {
   const router = useRouter();
   const [fontsLoaded] = useFonts({ Questrial_400Regular });
-  const questrial = fontsLoaded ? 'Questrial_400Regular' : undefined;
+  const Q = fontsLoaded ? 'Questrial_400Regular' : undefined;
 
-  const [step, setStep] = useState<Step>('select');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selected, setSelected] = useState<WaterBody | null>(null);
-  
-  const [waterBodies, setWaterBodies] = useState<WaterBody[]>([]);
-  const [loadingBodies, setLoadingBodies] = useState(true);
+  // Seção 1
+  const [tipoSelecionado, setTipoSelecionado] = useState<string | null>(null);
+  const [descricao, setDescricao] = useState('');
+
+  // Seção 2 – Localização
+  const [localizando, setLocalizando] = useState(false);
+  const [cidade, setCidade] = useState<string | null>(null);
+  const [precisao, setPrecisao] = useState<number | null>(null);
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [mapModalVisible, setMapModalVisible] = useState(false);
+  const [mapCoords, setMapCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  // Seção 3 – Fotos
+  const [fotos, setFotos] = useState<string[]>([]);
+
+  // Seções 4 e 5
+  const now = new Date();
+  const [data, setData] = useState(formatDate(now));
+  const [hora, setHora] = useState(formatTime(now));
+  const [observacoes, setObservacoes] = useState('');
+
+  // Envio
   const [saving, setSaving] = useState(false);
   const [successVisible, setSuccessVisible] = useState(false);
-
-  const [titulo, setTitulo] = useState('');
-  const [grau, setGrau] = useState<'Baixa' | 'Média' | 'Alta' | null>(null);
-  const [descricao, setDescricao] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  const fadeAnim  = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(18)).current;
-  const cardFade  = useRef(new Animated.Value(0)).current;
-  const cardSlide = useRef(new Animated.Value(24)).current;
+  const mapRef = useRef<MapView>(null);
 
-  // Carregando os corpos hídricos reais do Firestore 
-  useEffect(() => {
-    (async () => {
-      try {
-        const snap = await getDocs(collection(db, 'corposHidricos'));
-        const bodies: WaterBody[] = snap.docs.map((d) => ({
-          id: d.id,
-          name: d.data().nome ?? 'Sem nome',
-          municipio: d.data().municipio,
-          cadastroValido: d.data().cadastroValido ?? false,
-        }));
-        setWaterBodies(bodies);
-      } catch (e) {
-        console.error('Erro ao carregar corpos hídricos:', e);
-      } finally {
-        setLoadingBodies(false);
+  async function usarLocalizacaoAtual() {
+    setLocalizando(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permissão negada', 'Ative a localização nas configurações.');
+        return;
       }
-    })();
-  }, []);
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const { latitude, longitude, accuracy } = pos.coords;
+      setCoords({ lat: latitude, lng: longitude });
+      setMapCoords({ latitude, longitude });
+      setPrecisao(accuracy ? Math.round(accuracy) : null);
 
-
-  useEffect(() => {
-    fadeAnim.setValue(0); slideAnim.setValue(18);
-    cardFade.setValue(0); cardSlide.setValue(24);
-    Animated.sequence([
-      Animated.parallel([
-        Animated.timing(fadeAnim,  { toValue: 1, duration: 550, useNativeDriver: true }),
-        Animated.timing(slideAnim, { toValue: 0, duration: 550, useNativeDriver: true }),
-      ]),
-      Animated.parallel([
-        Animated.timing(cardFade,  { toValue: 1, duration: 450, useNativeDriver: true }),
-        Animated.timing(cardSlide, { toValue: 0, duration: 450, useNativeDriver: true }),
-      ]),
-    ]).start();
-  }, [step]);
-
-  const filtered = waterBodies.filter((wb) =>
-    wb.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (wb.municipio ?? '').toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  function handleBack() {
-    if (step === 'form') {
-      setStep('select');
-      setErrorMsg('');
-    } else {
-      router.back();
+      const [geo] = await Location.reverseGeocodeAsync({ latitude, longitude });
+      if (geo) {
+        const parts = [geo.city || geo.subregion, geo.region].filter(Boolean);
+        setCidade(parts.join(' - '));
+      }
+    } catch {
+      Alert.alert('Erro', 'Não foi possível obter a localização.');
+    } finally {
+      setLocalizando(false);
     }
   }
 
-  // MOCK: Envio da Denúncia (Substituir depois pela integração real abaixo)
-  async function handlePublish() {
-    if (!titulo.trim() || !grau || !descricao.trim()) {
-      setErrorMsg('Preencha todos os campos obrigatórios.');
+  async function adicionarFotos() {
+    if (fotos.length >= MAX_FOTOS) {
+      Alert.alert('Limite atingido', `Você pode adicionar no máximo ${MAX_FOTOS} arquivos.`);
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      quality: 0.7,
+    });
+    if (!result.canceled) {
+      const novas = result.assets.map((a) => a.uri);
+      setFotos((prev) => [...prev, ...novas].slice(0, MAX_FOTOS));
+    }
+  }
+
+  function removerFoto(uri: string) {
+    setFotos((prev) => prev.filter((f) => f !== uri));
+  }
+
+  async function handleEnviar() {
+    if (!tipoSelecionado) {
+      setErrorMsg('Selecione o tipo de problema.');
+      return;
+    }
+    if (!descricao.trim()) {
+      setErrorMsg('Preencha a descrição do problema.');
       return;
     }
     setErrorMsg('');
     setSaving(true);
-    
     try {
       const userId = auth.currentUser?.uid;
-
       if (!userId) {
         setErrorMsg('Usuário não autenticado.');
-         return;
+        return;
       }
+      const tipo = TIPOS_PROBLEMA.find((t) => t.id === tipoSelecionado);
+      const descFinal = observacoes.trim()
+        ? `${descricao.trim()}\n\nObservações: ${observacoes.trim()}`
+        : descricao.trim();
 
-      if (!selected?.id) {
-        setErrorMsg('Selecione um corpo hídrico.');
-         return;
-      }
+      // Busca areaChave do perfil do usuário para o filtro do painel comunitário
+      let userAreaChave: string | undefined;
+      let userCidade = cidade ?? undefined;
+      try {
+        const userSnap = await getDoc(doc(db, 'usuarios', userId));
+        if (userSnap.exists()) {
+          const ud = userSnap.data();
+          userAreaChave = ud.areaChave ?? undefined;
+          if (!userCidade) userCidade = ud.cidade ?? undefined;
+        }
+      } catch { /* não bloqueia o envio */ }
 
-      await salvarDenuncia({
-        corpoHidricoId: selected.id,
-        criadoPor: userId,
-        titulo: titulo.trim(),
-        grau,
-        descricao: descricao.trim(),
+      await createComplaint({
+        usuarioId: userId,
+        titulo: tipo?.label ?? 'Denúncia',
+        descricao: descFinal,
+        tipoProblema: tipoSelecionado,
+        cidade: userCidade,
+        estado: 'PE',
+        areaChave: userAreaChave,
       });
-      
+
       setSuccessVisible(true);
     } catch (e) {
-      console.error('Erro ao salvar denúncia:', e);
+      console.error('Erro ao enviar denúncia:', e);
+      setErrorMsg('Erro ao enviar. Tente novamente.');
     } finally {
       setSaving(false);
     }
   }
+
+  const RECIFE_DEFAULT = { latitude: -8.0476, longitude: -34.877, latitudeDelta: 0.08, longitudeDelta: 0.08 };
 
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      <View style={styles.root}>
-        {/* ══ HEADER ══ */}
+      <View style={s.root}>
+        {/* HEADER */}
         <LinearGradient
           colors={['#004d48', '#0a6b5e']}
-          start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-          style={styles.headerGradient}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+          style={s.header}
         >
-          <SafeAreaView edges={['top']} style={styles.headerSafeArea}>
-            <Animated.View style={[styles.headerRow, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-              <TouchableOpacity style={styles.backButton} onPress={handleBack} activeOpacity={0.7}>
-                <Ionicons name="arrow-back-outline" size={22} color="#FFFFFF" />
+          <SafeAreaView edges={['top']}>
+            <View style={s.headerContent}>
+              <TouchableOpacity style={s.backBtn} onPress={() => router.back()} activeOpacity={0.7}>
+                <Ionicons name="arrow-back" size={20} color="#fff" />
               </TouchableOpacity>
-              <Text style={[styles.headerTitle, { fontFamily: questrial }]}>Fazer denúncia</Text>
-              <View style={styles.headerSpacer} />
-            </Animated.View>
+
+              <View style={s.headerText}>
+                <Text style={[s.headerTitle, { fontFamily: Q }]}>Fazer denúncia</Text>
+                <Text style={[s.headerSubtitle, { fontFamily: Q }]}>
+                  Reporte problemas ambientais e{'\n'}ajude a proteger nossa região.
+                </Text>
+              </View>
+
+              <View style={s.logoCircle}>
+                <MaterialCommunityIcons name="water-alert" size={26} color="#fff" />
+              </View>
+            </View>
           </SafeAreaView>
         </LinearGradient>
 
-        {/* ══ FAIXA TEAL COM CURVA ══ */}
-        <LinearGradient
-          colors={['#0a6b5e', '#1fc8b4', '#3ff3e7']}
-          start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }}
-          style={styles.tealBand}
+        {/* BODY */}
+        <ScrollView
+          style={s.scroll}
+          contentContainerStyle={s.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          {step === 'select' && (
-            <Animated.View style={[styles.searchWrapper, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-              <Ionicons name="search-outline" size={18} color={TEXT_MUTED} style={styles.searchIcon} />
-              <TextInput
-                style={[styles.searchInput, { fontFamily: questrial }]}
-                placeholder="Buscar corpo hídrico..."
-                placeholderTextColor={TEXT_MUTED}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-              />
-              {searchQuery.length > 0 && (
-                <TouchableOpacity onPress={() => setSearchQuery('')}>
-                  <Ionicons name="close-circle" size={18} color={TEXT_MUTED} />
-                </TouchableOpacity>
-              )}
-            </Animated.View>
-          )}
+          {errorMsg ? (
+            <View style={s.errorBanner}>
+              <Ionicons name="alert-circle-outline" size={16} color="#c62828" style={{ marginRight: 6 }} />
+              <Text style={[s.errorText, { fontFamily: Q }]}>{errorMsg}</Text>
+            </View>
+          ) : null}
 
-          {step === 'form' && (
-            <Animated.View style={[styles.selectedBadgeWrapper, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-              <TouchableOpacity style={styles.selectedBadge} onPress={() => setStep('select')} activeOpacity={0.8}>
-                <Ionicons name="chevron-back" size={18} color={TEAL_MID} />
-                <Text style={[styles.selectedBadgeText, { fontFamily: questrial }]} numberOfLines={1}>{selected?.name}</Text>
-              </TouchableOpacity>
-            </Animated.View>
-          )}
+          {/* ── SEÇÃO 1: Sobre o problema ── */}
+          <Text style={[s.sectionHeader, { fontFamily: Q }]}>1. Sobre o problema</Text>
 
-          <View style={styles.waveWhite} />
-        </LinearGradient>
+          <View style={s.card}>
+            <Text style={[s.fieldLabel, { fontFamily: Q }]}>Tipo de problema</Text>
 
-        {/* ══ CONTEÚDO ══ */}
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <ScrollView style={styles.whiteBody} contentContainerStyle={styles.whiteBodyContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            <Animated.View style={{ opacity: cardFade, transform: [{ translateY: cardSlide }] }}>
-              
-              {/* ── PASSO 1: BUSCAR RIO ── */}
-              {step === 'select' && (
+            <View style={s.tipoGrid}>
+              {TIPOS_PROBLEMA.map((tipo) => {
+                const ativo = tipoSelecionado === tipo.id;
+                return (
+                  <TouchableOpacity
+                    key={tipo.id}
+                    style={[s.tipoCard, ativo && { borderColor: ACCENT_ORANGE, borderWidth: 2 }]}
+                    onPress={() => setTipoSelecionado(tipo.id)}
+                    activeOpacity={0.75}
+                  >
+                    {ativo && (
+                      <View style={s.tipoCheck}>
+                        <Ionicons name="checkmark-circle" size={18} color={ACCENT_ORANGE} />
+                      </View>
+                    )}
+                    <ProblemaIcon item={tipo} size={30} />
+                    <Text style={[s.tipoLabel, { fontFamily: Q }]} numberOfLines={2}>
+                      {tipo.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          <View style={s.card}>
+            <Text style={[s.fieldLabel, { fontFamily: Q }]}>Descrição do problema</Text>
+            <TextInput
+              style={[s.textarea, { fontFamily: Q }]}
+              placeholder="Descreva o que está acontecendo, onde acontece e outras informações importantes..."
+              placeholderTextColor={TEXT_MUTED}
+              value={descricao}
+              onChangeText={(t) => setDescricao(t.slice(0, MAX_DESC))}
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+            />
+            <Text style={[s.counter, { fontFamily: Q }]}>{descricao.length}/{MAX_DESC}</Text>
+          </View>
+
+          {/* ── SEÇÃO 2: Localização ── */}
+          <Text style={[s.sectionHeader, { fontFamily: Q }]}>2. Localização do problema</Text>
+
+          <View style={s.card}>
+            <Text style={[s.fieldLabel, { fontFamily: Q }]}>Localização atual</Text>
+            <View style={s.locRow}>
+              <View style={s.locInfo}>
+                <Ionicons name="location-outline" size={18} color={TEAL_MID} style={{ marginRight: 8 }} />
                 <View>
-                  {loadingBodies && <ActivityIndicator color={PRIMARY} style={{ marginTop: 40 }} />}
-                  
-                  {!loadingBodies && filtered.length > 0 && searchQuery.length > 0 && (
-                    <View style={styles.listCard}>
-                      {filtered.slice(0, 5).map((wb, idx) => (
-                        <View key={wb.id}>
-                          <TouchableOpacity style={styles.listItem} onPress={() => { setSelected(wb); setStep('form'); }} activeOpacity={0.7}>
-                            <View style={styles.waterBodyIconCircle}>
-                              <Ionicons name="water" size={16} color={TEAL_MID} />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                              <Text style={[styles.listItemText, { fontFamily: questrial }]}>{wb.name}</Text>
-                              {wb.municipio && <Text style={[styles.listItemSub, { fontFamily: questrial }]}>{wb.municipio}</Text>}
-                            </View>
-                            <Ionicons name="chevron-forward" size={18} color={TEXT_MUTED} />
-                          </TouchableOpacity>
-                          {idx < Math.min(filtered.length, 5) - 1 && <View style={styles.listDivider} />}
-                        </View>
-                      ))}
-                    </View>
-                  )}
-
-                  {!loadingBodies && (
-                    <View style={styles.dividerContainer}>
-                      <View style={styles.dividerLine} />
-                      <Text style={[styles.dividerText, { fontFamily: questrial }]}>Ou</Text>
-                      <View style={styles.dividerLine} />
-                    </View>
-                  )}
-
-                  {!loadingBodies && (
-                    <TouchableOpacity style={styles.addButton} onPress={() => router.push('/register_water_body' as any)} activeOpacity={0.82}>
-                      <Ionicons name="add" size={24} color={PRIMARY} style={{ marginRight: 8 }} />
-                      <Text style={[styles.addButtonText, { fontFamily: questrial }]}>Adicionar novo corpo hídrico</Text>
-                    </TouchableOpacity>
+                  <Text style={[s.locCidade, { fontFamily: Q }]}>
+                    {cidade ?? 'Não definida'}
+                  </Text>
+                  {precisao != null && (
+                    <Text style={[s.locPrecisao, { fontFamily: Q }]}>Precisão: {precisao} metros</Text>
                   )}
                 </View>
-              )}
+              </View>
+              <TouchableOpacity style={s.locBtn} onPress={usarLocalizacaoAtual} activeOpacity={0.8} disabled={localizando}>
+                {localizando
+                  ? <ActivityIndicator size="small" color={TEAL_MID} />
+                  : <>
+                      <Ionicons name="locate-outline" size={14} color={TEAL_MID} style={{ marginRight: 4 }} />
+                      <Text style={[s.locBtnText, { fontFamily: Q }]}>Usar minha localização</Text>
+                    </>
+                }
+              </TouchableOpacity>
+            </View>
 
-              {/* ── PASSO 2: FORMULÁRIO ── */}
-              {step === 'form' && (
-                <View>
-                  {errorMsg ? <Text style={[styles.errorBanner, { fontFamily: questrial }]}>{errorMsg}</Text> : null}
+            <Text style={[s.fieldLabel, { fontFamily: Q, marginTop: 16 }]}>Ou marque no mapa</Text>
 
-                  <View style={styles.sectionCard}>
-                    <Text style={[styles.sectionTitle, { fontFamily: questrial }]}>Título da denúncia</Text>
-                    <View style={styles.sectionDivider} />
-                    <TextInput
-                      style={[styles.input, { fontFamily: questrial }]}
-                      placeholder="Informe o título da denúncia..."
-                      placeholderTextColor={TEXT_MUTED}
-                      value={titulo}
-                      onChangeText={setTitulo}
-                    />
-                  </View>
+            <View style={s.mapPreview}>
+              <MapView
+                ref={mapRef}
+                style={StyleSheet.absoluteFill}
+                provider={PROVIDER_GOOGLE}
+                region={mapCoords ? { ...mapCoords, latitudeDelta: 0.02, longitudeDelta: 0.02 } : RECIFE_DEFAULT}
+                scrollEnabled={false}
+                zoomEnabled={false}
+                pitchEnabled={false}
+                rotateEnabled={false}
+                pointerEvents="none"
+              >
+                {mapCoords && <Marker coordinate={mapCoords} />}
+              </MapView>
+            </View>
 
-                  <View style={styles.sectionCard}>
-                    <Text style={[styles.sectionTitle, { fontFamily: questrial }]}>Grau</Text>
-                    <View style={styles.sectionDivider} />
-                    <View style={styles.severityRow}>
-                      {[
-                        { label: 'Baixa', color: '#1fc8b4', val: 'Baixa' },
-                        { label: 'Média', color: '#FFA000', val: 'Média' },
-                        { label: 'Alta', color: '#E74C3C', val: 'Alta' }
-                      ].map((item) => {
-                        const active = grau === item.val;
-                        return (
-                          <TouchableOpacity key={item.val} style={styles.severityOption} onPress={() => setGrau(item.val as any)} activeOpacity={0.7}>
-                            <View style={styles.severityCircleWrapper}>
-                              {active ? (
-                                <Ionicons name="checkmark-circle" size={24} color={item.color} />
-                              ) : (
-                                <View style={[styles.severityDot, { backgroundColor: item.color }]} />
-                              )}
-                            </View>
-                            <Text style={[styles.severityText, { fontFamily: questrial, color: active ? PRIMARY : TEXT_MUTED, fontWeight: active ? '700' : '400' }]}>
-                              {item.label}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  </View>
+            <TouchableOpacity style={s.abrirMapaBtn} onPress={() => setMapModalVisible(true)} activeOpacity={0.8}>
+              <Ionicons name="map-outline" size={18} color={PRIMARY} style={{ marginRight: 8 }} />
+              <Text style={[s.abrirMapaBtnText, { fontFamily: Q }]}>Abrir mapa</Text>
+            </TouchableOpacity>
+          </View>
 
-                  <View style={styles.sectionCard}>
-                    <Text style={[styles.sectionTitle, { fontFamily: questrial }]}>Descrição da denúncia</Text>
-                    <View style={styles.sectionDivider} />
-                    <TextInput
-                      style={[styles.descInput, { fontFamily: questrial }]}
-                      placeholder="Descreva detalhadamente o problema..."
-                      placeholderTextColor={TEXT_MUTED}
-                      value={descricao}
-                      onChangeText={setDescricao}
-                      multiline
-                      numberOfLines={4}
-                      textAlignVertical="top"
-                    />
-                  </View>
+          {/* ── SEÇÃO 3: Fotos ── */}
+          <Text style={[s.sectionHeader, { fontFamily: Q }]}>3. Fotos ou vídeos <Text style={s.optional}>(opcional)</Text></Text>
+          <Text style={[s.sectionSub, { fontFamily: Q }]}>Registre imagens que ajudem na identificação e na análise do problema.</Text>
 
-                  <TouchableOpacity style={styles.publishButton} onPress={handlePublish} activeOpacity={0.85} disabled={saving}>
-                    <LinearGradient colors={['#004d48', '#0d9080']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.publishGradient}>
-                      {saving ? (
-                        <ActivityIndicator color="#FFFFFF" />
-                      ) : (
-                        <Text style={[styles.publishButtonText, { fontFamily: questrial }]}>Realizar denúncia</Text>
-                      )}
-                    </LinearGradient>
+          <View style={s.card}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.fotosRow}>
+              {/* Botão adicionar */}
+              <TouchableOpacity style={s.addFotoBtn} onPress={adicionarFotos} activeOpacity={0.8}>
+                <Ionicons name="camera-outline" size={28} color={TEXT_MUTED} />
+                <Text style={[s.addFotoText, { fontFamily: Q }]}>Adicionar fotos{'\n'}ou vídeos</Text>
+                <Text style={[s.addFotoSub, { fontFamily: Q }]}>Até {MAX_FOTOS} arquivos</Text>
+              </TouchableOpacity>
+
+              {fotos.map((uri) => (
+                <View key={uri} style={s.fotThumb}>
+                  <Image source={{ uri }} style={s.fotImg} />
+                  <TouchableOpacity style={s.fotRemove} onPress={() => removerFoto(uri)}>
+                    <Ionicons name="close-circle" size={22} color="#fff" />
                   </TouchableOpacity>
                 </View>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* ── SEÇÕES 4 e 5 lado a lado ── */}
+          <View style={s.row45}>
+            {/* Seção 4 */}
+            <View style={[s.card, s.card45]}>
+              <Text style={[s.sectionHeader45, { fontFamily: Q }]}>4. Quando aconteceu? <Text style={s.optional}>(opcional)</Text></Text>
+              <Text style={[s.fieldLabel, { fontFamily: Q }]}>Data</Text>
+              <View style={s.dtField}>
+                <Ionicons name="calendar-outline" size={14} color={TEXT_MUTED} style={{ marginRight: 6 }} />
+                <TextInput
+                  style={[s.dtInput, { fontFamily: Q }]}
+                  value={data}
+                  onChangeText={setData}
+                  placeholder="DD/MM/AAAA"
+                  placeholderTextColor={TEXT_MUTED}
+                  keyboardType="numeric"
+                  maxLength={10}
+                />
+              </View>
+              <Text style={[s.fieldLabel, { fontFamily: Q, marginTop: 10 }]}>Hora</Text>
+              <View style={s.dtField}>
+                <Ionicons name="time-outline" size={14} color={TEXT_MUTED} style={{ marginRight: 6 }} />
+                <TextInput
+                  style={[s.dtInput, { fontFamily: Q }]}
+                  value={hora}
+                  onChangeText={setHora}
+                  placeholder="HH:MM"
+                  placeholderTextColor={TEXT_MUTED}
+                  keyboardType="numeric"
+                  maxLength={5}
+                />
+              </View>
+            </View>
+
+            {/* Seção 5 */}
+            <View style={[s.card, s.card45]}>
+              <Text style={[s.sectionHeader45, { fontFamily: Q }]}>5. Observações adicionais <Text style={s.optional}>(opcional)</Text></Text>
+              <Text style={[s.fieldLabel, { fontFamily: Q }]}>Alguma informação que possa ajudar?</Text>
+              <TextInput
+                style={[s.textarea45, { fontFamily: Q }]}
+                placeholder="Ex.: frequência do problema, impacto na região, outras observações..."
+                placeholderTextColor={TEXT_MUTED}
+                value={observacoes}
+                onChangeText={(t) => setObservacoes(t.slice(0, MAX_OBS))}
+                multiline
+                textAlignVertical="top"
+              />
+              <Text style={[s.counter, { fontFamily: Q }]}>{observacoes.length}/{MAX_OBS}</Text>
+            </View>
+          </View>
+
+          {/* AVISO */}
+          <View style={s.notice}>
+            <Ionicons name="shield-checkmark-outline" size={20} color={PRIMARY} style={{ marginRight: 10 }} />
+            <Text style={[s.noticeText, { fontFamily: Q }]}>
+              Sua denúncia será analisada pela equipe técnica e você poderá acompanhar o andamento.
+            </Text>
+          </View>
+
+          {/* BOTÃO ENVIAR */}
+          <TouchableOpacity style={s.submitBtn} onPress={handleEnviar} activeOpacity={0.85} disabled={saving}>
+            <LinearGradient colors={['#004d48', '#0a6b5e']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.submitGradient}>
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="send-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={[s.submitText, { fontFamily: Q }]}>Enviar denúncia</Text>
+                </>
               )}
-            </Animated.View>
-          </ScrollView>
-        </KeyboardAvoidingView>
+            </LinearGradient>
+          </TouchableOpacity>
+        </ScrollView>
       </View>
 
-      {/* ══ MODAL: SUCESSO ══ */}
+      {/* MODAL: MAPA */}
+      <Modal visible={mapModalVisible} animationType="slide">
+        <View style={{ flex: 1 }}>
+          <MapView
+            style={{ flex: 1 }}
+            provider={PROVIDER_GOOGLE}
+            initialRegion={mapCoords ? { ...mapCoords, latitudeDelta: 0.02, longitudeDelta: 0.02 } : RECIFE_DEFAULT}
+            onPress={(e) => setMapCoords(e.nativeEvent.coordinate)}
+          >
+            {mapCoords && <Marker coordinate={mapCoords} />}
+          </MapView>
+          <SafeAreaView edges={['bottom']} style={s.mapModalFooter}>
+            <TouchableOpacity
+              style={s.mapConfirmBtn}
+              onPress={() => {
+                if (mapCoords) setCoords({ lat: mapCoords.latitude, lng: mapCoords.longitude });
+                setMapModalVisible(false);
+              }}
+              activeOpacity={0.85}
+            >
+              <LinearGradient colors={['#004d48', '#0a6b5e']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.mapConfirmGradient}>
+                <Text style={[s.mapConfirmText, { fontFamily: Q }]}>Confirmar localização</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </SafeAreaView>
+        </View>
+      </Modal>
+
+      {/* MODAL: SUCESSO */}
       <Modal visible={successVisible} transparent animationType="fade">
-        <View style={styles.successOverlay}>
-          <View style={styles.successCard}>
-            <View style={styles.successIconCircle}>
+        <View style={s.successOverlay}>
+          <View style={s.successCard}>
+            <View style={s.successIconCircle}>
               <Ionicons name="checkmark-circle" size={44} color={PRIMARY} />
             </View>
-            <Text style={[styles.successTitle, { fontFamily: questrial }]}>Denúncia registrada!</Text>
-            <View style={styles.sectionDivider} />
-            <Text style={[styles.successBody, { fontFamily: questrial }]}>
-              Sua denúncia foi enviada com sucesso e será analisada pela equipe técnica.
+            <Text style={[s.successTitle, { fontFamily: Q }]}>Denúncia enviada!</Text>
+            <View style={s.successDivider} />
+            <Text style={[s.successBody, { fontFamily: Q }]}>
+              Sua denúncia foi registrada com sucesso e será analisada pela equipe técnica.
             </Text>
-            <TouchableOpacity style={styles.successBtn} onPress={() => router.replace('/(tabs)/home' as any)} activeOpacity={0.85}>
-              <Text style={[styles.successBtnText, { fontFamily: questrial }]}>Voltar para a Home</Text>
+            <TouchableOpacity
+              style={s.successBtn}
+              onPress={() => router.replace('/(tabs)' as any)}
+              activeOpacity={0.85}
+            >
+              <Text style={[s.successBtnText, { fontFamily: Q }]}>Voltar para a Home</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -345,68 +490,110 @@ export default function ReportComplaint() {
   );
 }
 
+const CARD_GAP = 10;
+const CARD45_W = (SCREEN_WIDTH - 40 - CARD_GAP) / 2;
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#FFFFFF' },
-  headerGradient: {},
-  headerSafeArea: { paddingBottom: 14 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 10 },
-  backButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  headerTitle: { flex: 1, fontSize: 18, color: '#FFFFFF', fontWeight: '700', letterSpacing: 0.2 },
-  headerSpacer: { width: 36 },
+const s = StyleSheet.create({
+  root: { flex: 1, backgroundColor: SURFACE },
 
-  tealBand: { paddingTop: 16, paddingHorizontal: 20, paddingBottom: 0, overflow: 'hidden' },
-  searchWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 50, paddingHorizontal: 16, paddingVertical: Platform.OS === 'ios' ? 12 : 8, marginBottom: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 6, elevation: 3 },
-  searchIcon: { marginRight: 10 },
-  searchInput: { flex: 1, fontSize: 15, color: '#333' },
+  // Header
+  header: { paddingBottom: 16 },
+  headerContent: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 16, paddingTop: 10, gap: 12 },
+  backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', marginTop: 2 },
+  headerText: { flex: 1 },
+  headerTitle: { fontSize: 20, color: '#fff', fontWeight: '700' },
+  headerSubtitle: { fontSize: 12, color: 'rgba(255,255,255,0.8)', marginTop: 4, lineHeight: 18 },
+  logoCircle: { width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
 
-  selectedBadgeWrapper: { marginBottom: 20, paddingHorizontal: 10 },
-  selectedBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 50, paddingHorizontal: 16, paddingVertical: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 6, elevation: 3 },
-  selectedBadgeText: { flex: 1, fontSize: 16, color: PRIMARY, fontWeight: '700', marginLeft: 8 },
+  // Scroll
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 40 },
 
-  waveWhite: { height: 28, backgroundColor: SURFACE, borderTopLeftRadius: 28, borderTopRightRadius: 28 },
+  // Error
+  errorBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffebee', borderRadius: 12, padding: 12, marginBottom: 14 },
+  errorText: { flex: 1, color: '#c62828', fontSize: 13 },
 
-  whiteBody: { flex: 1, backgroundColor: SURFACE },
-  whiteBodyContent: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 32 },
+  // Section headers
+  sectionHeader: { fontSize: 16, fontWeight: '700', color: PRIMARY, marginBottom: 10, marginTop: 6 },
+  sectionSub: { fontSize: 12, color: TEXT_MUTED, marginBottom: 10, marginTop: -6 },
+  optional: { fontSize: 13, fontWeight: '400', color: TEXT_MUTED },
 
-  listCard: { backgroundColor: '#FFFFFF', borderRadius: 20, overflow: 'hidden', marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.07, shadowRadius: 8, elevation: 3 },
-  listItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 18, gap: 12 },
-  waterBodyIconCircle: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(31,200,180,0.15)', alignItems: 'center', justifyContent: 'center' },
-  listItemText: { fontSize: 15, color: '#333', fontWeight: '600' },
-  listItemSub: { fontSize: 12, color: TEXT_MUTED, marginTop: 1 },
-  listDivider: { height: 1, backgroundColor: BORDER_LIGHT, marginLeft: 62 },
+  // Cards
+  card: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
+  fieldLabel: { fontSize: 13, color: TEXT_MUTED, marginBottom: 10 },
 
-  dividerContainer: { flexDirection: "row", alignItems: "center", marginVertical: 10, paddingHorizontal: 20 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: "#D1E5E3" },
-  dividerText: { marginHorizontal: 15, fontSize: 14, color: TEXT_MUTED },
+  // Tipo grid
+  tipoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  tipoCard: {
+    width: (SCREEN_WIDTH - 32 - 32 - 24) / 4,
+    aspectRatio: 0.9,
+    backgroundColor: SURFACE,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 8,
+    borderWidth: 1,
+    borderColor: BORDER_LIGHT,
+  },
+  tipoCheck: { position: 'absolute', top: 4, right: 4 },
+  tipoLabel: { fontSize: 10, color: '#444', textAlign: 'center', marginTop: 6, lineHeight: 13 },
 
-  addButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: "#FFFFFF", borderRadius: 50, height: 56, shadowColor: "#000", shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 4, marginTop: 10 },
-  addButtonText: { fontSize: 15, color: PRIMARY, fontWeight: "700" },
+  // Textarea
+  textarea: { backgroundColor: SURFACE, borderRadius: 10, padding: 12, fontSize: 13, color: '#333', minHeight: 90, borderWidth: 1, borderColor: BORDER_LIGHT },
+  counter: { fontSize: 11, color: TEXT_MUTED, textAlign: 'right', marginTop: 4 },
 
-  sectionCard: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 20, marginBottom: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
-  sectionTitle: { fontSize: 16, color: PRIMARY, fontWeight: '700', marginBottom: 10 },
-  sectionDivider: { height: 1, backgroundColor: BORDER_LIGHT, marginBottom: 14, width: '100%' },
+  // Localização
+  locRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 },
+  locInfo: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  locCidade: { fontSize: 14, color: '#333', fontWeight: '600' },
+  locPrecisao: { fontSize: 11, color: TEXT_MUTED, marginTop: 2 },
+  locBtn: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: TEAL_MID, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 6 },
+  locBtnText: { fontSize: 11, color: TEAL_MID, fontWeight: '600' },
 
-  input: { backgroundColor: SURFACE, borderRadius: 12, height: 48, paddingHorizontal: 16, fontSize: 14, color: "#3d5a58" },
-  descInput: { backgroundColor: SURFACE, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 14, color: "#3d5a58", minHeight: 100 },
+  // Mapa
+  mapPreview: { height: 140, borderRadius: 12, overflow: 'hidden', marginBottom: 10, borderWidth: 1, borderColor: BORDER_LIGHT },
+  abrirMapaBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: BORDER_LIGHT, borderRadius: 10, paddingVertical: 12 },
+  abrirMapaBtnText: { fontSize: 14, color: PRIMARY, fontWeight: '600' },
 
-  severityRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 10 },
-  severityOption: { flexDirection: 'row', alignItems: 'center' },
-  severityCircleWrapper: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center', marginRight: 6 },
-  severityDot: { width: 14, height: 14, borderRadius: 7 },
-  severityText: { fontSize: 14 },
+  // Fotos
+  fotosRow: { gap: 10, paddingBottom: 4 },
+  addFotoBtn: { width: 110, height: 110, borderRadius: 12, borderWidth: 1.5, borderColor: BORDER_LIGHT, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', backgroundColor: SURFACE, padding: 8 },
+  addFotoText: { fontSize: 11, color: TEXT_MUTED, textAlign: 'center', marginTop: 6 },
+  addFotoSub: { fontSize: 10, color: TEXT_MUTED, marginTop: 2 },
+  fotThumb: { width: 110, height: 110, borderRadius: 12, overflow: 'visible' },
+  fotImg: { width: 110, height: 110, borderRadius: 12 },
+  fotRemove: { position: 'absolute', top: -6, right: -6, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 12 },
 
-  errorBanner: { backgroundColor: '#ffebee', color: '#c62828', padding: 12, borderRadius: 12, marginBottom: 14, textAlign: 'center', overflow: 'hidden' },
+  // Seções 4 e 5
+  row45: { flexDirection: 'row', gap: CARD_GAP, marginBottom: 0 },
+  card45: { width: CARD45_W, marginBottom: 14 },
+  sectionHeader45: { fontSize: 12, fontWeight: '700', color: PRIMARY, marginBottom: 10 },
+  dtField: { flexDirection: 'row', alignItems: 'center', backgroundColor: SURFACE, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: BORDER_LIGHT },
+  dtInput: { flex: 1, fontSize: 13, color: '#333' },
+  textarea45: { backgroundColor: SURFACE, borderRadius: 10, padding: 10, fontSize: 12, color: '#333', flex: 1, minHeight: 80, borderWidth: 1, borderColor: BORDER_LIGHT },
 
-  publishButton: { borderRadius: 50, marginTop: 10, overflow: 'hidden', shadowColor: PRIMARY, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.30, shadowRadius: 10, elevation: 6 },
-  publishGradient: { paddingVertical: 16, alignItems: 'center' },
-  publishButtonText: { fontSize: 16, color: '#FFFFFF', fontWeight: '700', letterSpacing: 0.3 },
+  // Notice
+  notice: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#e8f5e9', borderRadius: 12, padding: 14, marginBottom: 16 },
+  noticeText: { flex: 1, fontSize: 12, color: '#2e7d32', lineHeight: 18 },
 
-  successOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.50)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
-  successCard: { width: '100%', backgroundColor: '#FFFFFF', borderRadius: 22, padding: 28, alignItems: 'center' },
+  // Submit
+  submitBtn: { borderRadius: 50, overflow: 'hidden', shadowColor: PRIMARY, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 5 },
+  submitGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16 },
+  submitText: { fontSize: 16, color: '#fff', fontWeight: '700', letterSpacing: 0.3 },
+
+  // Mapa modal
+  mapModalFooter: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, backgroundColor: '#fff' },
+  mapConfirmBtn: { borderRadius: 50, overflow: 'hidden' },
+  mapConfirmGradient: { paddingVertical: 14, alignItems: 'center' },
+  mapConfirmText: { fontSize: 16, color: '#fff', fontWeight: '700' },
+
+  // Sucesso modal
+  successOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
+  successCard: { width: '100%', backgroundColor: '#fff', borderRadius: 22, padding: 28, alignItems: 'center' },
   successIconCircle: { width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(63,243,231,0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-  successTitle: { fontSize: 20, fontWeight: '700', color: PRIMARY, marginBottom: 14, textAlign: 'center' },
+  successTitle: { fontSize: 20, fontWeight: '700', color: PRIMARY, marginBottom: 14 },
+  successDivider: { height: 1, backgroundColor: BORDER_LIGHT, width: '100%', marginBottom: 14 },
   successBody: { fontSize: 14, color: TEXT_MUTED, textAlign: 'center', lineHeight: 22, marginBottom: 24 },
   successBtn: { width: '100%', backgroundColor: PRIMARY, borderRadius: 50, paddingVertical: 14, alignItems: 'center' },
-  successBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700', letterSpacing: 0.4 },
+  successBtnText: { color: '#fff', fontSize: 15, fontWeight: '700', letterSpacing: 0.4 },
 });
