@@ -419,7 +419,10 @@ export default function HomeColaborador() {
             case "home": router.replace("/home_collaborator_update" as any); break;
             case "mapa": router.push("/map" as any); break;
             case "alertas": router.push("/alerts" as any); break;
-            case "perfil": router.push("/profile_collaborator" as any); break;
+            case "perfil":
+                console.log("navegando para profile_collaborator");
+                router.push("/(tabs)/profile_collaborator" as any);
+                break;
         }
     }
 
