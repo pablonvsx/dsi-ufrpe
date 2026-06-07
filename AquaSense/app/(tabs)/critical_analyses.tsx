@@ -589,11 +589,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 20,
     marginTop: 26,
-    gap: 14,
+    gap: 12,
   },
 
   pageTitle: {
-    fontSize: 34,
+    fontSize: 28,
     color: "#FFFFFF",
     fontWeight: "700",
     letterSpacing: 0.2,
@@ -612,10 +612,10 @@ const styles = StyleSheet.create({
     borderColor: "rgba(63,243,231,0.45)",
     backgroundColor: "rgba(0,0,0,0.08)",
     borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    gap: 10,
-    minWidth: 240,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 8,
+    width: 190,
   },
 
   criticalSummaryTitle: {
