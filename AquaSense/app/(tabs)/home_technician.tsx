@@ -7,7 +7,6 @@ import {
     Platform,
     ScrollView,
     ActivityIndicator,
-    Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -28,10 +27,10 @@ const BORDER_LIGHT = '#e0f2f1';
 const TEXT_MUTED   = '#6b7a7a';
 const SURFACE      = '#F5F9F8';
 
-type TabKey = 'home' | 'mapa' | 'alertas' | 'profile';
+// ─── Tipo unificado de aba de navegação ───────────────────────────────────────
+type NavTabKey = 'home' | 'analises' | 'mapa' | 'profile';
 
 // ─── Tipos de dados ───────────────────────────────────────────────────────────
-
 export interface PendingAnalysisData {
     count: number;
     lastTitle: string;
@@ -266,8 +265,6 @@ const BottomCards: React.FC<BottomCardsProps> = ({
 );
 
 // ─── Seção do mapa ────────────────────────────────────────────────────────────
-// Agora usa MapView real no preview, com pointerEvents="none" para
-// o toque cair no TouchableOpacity externo e abrir o modal.
 interface MapSectionProps {
     onViewMap: () => void;
 }
@@ -284,10 +281,8 @@ const MapSection: React.FC<MapSectionProps> = ({ onViewMap }) => (
             </TouchableOpacity>
         </View>
 
-        {/* Toque em qualquer lugar abre o modal */}
         <TouchableOpacity activeOpacity={0.85} onPress={onViewMap}>
             <View style={styles.mapContainer}>
-                {/* MapView real — scroll/zoom desabilitados, não captura eventos de toque */}
                 <MapView
                     style={StyleSheet.absoluteFill}
                     provider={PROVIDER_GOOGLE}
@@ -299,8 +294,6 @@ const MapSection: React.FC<MapSectionProps> = ({ onViewMap }) => (
                     pitchEnabled={false}
                     pointerEvents="none"
                 />
-
-                {/* Overlay "Toque para abrir" */}
                 <View style={styles.mapTapOverlay}>
                     <Ionicons name="expand-outline" size={16} color="rgba(0,77,72,0.7)" />
                     <Text style={styles.mapTapLabel}>Toque para abrir o mapa</Text>
@@ -310,67 +303,50 @@ const MapSection: React.FC<MapSectionProps> = ({ onViewMap }) => (
     </View>
 );
 
-// ─── Tab bar ──────────────────────────────────────────────────────────────────
+// ─── Tab bar (unificada) ──────────────────────────────────────────────────────
 interface TabBarProps {
-    active: TabKey;
-    onTab: (tab: TabKey) => void;
+    active: NavTabKey;
+    onTab: (tab: NavTabKey) => void;
     onAdd: () => void;
 }
 const TabBar: React.FC<TabBarProps> = ({ active, onTab, onAdd }) => {
-    const tabs: { key: TabKey; icon: keyof typeof Ionicons.glyphMap; label: string }[] = [
-        { key: 'home',    icon: 'home-outline',         label: 'Home'    },
-        { key: 'mapa',    icon: 'map-outline',           label: 'Mapa'    },
-        { key: 'alertas', icon: 'notifications-outline', label: 'Alertas' },
-        { key: 'profile', icon: 'person-outline',        label: 'Perfil'  },
+    const leftTabs:  { key: NavTabKey; icon: keyof typeof Ionicons.glyphMap; label: string }[] = [
+        { key: 'home',     icon: 'home-outline',          label: 'Home'     },
+        { key: 'analises', icon: 'document-text-outline', label: 'Análises' },
     ];
+    const rightTabs: { key: NavTabKey; icon: keyof typeof Ionicons.glyphMap; label: string }[] = [
+        { key: 'mapa',    icon: 'map-outline',    label: 'Mapa'   },
+        { key: 'profile', icon: 'person-outline', label: 'Perfil' },
+    ];
+
+    const renderTab = (t: typeof leftTabs[0]) => {
+        const isActive = active === t.key;
+        return (
+            <TouchableOpacity
+                key={t.key}
+                style={styles.navTabItem}
+                onPress={() => onTab(t.key)}
+                activeOpacity={0.7}
+            >
+                <Ionicons
+                    name={isActive ? t.icon.replace('-outline', '') as any : t.icon}
+                    size={23}
+                    color={isActive ? PRIMARY : '#aaa'}
+                />
+                <Text style={[styles.navTabLabel, isActive && styles.navTabLabelActive]}>
+                    {t.label}
+                </Text>
+            </TouchableOpacity>
+        );
+    };
 
     return (
         <View style={styles.tabBar}>
-            {tabs.slice(0, 2).map((tab) => {
-                const isActive = active === tab.key;
-                return (
-                    <TouchableOpacity
-                        key={tab.key}
-                        style={styles.tabItem}
-                        onPress={() => onTab(tab.key)}
-                        activeOpacity={0.7}
-                    >
-                        <Ionicons
-                            name={isActive ? tab.icon.replace('-outline', '') as any : tab.icon}
-                            size={23}
-                            color={isActive ? PRIMARY : '#aaa'}
-                        />
-                        <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
-                            {tab.label}
-                        </Text>
-                    </TouchableOpacity>
-                );
-            })}
-
+            {leftTabs.map(renderTab)}
             <TouchableOpacity style={styles.tabAddBtn} onPress={onAdd} activeOpacity={0.85}>
                 <Ionicons name="add" size={30} color="#fff" />
             </TouchableOpacity>
-
-            {tabs.slice(2).map((tab) => {
-                const isActive = active === tab.key;
-                return (
-                    <TouchableOpacity
-                        key={tab.key}
-                        style={styles.tabItem}
-                        onPress={() => onTab(tab.key)}
-                        activeOpacity={0.7}
-                    >
-                        <Ionicons
-                            name={isActive ? tab.icon.replace('-outline', '') as any : tab.icon}
-                            size={23}
-                            color={isActive ? PRIMARY : '#aaa'}
-                        />
-                        <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
-                            {tab.label}
-                        </Text>
-                    </TouchableOpacity>
-                );
-            })}
+            {rightTabs.map(renderTab)}
         </View>
     );
 };
@@ -382,7 +358,7 @@ export default function HomeTechnician() {
 
     const [fontsLoaded] = useFonts({ Questrial_400Regular });
 
-    const [activeTab, setActiveTab] = useState<TabKey>('home');
+    const [activeTab, setActiveTab] = useState<NavTabKey>('home');
     useFocusEffect(
         useCallback(() => {
             setActiveTab('home');
@@ -392,10 +368,6 @@ export default function HomeTechnician() {
     const [cityLabel,       setCityLabel]       = useState('Carregando...');
     const [locationLoading, setLocationLoading] = useState(true);
 
-    // ── Modal do mapa ─────────────────────────────────────────────────────────
-    const [mapaModalVisible, setMapaModalVisible] = useState(false);
-
-    // ── Dados dinâmicos — substitua por chamadas Firestore reais ──────────────
     const [pendingData,      setPendingData]      = useState<PendingAnalysisData>(EMPTY_PENDING);
     const [criticalData,     setCriticalData]     = useState<CriticalAnalysisData>(EMPTY_CRITICAL);
     const [lastAnalysisData, setLastAnalysisData] = useState<LastAnalysisData>(EMPTY_LAST_ANALYSIS);
@@ -440,36 +412,23 @@ export default function HomeTechnician() {
     }, []);
 
     // ── Navegação ─────────────────────────────────────────────────────────────
-    // Abre o modal de mapa rápido quando não há focusCorpoId.
-    // Se houver focusCorpoId, navega direto para a aba Mapa.
-    const navigateToMap = useCallback((focusCorpoId?: string) => {
-        setActiveTab('mapa');
-        if (focusCorpoId) {
-            router.push({ pathname: '/(tabs)/mapa', params: { focusCorpoId } } as any);
-        } else {
-            setMapaModalVisible(true);
-        }
-    }, [router]);
-
-    const handleTab = useCallback((tab: TabKey) => {
+    const handleTab = useCallback((tab: NavTabKey) => {
         setActiveTab(tab);
         if (tab === 'mapa') {
-            navigateToMap();
-        } else if (tab !== 'home') {
-            router.push(`/(tabs)/${tab}` as any);
+            router.push('/(tabs)/map' as any);
+        } else if (tab === 'analises') {
+            router.replace('/(tabs)/analyses_union' as any);
+        } else if (tab === 'profile') {
+            router.replace('/(tabs)/profile' as any);
         }
-    }, [router, navigateToMap]);
+        // 'home' não navega — já estamos aqui
+    }, [router]);
 
     const handleAdd      = useCallback(() => router.push('/(tabs)/register_observation' as any), [router]);
-    const handlePending  = useCallback(() => router.push('/(tabs)/pending_analyses'     as any), [router]);
+    const handlePending  = useCallback(() => router.replace('/(tabs)/pending_analyses'  as any), [router]);
     const handleCritical = useCallback(() => router.push('/(tabs)/critical_analyses'    as any), [router]);
     const handleDetails  = useCallback(() => router.push('/(tabs)/last_analysis'        as any), [router]);
-
-    // Abre mapa completo a partir do modal e fecha o modal
-    const handleAbrirMapaCompleto = useCallback(() => {
-        setMapaModalVisible(false);
-        router.push('/(tabs)/mapa' as any);
-    }, [router]);
+    const handleViewMap  = useCallback(() => router.push('/(tabs)/map'                  as any), [router]);
 
     if (!fontsLoaded) {
         return (
@@ -504,72 +463,12 @@ export default function HomeTechnician() {
                     onDetailsPress={handleDetails}
                 />
 
-                {/* MapSection recebe apenas onViewMap — sem criticalPoints */}
-                <MapSection onViewMap={() => navigateToMap()} />
+                <MapSection onViewMap={handleViewMap} />
 
                 <View style={{ height: 24 }} />
             </ScrollView>
 
             <TabBar active={activeTab} onTab={handleTab} onAdd={handleAdd} />
-
-            {/* ══ MODAL DO MAPA ══ */}
-            <Modal
-                visible={mapaModalVisible}
-                animationType="slide"
-                transparent={false}
-                onRequestClose={() => setMapaModalVisible(false)}
-            >
-                <SafeAreaView style={styles.mapModal} edges={['top', 'bottom']}>
-                    {/* Cabeçalho do modal */}
-                    <View style={styles.mapModalHeader}>
-                        <TouchableOpacity
-                            onPress={() => setMapaModalVisible(false)}
-                            style={styles.mapModalCloseBtn}
-                        >
-                            <Ionicons name="close" size={26} color={PRIMARY} />
-                        </TouchableOpacity>
-                        <Text style={styles.mapModalTitle}>Mapa técnico</Text>
-                        {/* Botão expandir — vai para aba completa */}
-                        <TouchableOpacity
-                            style={styles.mapModalExpandBtn}
-                            onPress={handleAbrirMapaCompleto}
-                        >
-                            <Ionicons name="expand-outline" size={22} color={PRIMARY} />
-                        </TouchableOpacity>
-                    </View>
-
-                    {/* MapView fullscreen — interativo */}
-                    <MapView
-                        style={{ flex: 1 }}
-                        provider={PROVIDER_GOOGLE}
-                        mapType="satellite"
-                        initialRegion={REGIAO_INICIAL}
-                        showsUserLocation
-                        showsMyLocationButton
-                        showsCompass
-                        rotateEnabled
-                    />
-
-                    {/* Rodapé com botão para tela completa */}
-                    <View style={styles.mapModalFooter}>
-                        <TouchableOpacity
-                            onPress={handleAbrirMapaCompleto}
-                            activeOpacity={0.85}
-                            style={styles.mapConfirmBtn}
-                        >
-                            <LinearGradient
-                                colors={['#004d48', '#0a6b5e']}
-                                start={{ x: 0, y: 0 }}
-                                end={{ x: 1, y: 0 }}
-                                style={styles.mapConfirmGradient}
-                            >
-                                <Ionicons name="map-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
-                                <Text style={styles.mapConfirmText}>Abrir mapa completo</Text>
-                            </LinearGradient>
-                        </TouchableOpacity>
-                    </View>
-                </SafeAreaView>
-            </Modal>
         </SafeAreaView>
     );
 }
@@ -776,44 +675,7 @@ const styles = StyleSheet.create({
     },
     mapTapLabel: { fontSize: 11, color: PRIMARY, fontWeight: '600' },
 
-    // ── Modal do mapa ──
-    mapModal: { flex: 1, backgroundColor: '#F5F9F8' },
-    mapModalHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: 16,
-        paddingVertical: 14,
-        borderBottomWidth: 1,
-        borderBottomColor: BORDER_LIGHT,
-        backgroundColor: CARD,
-    },
-    mapModalCloseBtn:  { width: 40, alignItems: 'flex-start' },
-    mapModalExpandBtn: { width: 40, alignItems: 'flex-end' },
-    mapModalTitle: {
-        fontSize: 17,
-        fontWeight: '700',
-        color: PRIMARY,
-        flex: 1,
-        textAlign: 'center',
-    },
-    mapModalFooter: {
-        padding: 16,
-        backgroundColor: CARD,
-        borderTopWidth: 1,
-        borderTopColor: BORDER_LIGHT,
-    },
-    mapConfirmBtn: { borderRadius: 14, overflow: 'hidden' },
-    mapConfirmGradient: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 16,
-        borderRadius: 14,
-    },
-    mapConfirmText: { fontSize: 16, color: '#fff', fontWeight: '700', letterSpacing: 0.2 },
-
-    // ── Tab bar ──
+    // ── Tab bar (unificada) ──
     tabBar: {
         flexDirection: 'row',
         backgroundColor: '#fff',
@@ -830,9 +692,9 @@ const styles = StyleSheet.create({
         shadowRadius: 8,
         elevation: 12,
     },
-    tabItem:        { alignItems: 'center', flex: 1, paddingVertical: 2 },
-    tabLabel:       { fontSize: 11, color: '#aaa', marginTop: 3 },
-    tabLabelActive: { color: PRIMARY, fontWeight: '600' },
+    navTabItem:        { alignItems: 'center', flex: 1, paddingVertical: 2 },
+    navTabLabel:       { fontSize: 11, color: '#aaa', marginTop: 3 },
+    navTabLabelActive: { color: PRIMARY, fontWeight: '600' },
     tabAddBtn: {
         width: 56,
         height: 56,
