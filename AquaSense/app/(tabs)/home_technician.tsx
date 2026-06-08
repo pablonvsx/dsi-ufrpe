@@ -417,7 +417,7 @@ export default function HomeTechnician() {
         if (tab === 'mapa') {
             router.push('/(tabs)/map' as any);
         } else if (tab === 'analises') {
-            router.replace('/(tabs)/pending_analyses' as any);
+            router.replace('/(tabs)/analyses_union' as any);
         } else if (tab === 'profile') {
             router.replace('/(tabs)/profile' as any);
         }
