@@ -1,251 +1,304 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
-    View, Text, StyleSheet, StatusBar, TouchableOpacity, TextInput,
-    ScrollView, ActivityIndicator, Modal, Alert, Dimensions,
+    View,
+    Text,
+    StyleSheet,
+    StatusBar,
+    TouchableOpacity,
+    TextInput,
+    ScrollView,
+    ActivityIndicator,
+    Dimensions,
+    Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
+import { Image } from 'react-native';
 import { Stack, useRouter } from "expo-router";
 import { useFonts, Questrial_400Regular } from "@expo-google-fonts/questrial";
-import { collection, query, where, orderBy, getDocs } from "firebase/firestore";
-import { db, auth } from "../../config/firebase";
+import { auth } from "../../config/firebase";
 import {
-    getComplaintsByUser,
-    archiveComplaint,
-    type Denuncia,
-} from "@/services/firestore/complaints";
+    getCollaboratorContributions,
+    type ContribuicaoUnificada,
+    type StatusContribuicao,
+    type TipoContribuicao,
+} from "@/services/firestore/collaborator_contributions";
 
-const PRIMARY = "#004d48";
-const TEAL_MID = "#0d9080";
-const SURFACE = "#F5F9F8";
-const BORDER_LIGHT = "#e0f2f1";
-const TEXT_MUTED = "#6b7a7a";
-const ORANGE = "#e07b1e";
+// ─── Design tokens ────────────────────────────────────────────────────────────
 
-interface Contribuicao {
-    id: string;
-    tipo: "observacao" | "denuncia" | "medicao";
-    titulo: string;
-    corpo: string;
-    detalhe: string;
-    data: string;
-    hora: string;
-    status: string;
-    statusBg: string;
-    statusColor: string;
-    icon: string;
-    iconBg: string;
-    iconColor: string;
-}
+const PRIMARY    = "#004d48";
+const TEAL_MID   = "#0d9080";
+const SURFACE    = "#F5F9F8";
+const CARD_BG    = "#ffffff";
+const BORDER     = "#e0f2f1";
+const MUTED      = "#6b7a7a";
+const ORANGE     = "#e07b1e";
+const RED        = "#e05252";
+const BLUE       = "#1565c0";
+const GREEN      = "#2e7d32";
+const GRAY       = "#9e9e9e";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function statusDenunciaStyle(status?: string): { label: string; bg: string; color: string } {
-    switch (status) {
-        case "recebida":           return { label: "Recebida",     bg: "#e8f5e9", color: "#388e3c" };
-        case "em_analise":         return { label: "Em análise",   bg: "#fff8e1", color: "#f57f17" };
-        case "encaminhada_equipe": return { label: "Encaminhada",  bg: "#e3f2fd", color: "#1565c0" };
-        case "resolvida":          return { label: "Resolvida",    bg: "#e6f4f1", color: "#1a8c80" };
-        case "arquivada":          return { label: "Arquivada",    bg: "#f5f5f5", color: "#9e9e9e" };
-        default:                   return { label: "Pendente",     bg: "#fff3e0", color: ORANGE   };
-    }
-}
-
-function statusOrder(status?: string): number {
-    const map: Record<string, number> = {
-        pendente: 0, recebida: 1, em_analise: 2, encaminhada_equipe: 3, resolvida: 4,
-    };
-    return map[status ?? "pendente"] ?? 0;
-}
-
-function labelTipo(id: string): string {
-    const map: Record<string, string> = {
-        esgoto: "Esgoto irregular", lixo: "Lixo / Resíduos",
-        poluicao_agua: "Poluição da água", desmatamento: "Desmatamento",
-        queimada: "Queimada", fumaca: "Emissão de fumaça", outro: "Outro",
-    };
-    return map[id] ?? id;
-}
-
-function formatarData(timestamp: any): { data: string; hora: string } {
-    if (!timestamp) return { data: "—", hora: "—" };
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+function formatarDataHora(date: Date): { data: string; hora: string } {
+    if (!date || date.getTime() === 0) return { data: "—", hora: "—" };
     return {
         data: date.toLocaleDateString("pt-BR"),
         hora: date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
     };
 }
 
-// ─── Status Timeline ──────────────────────────────────────────────────────────
+interface StatusConfig {
+    label: string;
+    bg: string;
+    color: string;
+    icon: keyof typeof Ionicons.glyphMap;
+    dot: string;
+}
 
-const STATUS_STEPS = [
-    { key: "recebida",           label: "Recebida",          icon: "checkmark-circle-outline" as const, color: "#388e3c" },
-    { key: "em_analise",         label: "Em análise",        icon: "search-outline" as const,           color: "#f57f17" },
-    { key: "encaminhada_equipe", label: "Encaminhada",       icon: "people-outline" as const,           color: "#1565c0" },
-    { key: "resolvida",          label: "Resolvida",         icon: "checkmark-done-circle-outline" as const, color: "#1a8c80" },
-];
+function getStatusConfig(status: StatusContribuicao): StatusConfig {
+    switch (status) {
+        case "validada":   return { label: "Validada",   bg: "#e8f5e9", color: GREEN,  icon: "checkmark-circle",     dot: GREEN  };
+        case "em_analise": return { label: "Em análise", bg: "#fce4e4", color: RED,    icon: "time-outline",          dot: RED    };
+        case "arquivada":  return { label: "Arquivada",  bg: "#f5f5f5", color: GRAY,   icon: "archive-outline",       dot: GRAY   };
+        case "rascunho":   return { label: "Rascunho",   bg: "#f5f5f5", color: GRAY,   icon: "document-outline",      dot: GRAY   };
+        default:           return { label: "Pendente",   bg: "#fff3e0", color: ORANGE, icon: "time-outline",          dot: ORANGE };
+    }
+}
 
-function StatusTimeline({ currentStatus, fontFamily }: { currentStatus?: string; fontFamily?: string }) {
-    const currentOrder = statusOrder(currentStatus);
+interface TipoConfig {
+    icon: keyof typeof Ionicons.glyphMap;
+    iconBg: string;
+    iconColor: string;
+}
 
+function getTipoConfig(tipo: TipoContribuicao): TipoConfig {
+    switch (tipo) {
+        case "measurement": return { icon: "flask-outline",    iconBg: "rgba(13,144,128,0.12)", iconColor: TEAL_MID };
+        case "observation":  return { icon: "leaf-outline",     iconBg: "rgba(46,125,50,0.12)",  iconColor: GREEN    };
+        case "complaint":    return { icon: "megaphone-outline",iconBg: "rgba(224,82,82,0.12)",  iconColor: RED      };
+        case "water_body":   return { icon: "water-outline",    iconBg: "rgba(21,101,192,0.12)", iconColor: BLUE     };
+    }
+}
+
+// ─── Chips de filtro ──────────────────────────────────────────────────────────
+
+type Filtro = "Todas" | "Validadas" | "Pendentes" | "Em análise" | "Rascunhos";
+
+const FILTROS: Filtro[] = ["Todas", "Validadas", "Pendentes", "Em análise", "Rascunhos"];
+
+const FILTRO_DOT: Partial<Record<Filtro, string>> = {
+    Validadas: GREEN,
+    Pendentes: ORANGE,
+    "Em análise": RED,
+};
+
+function filtroMatchStatus(filtro: Filtro, status: StatusContribuicao): boolean {
+    if (filtro === "Todas") return true;
+    if (filtro === "Validadas") return status === "validada";
+    if (filtro === "Pendentes") return status === "pendente";
+    if (filtro === "Em análise") return status === "em_analise";
+    if (filtro === "Rascunhos") return status === "rascunho" || status === "arquivada";
+    return true;
+}
+
+// ─── Sub-componentes ──────────────────────────────────────────────────────────
+
+function ChipFiltro({
+    label,
+    ativo,
+    onPress,
+    fontFamily,
+}: {
+    label: Filtro;
+    ativo: boolean;
+    onPress: () => void;
+    fontFamily?: string;
+}) {
+    const dot = FILTRO_DOT[label];
     return (
-        <View style={tl.row}>
-            {STATUS_STEPS.map((step, idx) => {
-                const done = statusOrder(step.key) <= currentOrder && currentStatus !== "pendente" && currentStatus !== "arquivada";
-                const isActive = step.key === currentStatus;
-                const color = done ? step.color : "#ccc";
-
-                return (
-                    <React.Fragment key={step.key}>
-                        <View style={tl.step}>
-                            <View style={[tl.circle, { borderColor: color, backgroundColor: done ? color + "22" : "#f5f5f5" }]}>
-                                <Ionicons name={step.icon} size={18} color={color} />
-                            </View>
-                            <Text style={[tl.label, { fontFamily, color: done ? "#333" : "#bbb" }]} numberOfLines={2}>
-                                {step.label}
-                            </Text>
-                            {isActive && <View style={[tl.activeDot, { backgroundColor: color }]} />}
-                        </View>
-                        {idx < STATUS_STEPS.length - 1 && (
-                            <View style={[tl.line, { backgroundColor: statusOrder(STATUS_STEPS[idx + 1].key) <= currentOrder && currentStatus !== "pendente" ? STATUS_STEPS[idx].color : "#e0e0e0" }]} />
-                        )}
-                    </React.Fragment>
-                );
-            })}
-        </View>
+        <TouchableOpacity
+            style={[chip.base, ativo && chip.active]}
+            onPress={onPress}
+            activeOpacity={0.8}
+        >
+            {dot && !ativo && <View style={[chip.dot, { backgroundColor: dot }]} />}
+            <Text style={[chip.text, { fontFamily }, ativo && chip.textActive]}>
+                {label}
+            </Text>
+        </TouchableOpacity>
     );
 }
 
-const tl = StyleSheet.create({
-    row: { flexDirection: "row", alignItems: "flex-start", marginVertical: 8 },
-    step: { alignItems: "center", width: 60 },
-    circle: { width: 36, height: 36, borderRadius: 18, borderWidth: 2, alignItems: "center", justifyContent: "center" },
-    label: { fontSize: 9, textAlign: "center", marginTop: 4, lineHeight: 12 },
-    activeDot: { width: 6, height: 6, borderRadius: 3, marginTop: 2 },
-    line: { flex: 1, height: 2, marginTop: 17 },
+const chip = StyleSheet.create({
+    base: {
+        flexDirection: "row",
+        alignItems: "center",
+        alignSelf: "flex-start",       // ← impede esticamento vertical
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 50,
+        backgroundColor: CARD_BG,
+        borderWidth: 1,
+        borderColor: BORDER,
+        marginRight: 8,
+    },
+    active: { backgroundColor: PRIMARY, borderColor: PRIMARY },
+    dot: { width: 7, height: 7, borderRadius: 4, marginRight: 5 },
+    text: { fontSize: 13, color: MUTED, fontWeight: "600" },
+    textActive: { color: "#fff" },
 });
 
-// ─── Componente principal ─────────────────────────────────────────────────────
+function CardContribuicao({
+    item,
+    fontFamily,
+    onPress,
+}: {
+    item: ContribuicaoUnificada;
+    fontFamily?: string;
+    onPress?: () => void;
+}) {
+    const { data, hora } = formatarDataHora(item.criadoEm);
+    const st = getStatusConfig(item.status);
+    const tp = getTipoConfig(item.tipo);
+    const isCalendar = item.tipo === "measurement" || item.tipo === "water_body";
+
+    return (
+        <TouchableOpacity
+            style={card.wrap}
+            onPress={onPress}
+            activeOpacity={onPress ? 0.75 : 1}
+        >
+            {/* ícone tipo */}
+            <View style={[card.iconCircle, { backgroundColor: tp.iconBg }]}>
+                <Ionicons name={tp.icon} size={22} color={tp.iconColor} />
+            </View>
+
+            {/* conteúdo */}
+            <View style={card.body}>
+                <Text style={[card.title, { fontFamily }]} numberOfLines={1}>
+                    {item.titulo}
+                </Text>
+                {(item.corpoHidricoNome || item.descricao) && (
+                    <Text style={[card.sub, { fontFamily }]} numberOfLines={1}>
+                        {[item.corpoHidricoNome, item.descricao].filter(Boolean).join(" · ")}
+                    </Text>
+                )}
+                <View style={card.dateRow}>
+                    <Ionicons
+                        name={isCalendar ? "calendar-outline" : "time-outline"}
+                        size={12}
+                        color="#aaa"
+                        style={{ marginRight: 4 }}
+                    />
+                    <Text style={[card.date, { fontFamily }]}>
+                        {data} · {hora}
+                    </Text>
+                </View>
+            </View>
+
+            {/* status + chevron */}
+            <View style={card.right}>
+                <View style={[card.pill, { backgroundColor: st.bg }]}>
+                    <Ionicons name={st.icon} size={11} color={st.color} style={{ marginRight: 3 }} />
+                    <Text style={[card.pillText, { fontFamily, color: st.color }]}>
+                        {st.label}
+                    </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={15} color="#ccc" style={{ marginTop: 6 }} />
+            </View>
+        </TouchableOpacity>
+    );
+}
+
+const card = StyleSheet.create({
+    wrap: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: CARD_BG,
+        borderRadius: 16,
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+        marginBottom: 10,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
+        elevation: 2,
+    },
+    iconCircle: {
+        width: 46,
+        height: 46,
+        borderRadius: 14,
+        alignItems: "center",
+        justifyContent: "center",
+        marginRight: 12,
+    },
+    body: { flex: 1, marginRight: 8 },
+    title: { fontSize: 14, fontWeight: "700", color: "#1a1a1a", marginBottom: 3 },
+    sub: { fontSize: 12, color: MUTED, marginBottom: 4 },
+    dateRow: { flexDirection: "row", alignItems: "center" },
+    date: { fontSize: 11, color: "#aaa" },
+    right: { alignItems: "flex-end" },
+    pill: {
+        flexDirection: "row",
+        alignItems: "center",
+        borderRadius: 50,
+        paddingHorizontal: 9,
+        paddingVertical: 5,
+    },
+    pillText: { fontSize: 11, fontWeight: "700" },
+});
+
+// ─── Tela principal ───────────────────────────────────────────────────────────
+
+const PAGE_SIZE = 8;
 
 export default function MyContributions() {
     const router = useRouter();
     const [search, setSearch] = useState("");
-    const [filtroAtivo, setFiltroAtivo] = useState("Todas");
-    const [contribuicoes, setContribuicoes] = useState<Contribuicao[]>([]);
-    const [denunciasMap, setDenunciasMap] = useState<Map<string, Denuncia>>(new Map());
+    const [filtro, setFiltro] = useState<Filtro>("Todas");
+    const [items, setItems] = useState<ContribuicaoUnificada[]>([]);
     const [loading, setLoading] = useState(true);
-    const [archiving, setArchiving] = useState(false);
-
-    const [selectedItem, setSelectedItem] = useState<Contribuicao | null>(null);
-    const [modalVisible, setModalVisible] = useState(false);
+    const [erro, setErro] = useState<string | null>(null);
+    const [visivel, setVisivel] = useState(PAGE_SIZE);
 
     const [fontsLoaded] = useFonts({ Questrial_400Regular });
     const Q = fontsLoaded ? "Questrial_400Regular" : undefined;
 
-    useEffect(() => { buscarContribuicoes(); }, []);
-
-    const buscarContribuicoes = useCallback(async () => {
+    const buscar = useCallback(async () => {
         setLoading(true);
+        setErro(null);
         try {
             const uid = auth.currentUser?.uid;
-            if (!uid) { setContribuicoes([]); return; }
-
-            const obsQuery = query(
-                collection(db, "observacoes"),
-                where("criadoPor", "==", uid),
-                orderBy("dataCriacao", "desc")
-            );
-
-            const [obsSnap, denuncias] = await Promise.all([
-                getDocs(obsQuery),
-                getComplaintsByUser(uid),
-            ]);
-
-            const observacoes: Contribuicao[] = obsSnap.docs.map((doc) => {
-                const d = doc.data();
-                const { data, hora } = formatarData(d.dataCriacao);
-                return {
-                    id: doc.id, tipo: "observacao",
-                    titulo: `Observação - ${d.corpoHidricoId ?? "Corpo hídrico"}`,
-                    corpo: d.corpoHidricoId ?? "—",
-                    detalhe: `Cor: ${d.cor ?? "—"} · Odor: ${d.odor ?? "—"}`,
-                    data, hora,
-                    status: "Pendente", statusBg: "#fff8e1", statusColor: "#e6a817",
-                    icon: "leaf-outline", iconBg: "rgba(230,168,23,0.12)", iconColor: "#e6a817",
-                };
-            });
-
-            const rawMap = new Map<string, Denuncia>();
-            const denunciasFormatadas: Contribuicao[] = denuncias.map((d) => {
-                rawMap.set(d.id, d);
-                const { data, hora } = formatarData(d.dataCriacao);
-                const { label, bg, color } = statusDenunciaStyle(d.status);
-                return {
-                    id: d.id, tipo: "denuncia",
-                    titulo: d.titulo ?? "Denúncia",
-                    corpo: d.corpoHidricoNome ?? d.cidade ?? "—",
-                    detalhe: d.tipoProblema ? `Tipo: ${labelTipo(d.tipoProblema)}` : (d.descricao?.slice(0, 60) ?? ""),
-                    data, hora,
-                    status: label, statusBg: bg, statusColor: color,
-                    icon: "megaphone-outline", iconBg: "rgba(224,82,82,0.12)", iconColor: "#e05252",
-                };
-            });
-
-            setDenunciasMap(rawMap);
-            const all = [...observacoes, ...denunciasFormatadas].sort((a, b) => {
-                const parse = (s: string, h: string) => new Date(`${s.split("/").reverse().join("-")}T${h}`).getTime();
-                return parse(b.data, b.hora) - parse(a.data, a.hora);
-            });
-            setContribuicoes(all);
-        } catch (e) {
-            console.error("Erro ao buscar contribuições:", e);
+            if (!uid) {
+                setItems([]);
+                return;
+            }
+            const data = await getCollaboratorContributions(uid);
+            setItems(data);
+        } catch (e: any) {
+            console.error("[MyContributions] Erro ao buscar contribuições:", e);
+            setErro("Não foi possível carregar as contribuições. Tente novamente.");
         } finally {
             setLoading(false);
         }
     }, []);
 
-    function abrirDetalhe(item: Contribuicao) {
-        setSelectedItem(item);
-        setModalVisible(true);
-    }
+    useEffect(() => { buscar(); }, [buscar]);
 
-    async function handleArquivar() {
-        if (!selectedItem) return;
-        Alert.alert(
-            "Arquivar denúncia",
-            "Tem certeza que deseja arquivar esta denúncia? Esta ação não pode ser desfeita.",
-            [
-                { text: "Cancelar", style: "cancel" },
-                {
-                    text: "Arquivar", style: "destructive",
-                    onPress: async () => {
-                        setArchiving(true);
-                        try {
-                            await archiveComplaint(selectedItem.id);
-                            setModalVisible(false);
-                            await buscarContribuicoes();
-                        } catch {
-                            Alert.alert("Erro", "Não foi possível arquivar a denúncia.");
-                        } finally {
-                            setArchiving(false);
-                        }
-                    },
-                },
-            ]
-        );
-    }
-
-    const filtradas = contribuicoes.filter((c) => {
-        const buscaOk = c.titulo.toLowerCase().includes(search.toLowerCase());
-        const filtroOk = filtroAtivo === "Todas" || c.status === filtroAtivo ||
-            (filtroAtivo === "Denúncias" && c.tipo === "denuncia") ||
-            (filtroAtivo === "Observações" && c.tipo === "observacao");
-        return buscaOk && filtroOk;
+    const filtradas = items.filter((item) => {
+        const textOk =
+            !search ||
+            item.titulo.toLowerCase().includes(search.toLowerCase()) ||
+            (item.corpoHidricoNome ?? "").toLowerCase().includes(search.toLowerCase()) ||
+            (item.descricao ?? "").toLowerCase().includes(search.toLowerCase());
+        return textOk && filtroMatchStatus(filtro, item.status);
     });
 
-    const selectedDenuncia = selectedItem ? denunciasMap.get(selectedItem.id) : null;
-    const podeArquivar = selectedDenuncia && !["arquivada", "resolvida"].includes(selectedDenuncia.status ?? "");
+    const pagina = filtradas.slice(0, visivel);
+    const temMais = visivel < filtradas.length;
 
     return (
         <>
@@ -253,308 +306,335 @@ export default function MyContributions() {
             <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
             <View style={s.root}>
-                {/* HEADER */}
-                <LinearGradient colors={["#004d48", "#0a6b5e"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.headerGradient}>
+                {/* ── HEADER ──────────────────────────────────────────────── */}
+                <LinearGradient
+                    colors={["#004d48", "#0a6b5e"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={s.headerGrad}
+                >
                     <SafeAreaView edges={["top"]} style={s.headerSafe}>
                         <View style={s.headerRow}>
-                            <TouchableOpacity style={s.backBtn} onPress={() => router.back()} activeOpacity={0.7}>
+                            <TouchableOpacity
+                                style={s.backBtn}
+                                onPress={() => router.back()}
+                                activeOpacity={0.7}
+                            >
                                 <Ionicons name="arrow-back-outline" size={22} color="#fff" />
                             </TouchableOpacity>
-                            <View style={s.headerTextWrap}>
-                                <Text style={[s.headerTitle, { fontFamily: Q }]}>Minhas contribuições</Text>
+
+                            <View style={s.headerText}>
+                                <Text style={[s.headerTitle, { fontFamily: Q }]}>
+                                    Minhas contribuições
+                                </Text>
                                 <Text style={[s.headerSub, { fontFamily: Q }]}>
-                                    Acompanhe suas observações e denúncias enviadas.
+                                    Acompanhe aqui todas as suas medições e observações enviadas.
                                 </Text>
                             </View>
-                        </View>
+
+                            {/* Logo AquaSense */}
+                            
+                            <Image
+                                source={require('../../assets/images/aquasense.png')}
+                                style={s.logoImage}
+                                resizeMode="contain"
+                                />  
+                            </View>
+                        
                     </SafeAreaView>
                 </LinearGradient>
 
-                {/* BUSCA */}
-                <View style={s.searchWrapper}>
-                    <View style={s.searchBar}>
-                        <Ionicons name="search-outline" size={18} color={TEXT_MUTED} style={{ marginRight: 8 }} />
-                        <TextInput
-                            style={[s.searchInput, { fontFamily: Q }]}
-                            placeholder="Buscar contribuições"
-                            placeholderTextColor="#aaa"
-                            value={search}
-                            onChangeText={setSearch}
-                        />
-                        {search.length > 0 && (
-                            <TouchableOpacity onPress={() => setSearch("")}>
-                                <Ionicons name="close-circle" size={16} color={TEXT_MUTED} />
-                            </TouchableOpacity>
-                        )}
-                    </View>
-                </View>
+                {/* ── CARD BRANCO PRINCIPAL ────────────────────────────────── */}
+                <View style={s.mainCard}>
 
-                {/* FILTROS */}
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filtersScroll} contentContainerStyle={s.filtersWrap}>
-                    {["Todas", "Denúncias", "Observações", "Pendente", "Recebida", "Em análise", "Encaminhada", "Resolvida"].map((f) => (
-                        <TouchableOpacity key={f} style={[s.chip, filtroAtivo === f && s.chipActive]} onPress={() => setFiltroAtivo(f)} activeOpacity={0.8}>
-                            <Text style={[s.chipText, { fontFamily: Q }, filtroAtivo === f && s.chipTextActive]}>{f}</Text>
+                    {/* Busca + Filtrar */}
+                    <View style={s.searchRow}>
+                        <View style={s.searchBar}>
+                            <Ionicons name="search-outline" size={17} color={MUTED} style={{ marginRight: 8 }} />
+                            <TextInput
+                                style={[s.searchInput, { fontFamily: Q }]}
+                                placeholder="Buscar contribuições"
+                                placeholderTextColor="#bbb"
+                                value={search}
+                                onChangeText={(t) => { setSearch(t); setVisivel(PAGE_SIZE); }}
+                                returnKeyType="search"
+                            />
+                            {search.length > 0 && (
+                                <TouchableOpacity onPress={() => setSearch("")}>
+                                    <Ionicons name="close-circle" size={16} color={MUTED} />
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                        <TouchableOpacity style={s.filterBtn} activeOpacity={0.8}>
+                            <Ionicons name="options-outline" size={16} color={PRIMARY} style={{ marginRight: 5 }} />
+                            <Text style={[s.filterBtnText, { fontFamily: Q }]}>Filtrar</Text>
                         </TouchableOpacity>
-                    ))}
-                </ScrollView>
-
-                {/* LISTA */}
-                {loading ? (
-                    <View style={s.loadingWrap}>
-                        <ActivityIndicator size="large" color={PRIMARY} />
-                        <Text style={[s.loadingText, { fontFamily: Q }]}>Carregando contribuições...</Text>
                     </View>
-                ) : (
-                    <ScrollView style={s.body} contentContainerStyle={s.bodyContent} showsVerticalScrollIndicator={false}>
-                        <Text style={[s.resultados, { fontFamily: Q }]}>
-                            {filtradas.length} contribuiç{filtradas.length === 1 ? "ão" : "ões"} encontrada{filtradas.length === 1 ? "" : "s"}
-                        </Text>
 
-                        {filtradas.length === 0 ? (
-                            <View style={s.emptyWrap}>
-                                <View style={s.emptyIconCircle}>
-                                    <Ionicons name="leaf-outline" size={28} color={TEXT_MUTED} />
-                                </View>
-                                <Text style={[s.emptyText, { fontFamily: Q }]}>Nenhuma contribuição encontrada.</Text>
-                            </View>
-                        ) : (
-                            filtradas.map((item) => (
-                                <TouchableOpacity
-                                    key={item.id}
-                                    style={[s.card, item.tipo === "denuncia" && s.cardDenuncia]}
-                                    onPress={() => item.tipo === "denuncia" ? abrirDetalhe(item) : null}
-                                    activeOpacity={item.tipo === "denuncia" ? 0.75 : 1}
-                                >
-                                    <View style={s.cardLeft}>
-                                        <View style={[s.cardIcon, { backgroundColor: item.iconBg }]}>
-                                            <Ionicons name={item.icon as any} size={22} color={item.iconColor} />
-                                        </View>
-                                        <View style={s.cardInfo}>
-                                            <Text style={[s.cardTitle, { fontFamily: Q }]} numberOfLines={1}>{item.titulo}</Text>
-                                            <Text style={[s.cardDetalhe, { fontFamily: Q }]} numberOfLines={1}>{item.detalhe}</Text>
-                                            <Text style={[s.cardData, { fontFamily: Q }]}>{item.data} · {item.hora}</Text>
-                                        </View>
-                                    </View>
-                                    <View style={s.cardRight}>
-                                        <View style={[s.statusPill, { backgroundColor: item.statusBg }]}>
-                                            <Text style={[s.statusText, { fontFamily: Q, color: item.statusColor }]}>{item.status}</Text>
-                                        </View>
-                                        {item.tipo === "denuncia" && (
-                                            <Ionicons name="chevron-forward" size={16} color="#aaa" style={{ marginTop: 6 }} />
-                                        )}
-                                    </View>
-                                </TouchableOpacity>
-                            ))
-                        )}
+                    {/* Chips */}
+                    <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        style={s.chipsScroll}
+                        contentContainerStyle={s.chipsContent}
+                    >
+                        {FILTROS.map((f) => (
+                            <ChipFiltro
+                                key={f}
+                                label={f}
+                                ativo={filtro === f}
+                                onPress={() => { setFiltro(f); setVisivel(PAGE_SIZE); }}
+                                fontFamily={Q}
+                            />
+                        ))}
                     </ScrollView>
-                )}
-            </View>
 
-            {/* ── MODAL DETALHE DENÚNCIA ─────────────────────────────────────── */}
-            <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
-                <View style={m.overlay}>
-                    <TouchableOpacity style={m.backdrop} onPress={() => setModalVisible(false)} activeOpacity={1} />
-
-                    <View style={m.sheet}>
-                        {/* Handle */}
-                        <View style={m.handle} />
-
-                        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={m.sheetScroll}>
-                            {/* Cabeçalho */}
-                            <View style={m.sheetHeader}>
-                                <View style={m.sheetIconCircle}>
-                                    <Ionicons name="megaphone-outline" size={24} color={ORANGE} />
-                                </View>
-                                <View style={{ flex: 1 }}>
-                                    <Text style={[m.sheetTitle, { fontFamily: Q }]} numberOfLines={2}>
-                                        {selectedItem?.titulo}
-                                    </Text>
-                                    {selectedDenuncia?.tipoProblema && (
-                                        <View style={m.tipoTag}>
-                                            <Text style={[m.tipoTagText, { fontFamily: Q }]}>
-                                                {labelTipo(selectedDenuncia.tipoProblema)}
-                                            </Text>
-                                        </View>
-                                    )}
-                                </View>
-                                <TouchableOpacity onPress={() => setModalVisible(false)} style={m.closeBtn}>
-                                    <Ionicons name="close" size={20} color={TEXT_MUTED} />
-                                </TouchableOpacity>
+                    {/* Contagem + ordenação */}
+                    {!loading && (
+                        <View style={s.metaRow}>
+                            <Text style={[s.metaCount, { fontFamily: Q }]}>
+                                Resultados:{" "}
+                                <Text style={{ color: "#1a1a1a", fontWeight: "700" }}>
+                                    {filtradas.length} contribuiç{filtradas.length === 1 ? "ão" : "ões"}
+                                </Text>
+                            </Text>
+                            <View style={s.sortBtn}>
+                                <Text style={[s.sortText, { fontFamily: Q }]}>Mais recentes</Text>
+                                <Ionicons name="swap-vertical-outline" size={14} color={MUTED} style={{ marginLeft: 4 }} />
                             </View>
+                        </View>
+                    )}
 
-                            <View style={m.divider} />
-
-                            {/* Status atual */}
-                            {selectedItem && (
-                                <View style={m.statusRow}>
-                                    <View style={[m.statusBadge, { backgroundColor: selectedItem.statusBg }]}>
-                                        <Ionicons
-                                            name={selectedItem.status === "Resolvida" ? "checkmark-circle" : selectedItem.status === "Arquivada" ? "archive" : "time-outline"}
-                                            size={14} color={selectedItem.statusColor} style={{ marginRight: 4 }}
+                    {/* Lista */}
+                    {loading ? (
+                        <View style={s.loadingWrap}>
+                            <ActivityIndicator size="large" color={PRIMARY} />
+                            <Text style={[s.loadingText, { fontFamily: Q }]}>
+                                Carregando contribuições…
+                            </Text>
+                        </View>
+                    ) : erro ? (
+                        <View style={s.erroWrap}>
+                            <Ionicons name="cloud-offline-outline" size={32} color={MUTED} />
+                            <Text style={[s.erroText, { fontFamily: Q }]}>{erro}</Text>
+                            <TouchableOpacity style={s.retryBtn} onPress={buscar} activeOpacity={0.8}>
+                                <Text style={[s.retryText, { fontFamily: Q }]}>Tentar novamente</Text>
+                            </TouchableOpacity>
+                        </View>
+                    ) : (
+                        <ScrollView
+                            showsVerticalScrollIndicator={false}
+                            contentContainerStyle={s.listContent}
+                        >
+                            {pagina.length === 0 ? (
+                                <View style={s.emptyWrap}>
+                                    <View style={s.emptyCircle}>
+                                        <Ionicons name="leaf-outline" size={28} color={MUTED} />
+                                    </View>
+                                    <Text style={[s.emptyText, { fontFamily: Q }]}>
+                                        Nenhuma contribuição encontrada.
+                                    </Text>
+                                </View>
+                            ) : (
+                                <>
+                                    {pagina.map((item) => (
+                                        <CardContribuicao
+                                            key={item.id}
+                                            item={item}
+                                            fontFamily={Q}
                                         />
-                                        <Text style={[m.statusBadgeText, { fontFamily: Q, color: selectedItem.statusColor }]}>
-                                            {selectedItem.status}
-                                        </Text>
-                                    </View>
-                                    <Text style={[m.dataText, { fontFamily: Q }]}>
-                                        {selectedItem.data} às {selectedItem.hora}
+                                    ))}
+
+                                    {/* paginação */}
+                                    <Text style={[s.showingText, { fontFamily: Q }]}>
+                                        Mostrando {pagina.length} de {filtradas.length} contribuições
                                     </Text>
-                                </View>
-                            )}
 
-                            {/* Timeline */}
-                            {selectedDenuncia && !["arquivada"].includes(selectedDenuncia.status ?? "") && (
-                                <View style={m.section}>
-                                    <Text style={[m.sectionLabel, { fontFamily: Q }]}>Andamento da denúncia</Text>
-                                    <StatusTimeline currentStatus={selectedDenuncia.status} fontFamily={Q} />
-                                </View>
-                            )}
-
-                            {/* Localização */}
-                            {(selectedDenuncia?.cidade || selectedDenuncia?.corpoHidricoNome) && (
-                                <View style={m.infoRow}>
-                                    <Ionicons name="location-outline" size={16} color={TEAL_MID} />
-                                    <Text style={[m.infoText, { fontFamily: Q }]}>
-                                        {[selectedDenuncia.corpoHidricoNome, selectedDenuncia.cidade, selectedDenuncia.estado].filter(Boolean).join(" · ")}
-                                    </Text>
-                                </View>
-                            )}
-
-                            {/* Descrição */}
-                            {selectedDenuncia?.descricao && (
-                                <View style={m.section}>
-                                    <Text style={[m.sectionLabel, { fontFamily: Q }]}>Descrição</Text>
-                                    <View style={m.descBox}>
-                                        <Text style={[m.descText, { fontFamily: Q }]}>{selectedDenuncia.descricao}</Text>
-                                    </View>
-                                </View>
-                            )}
-
-                            {/* Ação arquivar */}
-                            {podeArquivar && (
-                                <TouchableOpacity
-                                    style={m.archiveBtn}
-                                    onPress={handleArquivar}
-                                    activeOpacity={0.8}
-                                    disabled={archiving}
-                                >
-                                    {archiving ? (
-                                        <ActivityIndicator size="small" color="#9e9e9e" />
-                                    ) : (
-                                        <>
-                                            <Ionicons name="archive-outline" size={18} color="#9e9e9e" style={{ marginRight: 8 }} />
-                                            <Text style={[m.archiveBtnText, { fontFamily: Q }]}>Arquivar denúncia</Text>
-                                        </>
+                                    {temMais && (
+                                        <TouchableOpacity
+                                            style={s.loadMoreBtn}
+                                            onPress={() => setVisivel((v) => v + PAGE_SIZE)}
+                                            activeOpacity={0.8}
+                                        >
+                                            <Text style={[s.loadMoreText, { fontFamily: Q }]}>
+                                                Carregar mais
+                                            </Text>
+                                            <Ionicons name="chevron-down" size={16} color={MUTED} style={{ marginLeft: 6 }} />
+                                        </TouchableOpacity>
                                     )}
-                                </TouchableOpacity>
-                            )}
-
-                            {selectedDenuncia?.status === "arquivada" && (
-                                <View style={m.archivedNotice}>
-                                    <Ionicons name="archive" size={16} color="#9e9e9e" style={{ marginRight: 8 }} />
-                                    <Text style={[m.archivedNoticeText, { fontFamily: Q }]}>Esta denúncia foi arquivada.</Text>
-                                </View>
-                            )}
-
-                            {selectedDenuncia?.status === "resolvida" && (
-                                <View style={[m.archivedNotice, { backgroundColor: "#e8f5e9" }]}>
-                                    <Ionicons name="checkmark-circle" size={16} color="#388e3c" style={{ marginRight: 8 }} />
-                                    <Text style={[m.archivedNoticeText, { fontFamily: Q, color: "#388e3c" }]}>
-                                        Esta denúncia foi resolvida pela equipe técnica.
-                                    </Text>
-                                </View>
+                                </>
                             )}
                         </ScrollView>
-                    </View>
+                    )}
                 </View>
-            </Modal>
+            </View>
         </>
     );
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
+const { height: H } = Dimensions.get("window");
+
 const s = StyleSheet.create({
-    root: { flex: 1, backgroundColor: SURFACE },
-    headerGradient: {},
-    headerSafe: { paddingBottom: 16 },
-    headerRow: { flexDirection: "row", alignItems: "flex-start", paddingHorizontal: 20, paddingTop: 10, gap: 12 },
-    backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.15)", alignItems: "center", justifyContent: "center", marginTop: 4 },
-    headerTextWrap: { flex: 1 },
-    headerTitle: { fontSize: 20, color: "#fff", fontWeight: "700" },
-    headerSub: { fontSize: 12, color: "rgba(255,255,255,0.8)", marginTop: 4, lineHeight: 18 },
+    root: { flex: 1, backgroundColor: "#0a6b5e" },
 
-    searchWrapper: { backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: BORDER_LIGHT, paddingHorizontal: 20, paddingVertical: 12 },
-    searchBar: { flexDirection: "row", alignItems: "center", backgroundColor: SURFACE, borderRadius: 50, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: BORDER_LIGHT },
+    // Header
+    headerGrad: {},
+    headerSafe: { paddingBottom: 20 },
+    headerRow: {
+        flexDirection: "row",
+        alignItems: "flex-start",
+        paddingHorizontal: 20,
+        paddingTop: 10,
+        gap: 12,
+    },
+    backBtn: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: "rgba(255,255,255,0.18)",
+        alignItems: "center",
+        justifyContent: "center",
+        marginTop: 4,
+    },
+    headerText: { flex: 1 },
+    headerTitle: { fontSize: 21, color: "#fff", fontWeight: "700" },
+    headerSub: {
+        fontSize: 12,
+        color: "rgba(255,255,255,0.8)",
+        marginTop: 5,
+        lineHeight: 18,
+    },
+    
+    logoImage: {
+    width: 70,
+    height: 70,
+    },
+
+    // Card branco principal
+    mainCard: {
+        flex: 1,
+        backgroundColor: SURFACE,
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        paddingTop: 20,
+        overflow: "hidden",
+    },
+
+    // Busca
+    searchRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        paddingHorizontal: 16,
+        marginBottom: 12,
+        gap: 10,
+    },
+    searchBar: {
+        flex: 1,
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: CARD_BG,
+        borderRadius: 50,
+        paddingHorizontal: 14,
+        paddingVertical: Platform.OS === "ios" ? 11 : 8,
+        borderWidth: 1,
+        borderColor: BORDER,
+    },
     searchInput: { flex: 1, fontSize: 14, color: "#333" },
+    filterBtn: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: CARD_BG,
+        borderWidth: 1,
+        borderColor: BORDER,
+        borderRadius: 50,
+        paddingHorizontal: 14,
+        paddingVertical: Platform.OS === "ios" ? 11 : 8,
+    },
+    filterBtnText: { fontSize: 13, color: PRIMARY, fontWeight: "600" },
 
-    filtersScroll: { backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: BORDER_LIGHT },
-    filtersWrap: { flexDirection: "row", gap: 8, paddingHorizontal: 20, paddingVertical: 12 },
-    chip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 50, backgroundColor: SURFACE, borderWidth: 1, borderColor: BORDER_LIGHT },
-    chipActive: { backgroundColor: PRIMARY, borderColor: PRIMARY },
-    chipText: { fontSize: 12, color: TEXT_MUTED, fontWeight: "600" },
-    chipTextActive: { color: "#fff" },
+    // Chips
+    chipsScroll: { flexGrow: 0, marginBottom: 14 },
+    chipsContent: {
+        paddingHorizontal: 16,
+        paddingVertical: 2,       // pequena margem vertical para shadow
+        flexDirection: "row",
+        alignItems: "center",
+    },
 
-    loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
-    loadingText: { fontSize: 14, color: TEXT_MUTED },
+    // Meta row
+    metaRow: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        paddingHorizontal: 16,
+        marginBottom: 10,
+    },
+    metaCount: { fontSize: 13, color: MUTED },
+    sortBtn: { flexDirection: "row", alignItems: "center" },
+    sortText: { fontSize: 12, color: MUTED, fontWeight: "600" },
 
-    body: { flex: 1 },
-    bodyContent: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 40 },
-    resultados: { fontSize: 13, color: TEXT_MUTED, marginBottom: 12, fontWeight: "600" },
+    // Lista
+    listContent: { paddingHorizontal: 16, paddingBottom: 40 },
 
-    emptyWrap: { alignItems: "center", paddingTop: 40, gap: 12 },
-    emptyIconCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: BORDER_LIGHT, alignItems: "center", justifyContent: "center" },
-    emptyText: { fontSize: 14, color: TEXT_MUTED },
+    // Estados
+    loadingWrap: {
+        flex: 1,
+        alignItems: "center",
+        justifyContent: "center",
+        paddingTop: 60,
+        gap: 12,
+    },
+    loadingText: { fontSize: 14, color: MUTED },
 
-    card: { backgroundColor: "#fff", borderRadius: 16, padding: 14, marginBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
-    cardDenuncia: { borderLeftWidth: 3, borderLeftColor: "#e05252" },
-    cardLeft: { flexDirection: "row", alignItems: "center", flex: 1, gap: 12 },
-    cardIcon: { width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-    cardInfo: { flex: 1 },
-    cardTitle: { fontSize: 14, color: "#1a1a1a", fontWeight: "700", marginBottom: 3 },
-    cardDetalhe: { fontSize: 12, color: TEXT_MUTED, marginBottom: 3 },
-    cardData: { fontSize: 11, color: "#aaa" },
-    cardRight: { alignItems: "flex-end" },
-    statusPill: { borderRadius: 50, paddingHorizontal: 10, paddingVertical: 4 },
-    statusText: { fontSize: 11, fontWeight: "700" },
-});
+    erroWrap: {
+        flex: 1,
+        alignItems: "center",
+        justifyContent: "center",
+        paddingTop: 60,
+        paddingHorizontal: 32,
+        gap: 12,
+    },
+    erroText: { fontSize: 14, color: MUTED, textAlign: "center", lineHeight: 20 },
+    retryBtn: {
+        marginTop: 4,
+        paddingHorizontal: 24,
+        paddingVertical: 10,
+        backgroundColor: PRIMARY,
+        borderRadius: 50,
+    },
+    retryText: { fontSize: 14, color: "#fff", fontWeight: "600" },
 
-const { height: SCREEN_H } = Dimensions.get("window");
+    emptyWrap: { alignItems: "center", paddingTop: 48, gap: 12 },
+    emptyCircle: {
+        width: 60,
+        height: 60,
+        borderRadius: 30,
+        backgroundColor: BORDER,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    emptyText: { fontSize: 14, color: MUTED },
 
-const m = StyleSheet.create({
-    overlay: { flex: 1, justifyContent: "flex-end" },
-    backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.45)" },
-    sheet: { backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: SCREEN_H * 0.85, paddingBottom: 32 },
-    handle: { width: 40, height: 4, backgroundColor: "#e0e0e0", borderRadius: 2, alignSelf: "center", marginTop: 12, marginBottom: 4 },
-    sheetScroll: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 20 },
-
-    sheetHeader: { flexDirection: "row", alignItems: "flex-start", gap: 12, marginBottom: 16 },
-    sheetIconCircle: { width: 44, height: 44, borderRadius: 12, backgroundColor: "rgba(224,123,30,0.12)", alignItems: "center", justifyContent: "center" },
-    sheetTitle: { flex: 1, fontSize: 16, fontWeight: "700", color: "#1a1a1a", lineHeight: 22 },
-    closeBtn: { padding: 4 },
-
-    tipoTag: { marginTop: 4, alignSelf: "flex-start", backgroundColor: "rgba(224,123,30,0.12)", borderRadius: 50, paddingHorizontal: 8, paddingVertical: 3 },
-    tipoTagText: { fontSize: 11, color: ORANGE, fontWeight: "700" },
-
-    divider: { height: 1, backgroundColor: BORDER_LIGHT, marginBottom: 14 },
-
-    statusRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 },
-    statusBadge: { flexDirection: "row", alignItems: "center", borderRadius: 50, paddingHorizontal: 12, paddingVertical: 6 },
-    statusBadgeText: { fontSize: 13, fontWeight: "700" },
-    dataText: { fontSize: 11, color: TEXT_MUTED },
-
-    section: { marginBottom: 16 },
-    sectionLabel: { fontSize: 12, color: TEXT_MUTED, fontWeight: "700", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 },
-
-    infoRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 14 },
-    infoText: { fontSize: 13, color: "#333", flex: 1 },
-
-    descBox: { backgroundColor: SURFACE, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: BORDER_LIGHT },
-    descText: { fontSize: 13, color: "#333", lineHeight: 20 },
-
-    archiveBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: "#e0e0e0", borderRadius: 12, paddingVertical: 14, marginTop: 8 },
-    archiveBtnText: { fontSize: 14, color: "#9e9e9e", fontWeight: "600" },
-
-    archivedNotice: { flexDirection: "row", alignItems: "center", backgroundColor: "#f5f5f5", borderRadius: 12, padding: 14, marginTop: 8 },
-    archivedNoticeText: { fontSize: 13, color: "#9e9e9e", flex: 1 },
+    // Paginação
+    showingText: {
+        textAlign: "center",
+        fontSize: 12,
+        color: MUTED,
+        marginTop: 8,
+        marginBottom: 14,
+    },
+    loadMoreBtn: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        borderWidth: 1.5,
+        borderColor: BORDER,
+        borderRadius: 14,
+        paddingVertical: 14,
+        backgroundColor: CARD_BG,
+        marginBottom: 8,
+    },
+    loadMoreText: { fontSize: 14, color: MUTED, fontWeight: "600" },
 });
