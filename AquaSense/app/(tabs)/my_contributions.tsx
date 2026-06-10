@@ -135,7 +135,7 @@ const chip = StyleSheet.create({
     base: {
         flexDirection: "row",
         alignItems: "center",
-        alignSelf: "flex-start",       // ← impede esticamento vertical
+        alignSelf: "flex-start",
         paddingHorizontal: 16,
         paddingVertical: 8,
         borderRadius: 50,
@@ -288,12 +288,16 @@ export default function MyContributions() {
 
     useEffect(() => { buscar(); }, [buscar]);
 
+    // ── Filtro corrigido: inclui tipo e status na busca textual ──
     const filtradas = items.filter((item) => {
+        const q = search.toLowerCase();
         const textOk =
             !search ||
-            item.titulo.toLowerCase().includes(search.toLowerCase()) ||
-            (item.corpoHidricoNome ?? "").toLowerCase().includes(search.toLowerCase()) ||
-            (item.descricao ?? "").toLowerCase().includes(search.toLowerCase());
+            item.titulo.toLowerCase().includes(q) ||
+            (item.corpoHidricoNome ?? "").toLowerCase().includes(q) ||
+            (item.descricao ?? "").toLowerCase().includes(q) ||
+            item.tipo.toLowerCase().includes(q) ||
+            item.status.toLowerCase().includes(q);
         return textOk && filtroMatchStatus(filtro, item.status);
     });
 
@@ -332,22 +336,19 @@ export default function MyContributions() {
                                 </Text>
                             </View>
 
-                            {/* Logo AquaSense */}
-                            
                             <Image
                                 source={require('../../assets/images/aquasense.png')}
                                 style={s.logoImage}
                                 resizeMode="contain"
-                                />  
-                            </View>
-                        
+                            />
+                        </View>
                     </SafeAreaView>
                 </LinearGradient>
 
                 {/* ── CARD BRANCO PRINCIPAL ────────────────────────────────── */}
                 <View style={s.mainCard}>
 
-                    {/* Busca + Filtrar */}
+                    {/* ── BUSCA — botão Filtrar removido ── */}
                     <View style={s.searchRow}>
                         <View style={s.searchBar}>
                             <Ionicons name="search-outline" size={17} color={MUTED} style={{ marginRight: 8 }} />
@@ -365,10 +366,6 @@ export default function MyContributions() {
                                 </TouchableOpacity>
                             )}
                         </View>
-                        <TouchableOpacity style={s.filterBtn} activeOpacity={0.8}>
-                            <Ionicons name="options-outline" size={16} color={PRIMARY} style={{ marginRight: 5 }} />
-                            <Text style={[s.filterBtnText, { fontFamily: Q }]}>Filtrar</Text>
-                        </TouchableOpacity>
                     </View>
 
                     {/* Chips */}
@@ -506,10 +503,9 @@ const s = StyleSheet.create({
         marginTop: 5,
         lineHeight: 18,
     },
-    
     logoImage: {
-    width: 70,
-    height: 70,
+        width: 70,
+        height: 70,
     },
 
     // Card branco principal
@@ -522,16 +518,12 @@ const s = StyleSheet.create({
         overflow: "hidden",
     },
 
-    // Busca
+    // Busca — ocupa largura total sem botão Filtrar
     searchRow: {
-        flexDirection: "row",
-        alignItems: "center",
         paddingHorizontal: 16,
         marginBottom: 12,
-        gap: 10,
     },
     searchBar: {
-        flex: 1,
         flexDirection: "row",
         alignItems: "center",
         backgroundColor: CARD_BG,
@@ -542,23 +534,12 @@ const s = StyleSheet.create({
         borderColor: BORDER,
     },
     searchInput: { flex: 1, fontSize: 14, color: "#333" },
-    filterBtn: {
-        flexDirection: "row",
-        alignItems: "center",
-        backgroundColor: CARD_BG,
-        borderWidth: 1,
-        borderColor: BORDER,
-        borderRadius: 50,
-        paddingHorizontal: 14,
-        paddingVertical: Platform.OS === "ios" ? 11 : 8,
-    },
-    filterBtnText: { fontSize: 13, color: PRIMARY, fontWeight: "600" },
 
     // Chips
     chipsScroll: { flexGrow: 0, marginBottom: 14 },
     chipsContent: {
         paddingHorizontal: 16,
-        paddingVertical: 2,       // pequena margem vertical para shadow
+        paddingVertical: 2,
         flexDirection: "row",
         alignItems: "center",
     },

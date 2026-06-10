@@ -24,6 +24,10 @@ export interface CriarMedicaoColaboradorInput {
     estado?: string;
     bairro?: string | null;
     areaChave?: string;
+
+    latitude?: number;
+    longitude?: number;
+
     ph?: number;
     temperatura?: number;
     turbidez?: string;
@@ -41,6 +45,10 @@ export interface MedicaoColaborador {
     estado?: string;
     bairro?: string | null;
     areaChave?: string;
+
+    latitude?: number | null;
+    longitude?: number | null;
+
     ph?: number;
     temperatura?: number;
     turbidez?: string;
@@ -53,10 +61,13 @@ export interface MedicaoColaborador {
 
 function normalizarDoc(id: string, data: Record<string, unknown>): MedicaoColaborador {
     const ts = data.dataCriacao;
+
     const dataCriacao =
-        ts instanceof Timestamp ? ts.toDate() :
-        ts instanceof Date ? ts :
-        new Date();
+        ts instanceof Timestamp
+            ? ts.toDate()
+            : ts instanceof Date
+            ? ts
+            : new Date();
 
     return {
         id,
@@ -68,6 +79,10 @@ function normalizarDoc(id: string, data: Record<string, unknown>): MedicaoColabo
         estado: data.estado as string | undefined,
         bairro: data.bairro as string | null | undefined,
         areaChave: data.areaChave as string | undefined,
+
+        latitude: data.latitude as number | null | undefined,
+        longitude: data.longitude as number | null | undefined,
+
         ph: data.ph as number | undefined,
         temperatura: data.temperatura as number | undefined,
         turbidez: data.turbidez as string | undefined,
@@ -85,16 +100,23 @@ export async function createCollaboratorMeasurement(
     const payload = {
         usuarioId: data.usuarioId,
         usuarioNome: data.usuarioNome ?? null,
+
         corpoHidricoId: data.corpoHidricoId ?? null,
         corpoHidricoNome: data.corpoHidricoNome ?? null,
+
         cidade: data.cidade ?? null,
         estado: data.estado ?? "PE",
         bairro: data.bairro ?? null,
         areaChave: data.areaChave ?? null,
+
+        latitude: data.latitude ?? null,
+        longitude: data.longitude ?? null,
+
         ph: data.ph ?? null,
         temperatura: data.temperatura ?? null,
         turbidez: data.turbidez ?? null,
         observacao: data.observacao ?? null,
+
         tipoMedicao: "simples",
         origem: "colaborador",
         status: "pendente" as StatusMedicao,
