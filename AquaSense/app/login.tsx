@@ -120,7 +120,7 @@ export default function Login() {
                         : "/(tabs)/home_collaborator_update?tutorial=1" as any
                 );
             } else if (tipoUsuario === "tecnico") {
-                router.replace("/under-development" as any);
+                router.replace("/map_technician" as any);
             } else {
                 router.replace("/under-development" as any);
             }

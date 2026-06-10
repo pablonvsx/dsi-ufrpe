@@ -26,13 +26,17 @@ import {
     getDocs,
     query,
     where,
-    orderBy,
-    limit,
 } from "firebase/firestore";
-import { db } from "@/config/firebase"; // ajuste o caminho conforme seu projeto
+import { db } from "@/config/firebase";
 
 import { useAuth } from "@/contexts/auth-context";
 import { markTutorialColaboradorAsSeen } from "@/services/firestore/users";
+
+// ── Importa o mesmo service da tela "Minhas contribuições" ──
+import {
+    getCollaboratorContributions,
+    type ContribuicaoUnificada,
+} from "@/services/firestore/collaborator_contributions";
 
 const PRIMARY = "#004d48";
 const TEAL_MED = "#0d6e52";
@@ -99,15 +103,6 @@ interface CorpoHidrico {
     status?: string;
 }
 
-interface Atividade {
-    id: string;
-    tipo: "medicao" | "observacao" | "denuncia" | "contribuicao";
-    titulo: string;
-    detalhe: string;
-    data: Date;
-    status: "validada" | "pendente" | "analise";
-}
-
 interface NumerosData {
     contribuicoes: number;
     denuncias: number;
@@ -119,7 +114,6 @@ interface NumerosData {
 
 function formatarData(date: Date): string {
     const now = new Date();
-    const diff = now.getTime() - date.getTime();
     const hojeInicio = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const ontemInicio = new Date(hojeInicio.getTime() - 86400000);
 
@@ -132,21 +126,36 @@ function formatarData(date: Date): string {
     }
 }
 
-function tipoParaIcone(tipo: Atividade["tipo"]): {
+// Converte tipo de ContribuicaoUnificada para ícone/cor usados na Home
+function tipoParaIconeUnificado(tipo: ContribuicaoUnificada["tipo"]): {
     iconName: keyof typeof Ionicons.glyphMap;
     iconBg: string;
     iconColor: string;
 } {
     switch (tipo) {
-        case "medicao":
+        case "measurement":
             return { iconName: "flask-outline", iconBg: "#e6f5ef", iconColor: TEAL_MED };
-        case "observacao":
+        case "observation":
             return { iconName: "leaf-outline", iconBg: "#f0faf0", iconColor: "#4a9e5e" };
-        case "denuncia":
+        case "complaint":
             return { iconName: "megaphone-outline", iconBg: "#fff0e6", iconColor: ORANGE };
-        case "contribuicao":
+        case "water_body":
         default:
             return { iconName: "water-outline", iconBg: "#e8f0ff", iconColor: BLUE_ACTION };
+    }
+}
+
+// Mapeia status de ContribuicaoUnificada para o tipo esperado pelo AtividadeItem
+type StatusAtividade = "validada" | "pendente" | "analise";
+
+function mapearStatus(status: ContribuicaoUnificada["status"]): StatusAtividade {
+    switch (status) {
+        case "validada":   return "validada";
+        case "em_analise": return "analise";
+        case "rascunho":
+        case "arquivada":
+        case "pendente":
+        default:           return "pendente";
     }
 }
 
@@ -170,8 +179,11 @@ export default function HomeColaborador() {
     // ── Estado de dados reais ───────────────────────────────────────────────
     const [corpoHidrico, setCorpoHidrico] = useState<CorpoHidrico | null>(null);
     const [corpoHidricoLoading, setCorpoHidricoLoading] = useState(true);
-    const [atividades, setAtividades] = useState<Atividade[]>([]);
+
+    // ── Atividades: agora usa ContribuicaoUnificada (mesmo service da tela "Minhas contribuições") ──
+    const [atividades, setAtividades] = useState<ContribuicaoUnificada[]>([]);
     const [atividadesLoading, setAtividadesLoading] = useState(true);
+
     const [numeros, setNumeros] = useState<NumerosData>({ contribuicoes: 0, denuncias: 0, corposHidricos: 0, alertas: 0 });
     const [numerosLoading, setNumerosLoading] = useState(true);
 
@@ -228,6 +240,8 @@ export default function HomeColaborador() {
     useEffect(() => {
         if (!userProfile?.uid) return;
 
+        const uid = userProfile.uid;
+
         // 1) Corpo hídrico acessado
         const fetchCorpoHidrico = async () => {
             setCorpoHidricoLoading(true);
@@ -252,109 +266,58 @@ export default function HomeColaborador() {
             finally { setCorpoHidricoLoading(false); }
         };
 
-        // 2) Atividades recentes do usuário
+        // 2) Atividades recentes — usa o mesmo service da tela "Minhas contribuições"
         const fetchAtividades = async () => {
             setAtividadesLoading(true);
             try {
-                const uid = userProfile.uid;
-                const results: Atividade[] = [];
-
-                // Medições
-                const medicoesSnap = await getDocs(
-                    query(
-                        collection(db, "medicoes"),
-                        where("uid", "==", uid),
-                        orderBy("criadoEm", "desc"),
-                        limit(3)
-                    )
-                );
-                medicoesSnap.forEach((d) => {
-                    const data = d.data();
-                    results.push({
-                        id: d.id,
-                        tipo: "medicao",
-                        titulo: `Medição – ${data.corpoHidricoNome ?? "Corpo hídrico"}`,
-                        detalhe: data.resumo ?? `pH: ${data.ph ?? "-"} • Turbidez: ${data.turbidez ?? "-"}`,
-                        data: data.criadoEm?.toDate?.() ?? new Date(),
-                        status: data.status ?? "pendente",
-                    });
-                });
-
-                // Denúncias
-                const denunciasSnap = await getDocs(
-                    query(
-                        collection(db, "denuncias"),
-                        where("uid", "==", uid),
-                        orderBy("criadoEm", "desc"),
-                        limit(3)
-                    )
-                );
-                denunciasSnap.forEach((d) => {
-                    const data = d.data();
-                    results.push({
-                        id: d.id,
-                        tipo: "denuncia",
-                        titulo: `Denúncia – ${data.categoria ?? "Problema ambiental"}`,
-                        detalhe: data.descricao ?? `${data.corpoHidricoNome ?? ""}`,
-                        data: data.criadoEm?.toDate?.() ?? new Date(),
-                        status: data.status ?? "analise",
-                    });
-                });
-
-                // Observações / contribuições
-                const observacoesSnap = await getDocs(
-                    query(
-                        collection(db, "observacoes"),
-                        where("uid", "==", uid),
-                        orderBy("criadoEm", "desc"),
-                        limit(3)
-                    )
-                );
-                observacoesSnap.forEach((d) => {
-                    const data = d.data();
-                    results.push({
-                        id: d.id,
-                        tipo: "observacao",
-                        titulo: `Observação – ${data.tipo ?? "Ambiental"}`,
-                        detalhe: `${data.corpoHidricoNome ?? ""} • ${data.descricao ?? ""}`,
-                        data: data.criadoEm?.toDate?.() ?? new Date(),
-                        status: data.status ?? "pendente",
-                    });
-                });
-
-                results.sort((a, b) => b.data.getTime() - a.data.getTime());
-                setAtividades(results.slice(0, 3));
-            } catch { setAtividades([]); }
-            finally { setAtividadesLoading(false); }
+                const data = await getCollaboratorContributions(uid);
+                // Exibe as 3 mais recentes (já vêm ordenadas pelo service)
+                setAtividades(data.slice(0, 3));
+            } catch {
+                setAtividades([]);
+            } finally {
+                setAtividadesLoading(false);
+            }
         };
 
         // 3) Números da comunidade
         const fetchNumeros = async () => {
             setNumerosLoading(true);
             try {
-                const uid = userProfile.uid;
                 const cidade = (userProfile as any)?.cidade ?? "";
 
                 // Contribuições do usuário
-                const contribSnap = await getDocs(
-                    query(collection(db, "medicoes"), where("uid", "==", uid))
+                const medicoesSnap = await getDocs(
+                    query(collection(db, "medicoesColaborador"), where("usuarioId", "==", uid))
                 );
-                const obsSnap = await getDocs(
-                    query(collection(db, "observacoes"), where("uid", "==", uid))
+                const observacoesSnap = await getDocs(
+                    query(collection(db, "observacoes"), where("usuarioId", "==", uid))
                 );
-                const totalContrib = contribSnap.size + obsSnap.size;
+                const totalContrib = medicoesSnap.size + observacoesSnap.size;
 
                 // Denúncias do usuário
-                const denSnap = await getDocs(
-                    query(collection(db, "denuncias"), where("uid", "==", uid))
+                const denunciasSnap = await getDocs(
+                    query(collection(db, "denuncias"), where("usuarioId", "==", uid))
                 );
 
                 // Corpos hídricos acompanhados pelo usuário
-                const corposSnap = await getDocs(
+                let totalCorposHidricos = 0;
+                const corposPorColaboradorSnap = await getDocs(
                     query(collection(db, "corposHidricos"), where("colaboradoresIds", "array-contains", uid))
                 );
 
-                // Alertas na região (cidade do usuário ou global)
+                totalCorposHidricos = corposPorColaboradorSnap.size;
+
+                // falback: se não existir colaboradoresIds ainda 
+                // conta o último corpo hídrico acessado como acompanhado
+                if (
+                    totalCorposHidricos === 0 &&
+                    (userProfile as any)?.ultimoCorpoHidricoAcessadoId
+                ) {
+                    totalCorposHidricos = 1;
+                }
+
+                // Alertas na região
                 let alertasSnap;
                 if (cidade) {
                     alertasSnap = await getDocs(
@@ -366,11 +329,14 @@ export default function HomeColaborador() {
 
                 setNumeros({
                     contribuicoes: totalContrib,
-                    denuncias: denSnap.size,
-                    corposHidricos: corposSnap.size,
+                    denuncias: denunciasSnap.size,
+                    corposHidricos: totalCorposHidricos,
                     alertas: alertasSnap.size,
                 });
-            } catch { setNumeros({ contribuicoes: 0, denuncias: 0, corposHidricos: 0, alertas: 0 }); }
+            } catch (error) { 
+                console.error("[HomeColaborador] Erro ao buscar números da comunidade:", error);
+                
+                setNumeros({ contribuicoes: 0, denuncias: 0, corposHidricos: 0, alertas: 0 }); }
             finally { setNumerosLoading(false); }
         };
 
@@ -538,7 +504,7 @@ export default function HomeColaborador() {
                                 title="Registrar contribuição"
                                 subtitle="Medição ou observação ambiental"
                                 fontFamily={questrial}
-                                onPress={() => router.push("/register_observation" as any)}
+                                onPress={() => router.push("/new_environmental_contribution" as any)}
                             />
                             <AcaoCard
                                 iconName="megaphone-outline"
@@ -564,7 +530,7 @@ export default function HomeColaborador() {
                             />
                         </View>
 
-                        {/* ── ATIVIDADES RECENTES ────────────────────────── */}
+                        {/* ── MINHAS CONTRIBUIÇÕES ───────────────────────── */}
                         <View style={styles.sectionHeader}>
                             <Text style={[styles.sectionTitle, { fontFamily: questrial, marginBottom: 0 }]}>
                                 Minhas Contribuições
@@ -593,7 +559,7 @@ export default function HomeColaborador() {
                         ) : (
                             <View style={styles.atividadesCard}>
                                 {atividades.map((ativ, idx) => {
-                                    const { iconName, iconBg, iconColor } = tipoParaIcone(ativ.tipo);
+                                    const { iconName, iconBg, iconColor } = tipoParaIconeUnificado(ativ.tipo);
                                     return (
                                         <AtividadeItem
                                             key={ativ.id}
@@ -601,9 +567,9 @@ export default function HomeColaborador() {
                                             iconBg={iconBg}
                                             iconColor={iconColor}
                                             titulo={ativ.titulo}
-                                            detalhe={ativ.detalhe}
-                                            data={formatarData(ativ.data)}
-                                            status={ativ.status}
+                                            detalhe={[ativ.corpoHidricoNome, ativ.descricao].filter(Boolean).join(" · ")}
+                                            data={formatarData(ativ.criadoEm)}
+                                            status={mapearStatus(ativ.status)}
                                             fontFamily={questrial}
                                             isLast={idx === atividades.length - 1}
                                         />
@@ -615,7 +581,7 @@ export default function HomeColaborador() {
                         {/* ── COMUNIDADE EM NÚMEROS ──────────────────────── */}
                         <View style={styles.sectionHeader}>
                             <Text style={[styles.sectionTitle, { fontFamily: questrial, marginBottom: 0 }]}>
-                                Sua comunidade 
+                                Sua comunidade
                             </Text>
                             <TouchableOpacity onPress={() => router.push("/community_panel" as any)} activeOpacity={0.7}>
                                 <View style={styles.verTodasRow}>
@@ -750,7 +716,7 @@ export default function HomeColaborador() {
     );
 }
 
-// ─── CorpoHidricoCard (com dados reais) ───────────────────────────────────────
+// ─── CorpoHidricoCard ─────────────────────────────────────────────────────────
 
 function statusLabel(status?: string): { label: string; color: string; dotColor: string; hint: string } {
     const s = (status ?? "").toLowerCase();
