@@ -9,6 +9,7 @@ export * as waterBodies from "./firestore/water_bodies";
 export * as contributions from "./firestore/contributions";
 export * as complaints from "./firestore/complaints";
 export * as alerts from "./firestore/alerts";
+export * as criticalAnalyses from "./firestore/critical_analyses";
 
 // Storage & Files
 export * as storage from "./storage/supabaseStorage";

@@ -1,33 +1,21 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
     StyleSheet,
     TouchableOpacity,
-    Modal,
-    StatusBar,
-    ScrollView,
-    Pressable,
     Platform,
-    Image,
-    Animated,
+    ScrollView,
     ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useFonts, Questrial_400Regular } from '@expo-google-fonts/questrial';
-import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import * as Location from 'expo-location';
+import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
 import { useAuth } from '@/contexts/auth-context';
-import { markTutorialAsSeen } from '@/services/firestore/users';
-import { getWaterBodyById } from '@/services/firestore/water_bodies';
-import {
-    buscarObservacoesPorCorpo,
-    calcularResumoObservacoes,
-    ResumoObservacoes,
-} from '@/services/firestore/observations';
-import { CorpoHidrico } from '@/types/water_bodies';
 
 // ─── Paleta ───────────────────────────────────────────────────────────────────
 const PRIMARY      = '#004d48';
@@ -39,7 +27,48 @@ const BORDER_LIGHT = '#e0f2f1';
 const TEXT_MUTED   = '#6b7a7a';
 const SURFACE      = '#F5F9F8';
 
-type TabKey = 'home' | 'mapa' | 'alertas' | 'profile';
+// ─── Tipo unificado de aba de navegação ───────────────────────────────────────
+type NavTabKey = 'home' | 'analises' | 'mapa' | 'profile';
+
+// ─── Tipos de dados ───────────────────────────────────────────────────────────
+export interface PendingAnalysisData {
+    count: number;
+    lastTitle: string;
+    lastMinutesAgo: number;
+    highPriority: boolean;
+}
+
+export interface CriticalAnalysisData {
+    count: number;
+    points: string[];
+    updatedMinutesAgo: number;
+}
+
+export interface LastAnalysisData {
+    name: string;
+    date: string;
+    validated: boolean;
+}
+
+// ─── Valores iniciais neutros ─────────────────────────────────────────────────
+const EMPTY_PENDING: PendingAnalysisData = {
+    count: 0,
+    lastTitle: '—',
+    lastMinutesAgo: 0,
+    highPriority: false,
+};
+
+const EMPTY_CRITICAL: CriticalAnalysisData = {
+    count: 0,
+    points: [],
+    updatedMinutesAgo: 0,
+};
+
+const EMPTY_LAST_ANALYSIS: LastAnalysisData = {
+    name: '—',
+    date: '—',
+    validated: false,
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatTime(date: Date) {
@@ -48,6 +77,14 @@ function formatTime(date: Date) {
 function formatDate(date: Date) {
     return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
 }
+
+// ─── Região inicial do mapa ───────────────────────────────────────────────────
+const REGIAO_INICIAL = {
+    latitude: -8.28,
+    longitude: -37.95,
+    latitudeDelta: 4.5,
+    longitudeDelta: 4.5,
+};
 
 // ─── Header ───────────────────────────────────────────────────────────────────
 interface HeaderProps {
@@ -85,10 +122,7 @@ const TitleBlock: React.FC = () => {
     }, []);
 
     return (
-        <LinearGradient
-            colors={[PRIMARY, '#006b62']}
-            style={styles.titleBlock}
-        >
+        <LinearGradient colors={[PRIMARY, '#006b62']} style={styles.titleBlock}>
             <View style={{ flex: 1 }}>
                 <Text style={styles.titleMain}>Painel Técnico</Text>
                 <Text style={styles.titleSub}>
@@ -108,14 +142,10 @@ const TitleBlock: React.FC = () => {
 
 // ─── Card: Análises pendentes ─────────────────────────────────────────────────
 interface PendingCardProps {
-    count: number;
-    lastTitle: string;
-    lastMinutesAgo: number;
+    data: PendingAnalysisData;
     onPress: () => void;
 }
-const PendingCard: React.FC<PendingCardProps> = ({
-    count, lastTitle, lastMinutesAgo, onPress,
-}) => (
+const PendingCard: React.FC<PendingCardProps> = ({ data, onPress }) => (
     <View style={styles.card}>
         <View style={styles.cardRow}>
             <View style={styles.iconCircle}>
@@ -128,7 +158,7 @@ const PendingCard: React.FC<PendingCardProps> = ({
                 </Text>
             </View>
             <View style={styles.countRow}>
-                <Text style={styles.countNumber}>{count}</Text>
+                <Text style={styles.countNumber}>{data.count}</Text>
                 <Ionicons name="chevron-forward" size={18} color="#1a1a1a" />
             </View>
         </View>
@@ -137,13 +167,15 @@ const PendingCard: React.FC<PendingCardProps> = ({
             <Ionicons name="time-outline" size={14} color={PRIMARY_MID} style={{ marginTop: 1 }} />
             <View style={{ flex: 1, marginLeft: 6 }}>
                 <Text style={styles.lastReceivedLabel}>Última recebida</Text>
-                <Text style={styles.lastReceivedTitle}>{lastTitle}</Text>
-                <Text style={styles.lastReceivedTime}>Há {lastMinutesAgo} minutos</Text>
+                <Text style={styles.lastReceivedTitle}>{data.lastTitle}</Text>
+                <Text style={styles.lastReceivedTime}>Há {data.lastMinutesAgo} minutos</Text>
             </View>
-            <View style={styles.priorityBadge}>
-                <Text style={styles.priorityText}>Prioridade alta</Text>
-                <View style={styles.priorityDot} />
-            </View>
+            {data.highPriority && (
+                <View style={styles.priorityBadge}>
+                    <Text style={styles.priorityText}>Prioridade alta</Text>
+                    <View style={styles.priorityDot} />
+                </View>
+            )}
         </View>
 
         <TouchableOpacity style={styles.cardFooterBtn} onPress={onPress} activeOpacity={0.7}>
@@ -153,29 +185,21 @@ const PendingCard: React.FC<PendingCardProps> = ({
     </View>
 );
 
-// ─── Cards inferiores: Críticas + Última análise ──────────────────────────────
+// ─── Cards inferiores ─────────────────────────────────────────────────────────
 interface BottomCardsProps {
-    criticalCount: number;
-    criticalPoints: string[];
-    criticalUpdatedMin: number;
-    lastAnalysisName: string;
-    lastAnalysisDate: string;
-    lastAnalysisValidated: boolean;
+    critical: CriticalAnalysisData;
+    lastAnalysis: LastAnalysisData;
     onCriticalPress: () => void;
     onDetailsPress: () => void;
 }
 const BottomCards: React.FC<BottomCardsProps> = ({
-    criticalCount,
-    criticalPoints,
-    criticalUpdatedMin,
-    lastAnalysisName,
-    lastAnalysisDate,
-    lastAnalysisValidated,
+    critical,
+    lastAnalysis,
     onCriticalPress,
     onDetailsPress,
 }) => (
     <View style={styles.bottomRow}>
-        {/* ── Análises críticas ── */}
+        {/* Análises críticas */}
         <View style={[styles.card, styles.bottomCard, styles.criticalCard]}>
             <View style={styles.cardRow}>
                 <View style={[styles.iconCircle, { backgroundColor: '#FFF0E6' }]}>
@@ -187,7 +211,7 @@ const BottomCards: React.FC<BottomCardsProps> = ({
                 </View>
             </View>
             <View style={[styles.countRow, { marginTop: 10 }]}>
-                <Text style={[styles.countNumber, { color: ORANGE }]}>{criticalCount}</Text>
+                <Text style={[styles.countNumber, { color: ORANGE }]}>{critical.count}</Text>
                 <Ionicons name="chevron-forward" size={18} color="#1a1a1a" />
             </View>
             <View style={styles.criticalPoints}>
@@ -195,10 +219,10 @@ const BottomCards: React.FC<BottomCardsProps> = ({
                 <View style={{ marginLeft: 4, flex: 1 }}>
                     <Text style={styles.criticalPointsLabel}>Principais pontos</Text>
                     <Text style={styles.criticalPointsNames} numberOfLines={2}>
-                        {criticalPoints.join(' • ')}
+                        {critical.points.join(' • ')}
                     </Text>
                     <Text style={styles.criticalPointsTime}>
-                        Atualizado há {criticalUpdatedMin} min
+                        Atualizado há {critical.updatedMinutesAgo} min
                     </Text>
                 </View>
             </View>
@@ -208,7 +232,7 @@ const BottomCards: React.FC<BottomCardsProps> = ({
             </TouchableOpacity>
         </View>
 
-        {/* ── Última análise ── */}
+        {/* Última análise */}
         <View style={[styles.card, styles.bottomCard]}>
             <View style={styles.cardRow}>
                 <View style={[styles.iconCircle, { backgroundColor: '#EAF4F1' }]}>
@@ -220,13 +244,13 @@ const BottomCards: React.FC<BottomCardsProps> = ({
                 </View>
             </View>
             <Text style={styles.lastAnalysisTitle} numberOfLines={2}>
-                {lastAnalysisName}
+                {lastAnalysis.name}
             </Text>
             <View style={styles.lastAnalysisDate}>
                 <Ionicons name="calendar-outline" size={13} color={TEXT_MUTED} />
-                <Text style={styles.lastAnalysisDateText}>{lastAnalysisDate}</Text>
+                <Text style={styles.lastAnalysisDateText}>{lastAnalysis.date}</Text>
             </View>
-            {lastAnalysisValidated && (
+            {lastAnalysis.validated && (
                 <View style={styles.validatedBadge}>
                     <Ionicons name="checkmark-circle" size={14} color={PRIMARY_MID} />
                     <Text style={styles.validatedText}>Validada pelo gestor</Text>
@@ -244,125 +268,85 @@ const BottomCards: React.FC<BottomCardsProps> = ({
 interface MapSectionProps {
     onViewMap: () => void;
 }
-const MapSection: React.FC<MapSectionProps> = ({ onViewMap }) => {
-    const legend = [
-        { color: '#E03E3E', label: 'Crítico (2)' },
-        { color: '#E8A23E', label: 'Atenção (3)' },
-        { color: PRIMARY_MID, label: 'Normal (5)' },
-        { color: '#B0B0B0', label: 'Sem dados (1)' },
-    ];
-
-    return (
-        <View style={styles.mapSection}>
-            <View style={styles.mapHeader}>
-                <View>
-                    <Text style={styles.mapTitle}>Mapa técnico</Text>
-                    <Text style={styles.mapSubtitle}>Visão geral dos pontos monitorados</Text>
-                </View>
-                <TouchableOpacity style={styles.mapCompleteBtn} onPress={onViewMap} activeOpacity={0.7}>
-                    <Text style={styles.mapCompleteBtnText}>Ver mapa completo</Text>
-                    <Ionicons name="map-outline" size={14} color={PRIMARY_MID} />
-                </TouchableOpacity>
+const MapSection: React.FC<MapSectionProps> = ({ onViewMap }) => (
+    <View style={styles.mapSection}>
+        <View style={styles.mapHeader}>
+            <View>
+                <Text style={styles.mapTitle}>Mapa técnico</Text>
+                <Text style={styles.mapSubtitle}>Visão geral dos pontos monitorados</Text>
             </View>
-
-            <View style={styles.mapContainer}>
-                {/* Placeholder visual do mapa */}
-                <LinearGradient
-                    colors={['#b2d8cf', '#c8e8e0']}
-                    style={StyleSheet.absoluteFill}
-                />
-                {/* Pinos simulados */}
-                <View style={[styles.pin, { top: '30%', left: '20%', backgroundColor: '#1a1a1a' }]} />
-                <View style={[styles.pin, { top: '20%', left: '55%', backgroundColor: '#E8A23E' }]}>
-                    <Text style={{ fontSize: 8, color: '#fff', fontWeight: '700' }}>!</Text>
-                </View>
-                <View style={[styles.pin, { top: '55%', left: '48%', backgroundColor: '#E03E3E' }]}>
-                    <Text style={{ fontSize: 8, color: '#fff', fontWeight: '700' }}>!</Text>
-                </View>
-                <Ionicons
-                    name="map"
-                    size={60}
-                    color="rgba(255,255,255,0.25)"
-                    style={{ position: 'absolute', alignSelf: 'center', top: '25%' }}
-                />
-                {/* Legenda */}
-                <View style={styles.legend}>
-                    {legend.map((item) => (
-                        <View key={item.label} style={styles.legendItem}>
-                            <View style={[styles.legendDot, { backgroundColor: item.color }]} />
-                            <Text style={styles.legendLabel}>{item.label}</Text>
-                        </View>
-                    ))}
-                </View>
-            </View>
+            <TouchableOpacity style={styles.mapCompleteBtn} onPress={onViewMap} activeOpacity={0.7}>
+                <Text style={styles.mapCompleteBtnText}>Ver mapa completo</Text>
+                <Ionicons name="map-outline" size={14} color={PRIMARY_MID} />
+            </TouchableOpacity>
         </View>
-    );
-};
 
-// ─── Tab bar ──────────────────────────────────────────────────────────────────
+        <TouchableOpacity activeOpacity={0.85} onPress={onViewMap}>
+            <View style={styles.mapContainer}>
+                <MapView
+                    style={StyleSheet.absoluteFill}
+                    provider={PROVIDER_GOOGLE}
+                    mapType="satellite"
+                    initialRegion={REGIAO_INICIAL}
+                    scrollEnabled={false}
+                    zoomEnabled={false}
+                    rotateEnabled={false}
+                    pitchEnabled={false}
+                    pointerEvents="none"
+                />
+                <View style={styles.mapTapOverlay}>
+                    <Ionicons name="expand-outline" size={16} color="rgba(0,77,72,0.7)" />
+                    <Text style={styles.mapTapLabel}>Toque para abrir o mapa</Text>
+                </View>
+            </View>
+        </TouchableOpacity>
+    </View>
+);
+
+// ─── Tab bar (unificada) ──────────────────────────────────────────────────────
 interface TabBarProps {
-    active: TabKey;
-    onTab: (tab: TabKey) => void;
+    active: NavTabKey;
+    onTab: (tab: NavTabKey) => void;
     onAdd: () => void;
 }
 const TabBar: React.FC<TabBarProps> = ({ active, onTab, onAdd }) => {
-    const tabs: { key: TabKey; icon: keyof typeof Ionicons.glyphMap; label: string }[] = [
-        { key: 'home',     icon: 'home-outline',          label: 'Home'    },
-        { key: 'mapa',     icon: 'map-outline',            label: 'Mapa'    },
-        { key: 'alertas',  icon: 'notifications-outline',  label: 'Alertas' },
-        { key: 'profile',  icon: 'person-outline',         label: 'Perfil'  },
+    const leftTabs:  { key: NavTabKey; icon: keyof typeof Ionicons.glyphMap; label: string }[] = [
+        { key: 'home',     icon: 'home-outline',          label: 'Home'     },
+        { key: 'analises', icon: 'document-text-outline', label: 'Análises' },
     ];
+    const rightTabs: { key: NavTabKey; icon: keyof typeof Ionicons.glyphMap; label: string }[] = [
+        { key: 'mapa',    icon: 'map-outline',    label: 'Mapa'   },
+        { key: 'profile', icon: 'person-outline', label: 'Perfil' },
+    ];
+
+    const renderTab = (t: typeof leftTabs[0]) => {
+        const isActive = active === t.key;
+        return (
+            <TouchableOpacity
+                key={t.key}
+                style={styles.navTabItem}
+                onPress={() => onTab(t.key)}
+                activeOpacity={0.7}
+            >
+                <Ionicons
+                    name={isActive ? t.icon.replace('-outline', '') as any : t.icon}
+                    size={23}
+                    color={isActive ? PRIMARY : '#aaa'}
+                />
+                <Text style={[styles.navTabLabel, isActive && styles.navTabLabelActive]}>
+                    {t.label}
+                </Text>
+            </TouchableOpacity>
+        );
+    };
 
     return (
         <View style={styles.tabBar}>
-            {/* Home + Mapa */}
-            {tabs.slice(0, 2).map((tab) => {
-                const isActive = active === tab.key;
-                return (
-                    <TouchableOpacity
-                        key={tab.key}
-                        style={styles.tabItem}
-                        onPress={() => onTab(tab.key)}
-                        activeOpacity={0.7}
-                    >
-                        <Ionicons
-                            name={isActive ? tab.icon.replace('-outline', '') as any : tab.icon}
-                            size={23}
-                            color={isActive ? PRIMARY : '#aaa'}
-                        />
-                        <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
-                            {tab.label}
-                        </Text>
-                    </TouchableOpacity>
-                );
-            })}
-
-            {/* Botão central + */}
+            {leftTabs.map(renderTab)}
             <TouchableOpacity style={styles.tabAddBtn} onPress={onAdd} activeOpacity={0.85}>
                 <Ionicons name="add" size={30} color="#fff" />
             </TouchableOpacity>
-
-            {/* Alertas + Perfil */}
-            {tabs.slice(2).map((tab) => {
-                const isActive = active === tab.key;
-                return (
-                    <TouchableOpacity
-                        key={tab.key}
-                        style={styles.tabItem}
-                        onPress={() => onTab(tab.key)}
-                        activeOpacity={0.7}
-                    >
-                        <Ionicons
-                            name={isActive ? tab.icon.replace('-outline', '') as any : tab.icon}
-                            size={23}
-                            color={isActive ? PRIMARY : '#aaa'}
-                        />
-                        <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
-                            {tab.label}
-                        </Text>
-                    </TouchableOpacity>
-                );
-            })}
+            {rightTabs.map(renderTab)}
         </View>
     );
 };
@@ -374,19 +358,44 @@ export default function HomeTechnician() {
 
     const [fontsLoaded] = useFonts({ Questrial_400Regular });
 
-    const [activeTab,   setActiveTab]   = useState<TabKey>('home');
-    const [cityLabel,   setCityLabel]   = useState('Carregando...');
+    const [activeTab, setActiveTab] = useState<NavTabKey>('home');
+    useFocusEffect(
+        useCallback(() => {
+            setActiveTab('home');
+        }, [])
+    );
+
+    const [cityLabel,       setCityLabel]       = useState('Carregando...');
     const [locationLoading, setLocationLoading] = useState(true);
 
-    // ── Localização ──────────────────────────────────────────────────────────
+    const [pendingData,      setPendingData]      = useState<PendingAnalysisData>(EMPTY_PENDING);
+    const [criticalData,     setCriticalData]     = useState<CriticalAnalysisData>(EMPTY_CRITICAL);
+    const [lastAnalysisData, setLastAnalysisData] = useState<LastAnalysisData>(EMPTY_LAST_ANALYSIS);
+
+    // Descomente e adapte com seus serviços Firestore reais:
+    // useEffect(() => {
+    //     if (!user) return;
+    //     const fetchData = async () => {
+    //         try {
+    //             const pending  = await getPendingAnalysesCount(user.uid);
+    //             const critical = await getCriticalAnalyses(user.uid);
+    //             const last     = await getLastAnalysis(user.uid);
+    //             setPendingData(pending);
+    //             setCriticalData(critical);
+    //             setLastAnalysisData(last);
+    //         } finally {
+    //             setDataLoading(false);
+    //         }
+    //     };
+    //     fetchData();
+    // }, [user]);
+
+    // ── Localização ───────────────────────────────────────────────────────────
     useEffect(() => {
         (async () => {
             try {
                 const { status } = await Location.requestForegroundPermissionsAsync();
-                if (status !== 'granted') {
-                    setCityLabel('Sem localização');
-                    return;
-                }
+                if (status !== 'granted') { setCityLabel('Sem localização'); return; }
                 const loc = await Location.getCurrentPositionAsync({});
                 const [place] = await Location.reverseGeocodeAsync(loc.coords);
                 if (place) {
@@ -402,17 +411,24 @@ export default function HomeTechnician() {
         })();
     }, []);
 
-    // ── Handlers de navegação ────────────────────────────────────────────────
-    const handleTab = useCallback((tab: TabKey) => {
+    // ── Navegação ─────────────────────────────────────────────────────────────
+    const handleTab = useCallback((tab: NavTabKey) => {
         setActiveTab(tab);
-        if (tab !== 'home') router.push(`/(tabs)/${tab}` as any);
+        if (tab === 'mapa') {
+            router.push('/(tabs)/map' as any);
+        } else if (tab === 'analises') {
+            router.replace('/(tabs)/analyses_union' as any);
+        } else if (tab === 'profile') {
+            router.replace('/(tabs)/profile' as any);
+        }
+        // 'home' não navega — já estamos aqui
     }, [router]);
 
-    const handleAdd     = useCallback(() => router.push('/(tabs)/register_observation' as any), [router]);
-    const handlePending = useCallback(() => router.push('/(tabs)/pending_analyses'    as any), [router]);
-    const handleCritical= useCallback(() => router.push('/(tabs)/critical_analyses'   as any), [router]);
-    const handleDetails = useCallback(() => router.push('/(tabs)/last_analysis'       as any), [router]);
-    const handleMap     = useCallback(() => router.push('/(tabs)/mapa'               as any), [router]);
+    const handleAdd      = useCallback(() => router.push('/(tabs)/register_observation' as any), [router]);
+    const handlePending  = useCallback(() => router.replace('/(tabs)/pending_analyses'  as any), [router]);
+    const handleCritical = useCallback(() => router.push('/(tabs)/critical_analyses'    as any), [router]);
+    const handleDetails  = useCallback(() => router.push('/(tabs)/last_analysis'        as any), [router]);
+    const handleViewMap  = useCallback(() => router.push('/(tabs)/map'                  as any), [router]);
 
     if (!fontsLoaded) {
         return (
@@ -425,7 +441,6 @@ export default function HomeTechnician() {
     return (
         <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
             <Stack.Screen options={{ headerShown: false }} />
-            <StatusBar barStyle="light-content" backgroundColor={PRIMARY} />
 
             <Header cityLabel={cityLabel} loading={locationLoading} />
 
@@ -437,24 +452,18 @@ export default function HomeTechnician() {
                 <TitleBlock />
 
                 <PendingCard
-                    count={12}
-                    lastTitle="Medição simples - Canal do Fragoso"
-                    lastMinutesAgo={12}
+                    data={pendingData}
                     onPress={handlePending}
                 />
 
                 <BottomCards
-                    criticalCount={3}
-                    criticalPoints={['Canal do Fragoso', 'Rio Beberibe']}
-                    criticalUpdatedMin={18}
-                    lastAnalysisName="Canal do Fragoso"
-                    lastAnalysisDate="08/05/2025 • 16:30"
-                    lastAnalysisValidated
+                    critical={criticalData}
+                    lastAnalysis={lastAnalysisData}
                     onCriticalPress={handleCritical}
                     onDetailsPress={handleDetails}
                 />
 
-                <MapSection onViewMap={handleMap} />
+                <MapSection onViewMap={handleViewMap} />
 
                 <View style={{ height: 24 }} />
             </ScrollView>
@@ -468,7 +477,6 @@ export default function HomeTechnician() {
 const styles = StyleSheet.create({
     screen: { flex: 1, backgroundColor: PRIMARY },
 
-    // Header
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -476,9 +484,9 @@ const styles = StyleSheet.create({
         paddingHorizontal: 20,
         paddingVertical: 14,
     },
-    headerLeft: { flexDirection: 'row', alignItems: 'center' },
-    headerCity: { color: '#fff', fontSize: 16, fontWeight: '700' },
-    headerTeam: { color: 'rgba(255,255,255,0.7)', fontSize: 13 },
+    headerLeft:     { flexDirection: 'row', alignItems: 'center' },
+    headerCity:     { color: '#fff', fontSize: 16, fontWeight: '700' },
+    headerTeam:     { color: 'rgba(255,255,255,0.7)', fontSize: 13 },
     headerLogoCircle: {
         width: 42,
         height: 42,
@@ -489,11 +497,9 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
 
-    // Scroll
-    scroll: { flex: 1, backgroundColor: BG },
+    scroll:        { flex: 1, backgroundColor: BG },
     scrollContent: { paddingBottom: 16 },
 
-    // Title block
     titleBlock: {
         flexDirection: 'row',
         alignItems: 'flex-start',
@@ -519,9 +525,8 @@ const styles = StyleSheet.create({
         gap: 3,
     },
     updatedTitle: { color: '#fff', fontSize: 12, fontWeight: '600' },
-    updatedDate: { color: 'rgba(255,255,255,0.7)', fontSize: 11 },
+    updatedDate:  { color: 'rgba(255,255,255,0.7)', fontSize: 11 },
 
-    // Card base
     card: {
         backgroundColor: CARD,
         borderRadius: 16,
@@ -534,7 +539,7 @@ const styles = StyleSheet.create({
         shadowRadius: 8,
         elevation: 3,
     },
-    cardRow: { flexDirection: 'row', alignItems: 'flex-start' },
+    cardRow:     { flexDirection: 'row', alignItems: 'flex-start' },
     iconCircle: {
         width: 46,
         height: 46,
@@ -543,12 +548,11 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
-    cardTitle: { fontSize: 15, fontWeight: '700', color: '#1a1a1a', marginBottom: 3 },
-    cardDesc:  { fontSize: 12, color: TEXT_MUTED, lineHeight: 17 },
-    countRow:  { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    cardTitle:   { fontSize: 15, fontWeight: '700', color: '#1a1a1a', marginBottom: 3 },
+    cardDesc:    { fontSize: 12, color: TEXT_MUTED, lineHeight: 17 },
+    countRow:    { flexDirection: 'row', alignItems: 'center', gap: 4 },
     countNumber: { fontSize: 36, fontWeight: '800', color: '#1a1a1a' },
 
-    // Última recebida
     lastReceived: {
         flexDirection: 'row',
         alignItems: 'flex-start',
@@ -584,13 +588,7 @@ const styles = StyleSheet.create({
     },
     cardFooterBtnText: { fontSize: 13, color: PRIMARY_MID, fontWeight: '600' },
 
-    // Cards inferiores
-    bottomRow: {
-        flexDirection: 'row',
-        marginHorizontal: 16,
-        gap: 12,
-        marginTop: 16,
-    },
+    bottomRow:    { flexDirection: 'row', marginHorizontal: 16, gap: 12, marginTop: 16 },
     bottomCard:   { flex: 1, marginHorizontal: 0, marginTop: 0 },
     criticalCard: { borderLeftWidth: 3, borderLeftColor: ORANGE },
     criticalPoints: {
@@ -646,51 +644,38 @@ const styles = StyleSheet.create({
     },
     detailsBtnText: { fontSize: 12, color: PRIMARY_MID, fontWeight: '600' },
 
-    // Mapa
-    mapSection:   { marginHorizontal: 16, marginTop: 24 },
+    // ── MapSection ──
+    mapSection:  { marginHorizontal: 16, marginTop: 24 },
     mapHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'flex-start',
         marginBottom: 12,
     },
-    mapTitle:       { fontSize: 17, fontWeight: '800', color: '#1a1a1a' },
-    mapSubtitle:    { fontSize: 12, color: TEXT_MUTED, marginTop: 2 },
-    mapCompleteBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    mapTitle:    { fontSize: 17, fontWeight: '800', color: '#1a1a1a' },
+    mapSubtitle: { fontSize: 12, color: TEXT_MUTED, marginTop: 2 },
+    mapCompleteBtn:     { flexDirection: 'row', alignItems: 'center', gap: 4 },
     mapCompleteBtnText: { fontSize: 12, color: PRIMARY_MID, fontWeight: '600' },
     mapContainer: {
         borderRadius: 14,
         overflow: 'hidden',
         height: 185,
     },
-    pin: {
+    mapTapOverlay: {
         position: 'absolute',
-        width: 22,
-        height: 22,
-        borderRadius: 11,
+        top: 10,
+        left: 10,
+        flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 2,
-        borderColor: '#fff',
-        shadowColor: '#000',
-        shadowOpacity: 0.25,
-        shadowRadius: 4,
-        elevation: 4,
-    },
-    legend: {
-        position: 'absolute',
-        bottom: 10,
-        right: 10,
-        backgroundColor: 'rgba(255,255,255,0.93)',
-        borderRadius: 10,
-        padding: 8,
+        backgroundColor: 'rgba(255,255,255,0.82)',
+        borderRadius: 20,
+        paddingHorizontal: 10,
+        paddingVertical: 5,
         gap: 5,
     },
-    legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    legendDot:  { width: 9, height: 9, borderRadius: 5 },
-    legendLabel: { fontSize: 11, color: '#333' },
+    mapTapLabel: { fontSize: 11, color: PRIMARY, fontWeight: '600' },
 
-    // Tab bar
+    // ── Tab bar (unificada) ──
     tabBar: {
         flexDirection: 'row',
         backgroundColor: '#fff',
@@ -707,9 +692,9 @@ const styles = StyleSheet.create({
         shadowRadius: 8,
         elevation: 12,
     },
-    tabItem:       { alignItems: 'center', flex: 1, paddingVertical: 2 },
-    tabLabel:      { fontSize: 11, color: '#aaa', marginTop: 3 },
-    tabLabelActive:{ color: PRIMARY, fontWeight: '600' },
+    navTabItem:        { alignItems: 'center', flex: 1, paddingVertical: 2 },
+    navTabLabel:       { fontSize: 11, color: '#aaa', marginTop: 3 },
+    navTabLabelActive: { color: PRIMARY, fontWeight: '600' },
     tabAddBtn: {
         width: 56,
         height: 56,
