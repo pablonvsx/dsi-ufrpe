@@ -21,9 +21,10 @@ import { Stack, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { useAuth } from '@/contexts/auth-context';
+import { uploadMultiplasImagens, ResultadoUpload } from '@/services/storage/supabaseStorage';
 
 // ── Design tokens ──────────────────────────────────────────
 const PRIMARY      = '#004d48';
@@ -36,6 +37,9 @@ const SURFACE      = '#FFFFFF';
 const BG           = '#f4f7f6';
 const BORDER       = '#e4ecea';
 const STEP_BG      = PRIMARY;
+
+// ── Assets ────────────────────────────────────────────────
+const logoImg = require('../../assets/images/aquasense.png');
 
 // ── Tipos de corpo hídrico ─────────────────────────────────
 type TipoCorpo = 'Rio' | 'Canal' | 'Lago' | 'Açude' | 'Outro';
@@ -113,6 +117,7 @@ export default function CadastrarCorpoHidricoScreen() {
     latitude: number;
     longitude: number;
   } | null>(null);
+
   // ── Modal do mapa ──────────────────────────────────────
   const [mapaModalVisible, setMapaModalVisible] = useState(false);
   const [tempMarker, setTempMarker] = useState<{
@@ -120,6 +125,9 @@ export default function CadastrarCorpoHidricoScreen() {
     longitude: number;
   } | null>(null);
   const [loadingGeocode, setLoadingGeocode] = useState(false);
+
+  // ── Modal de sucesso ───────────────────────────────────
+  const [successVisible, setSuccessVisible] = useState(false);
 
   // ── Envio ──────────────────────────────────────────────
   const [enviando, setEnviando] = useState(false);
@@ -151,7 +159,6 @@ export default function CadastrarCorpoHidricoScreen() {
 
   // ── Abrir modal do mapa ────────────────────────────────
   const handleAbrirMapa = async () => {
-    // pede permissão se ainda não tiver coords para centrar
     if (!markerCoords && !localizacao) {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === 'granted') {
@@ -173,7 +180,6 @@ export default function CadastrarCorpoHidricoScreen() {
     try {
       const [address] = await Location.reverseGeocodeAsync(coord);
       const cidade = address?.city ?? address?.subregion ?? 'Local selecionado';
-      // atualiza preview de cidade imediatamente no tempMarker (guardado no confirm)
       setLocalizacao(prev => ({
         latitude:  coord.latitude,
         longitude: coord.longitude,
@@ -195,7 +201,7 @@ export default function CadastrarCorpoHidricoScreen() {
 
   // ── Fechar modal sem salvar ────────────────────────────
   const handleFecharMapa = () => {
-    setTempMarker(markerCoords); // descarta alterações
+    setTempMarker(markerCoords);
     setMapaModalVisible(false);
   };
 
@@ -246,28 +252,50 @@ export default function CadastrarCorpoHidricoScreen() {
 
     setEnviando(true);
     try {
+      console.log('[CorpoHidrico] Supabase configurado:', true);
+      console.log('[CorpoHidrico] Quantidade de fotos selecionadas:', fotos.length);
+
       const coords = markerCoords ?? localizacao;
-      await addDoc(collection(db, 'corposHidricos'), {
-        nome:        nome.trim(),
+
+      // 1. Salva o documento no Firestore sem fotos para obter o ID
+      const docRef = await addDoc(collection(db, 'corposHidricos'), {
+        nome:      nome.trim(),
         tipo,
-        descricao:   descricao.trim(),
-        latitude:    coords?.latitude,
-        longitude:   coords?.longitude,
-        cidade:      localizacao?.cidade ?? '',
-        fotos,
-        uid:         user?.uid,
-        status:      'pendente',
-        criadoEm:    serverTimestamp(),
+        descricao: descricao.trim(),
+        latitude:  coords?.latitude,
+        longitude: coords?.longitude,
+        cidade:    localizacao?.cidade ?? '',
+        fotos:     [],
+        uid:       user?.uid,
+        status:    'pendente',
+        criadoEm:  serverTimestamp(),
       });
 
-      Alert.alert(
-        'Enviado com sucesso!',
-        'Sua solicitação será analisada pela equipe técnica antes de ser publicada.',
-        [{ text: 'OK', onPress: () => router.back() }],
-      );
-    } catch (err) {
-      console.error(err);
-      Alert.alert('Erro', 'Não foi possível enviar. Tente novamente.');
+      console.log('[CorpoHidrico] Documento criado com ID:', docRef.id);
+
+      // 2. Faz upload das fotos para o Supabase usando o ID do documento
+      if (fotos.length > 0) {
+        console.log('[CorpoHidrico] Iniciando upload de', fotos.length, 'imagem(ns)...');
+        let imagensMetadados: ResultadoUpload[] = [];
+        try {
+          imagensMetadados = await uploadMultiplasImagens(fotos, docRef.id);
+          console.log('[CorpoHidrico] Upload concluido. Total enviado:', imagensMetadados.length);
+        } catch (uploadError: any) {
+          console.error('[CorpoHidrico] Erro no upload das imagens:', uploadError?.message ?? uploadError);
+          throw new Error('Falha ao enviar as fotos: ' + (uploadError?.message ?? 'erro desconhecido'));
+        }
+
+        // 3. Atualiza o documento com os metadados das imagens
+        await updateDoc(doc(db, 'corposHidricos', docRef.id), {
+          fotos: imagensMetadados,
+        });
+      }
+
+      // ── Abre modal de sucesso personalizado ────────────
+      setSuccessVisible(true);
+    } catch (err: any) {
+      console.error('[CorpoHidrico] Erro ao enviar:', err);
+      Alert.alert('Erro', err?.message || 'Não foi possível enviar. Tente novamente.');
     } finally {
       setEnviando(false);
     }
@@ -307,9 +335,12 @@ export default function CadastrarCorpoHidricoScreen() {
                 </Text>
               </View>
 
-              <View style={styles.headerLogoCircle}>
-                <MaterialCommunityIcons name="water-outline" size={26} color="rgba(255,255,255,0.85)" />
-              </View>
+              {/* ── Logo AquaSense substituindo o ícone de gota ── */}
+              <Image
+                source={logoImg}
+                style={styles.headerLogo}
+                resizeMode="contain"
+              />
             </View>
           </SafeAreaView>
           <View style={styles.waveWhite} />
@@ -667,6 +698,47 @@ export default function CadastrarCorpoHidricoScreen() {
           </SafeAreaView>
         </Modal>
 
+        {/* ══ MODAL DE SUCESSO ══ */}
+        <Modal visible={successVisible} transparent animationType="fade">
+          <View style={styles.successOverlay}>
+            <View style={styles.successCard}>
+              <View style={styles.successIconCircle}>
+                <Ionicons name="checkmark-circle" size={44} color={PRIMARY} />
+              </View>
+
+              <Text style={[styles.successTitle, { fontFamily: questrial }]}>
+                Enviado com sucesso!
+              </Text>
+
+              <View style={styles.successDivider} />
+
+              <Text style={[styles.successBody, { fontFamily: questrial }]}>
+                Sua solicitação foi registrada e será analisada pela equipe técnica antes de ser publicada.
+              </Text>
+
+              <TouchableOpacity
+                style={styles.successBtn}
+                onPress={() => {
+                  setSuccessVisible(false);
+                  router.back();
+                }}
+                activeOpacity={0.85}
+              >
+                <LinearGradient
+                  colors={['#004d48', '#0a6b5e']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.successBtnGradient}
+                >
+                  <Text style={[styles.successBtnText, { fontFamily: questrial }]}>
+                    Entendido
+                  </Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
       </View>
     </>
   );
@@ -699,10 +771,10 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 13, color: 'rgba(255,255,255,0.75)', marginTop: 5, lineHeight: 19,
   },
-  headerLogoCircle: {
-    width: 48, height: 48, borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center', justifyContent: 'center',
+  // ── Logo no header (substitui o círculo com ícone de gota) ──
+  headerLogo: {
+    width: 100,
+    height: 44,
     marginTop: 4,
   },
   waveWhite: {
@@ -927,4 +999,59 @@ const styles = StyleSheet.create({
     borderRadius: 16, paddingVertical: 18,
   },
   submitText: { fontSize: 16, color: '#FFF', fontWeight: '700', letterSpacing: 0.3 },
+
+  // ── Modal de sucesso ──
+  successOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,77,72,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  successCard: {
+    width: '100%',
+    backgroundColor: SURFACE,
+    borderRadius: 24,
+    padding: 28,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  successIconCircle: {
+    width: 72, height: 72, borderRadius: 36,
+    backgroundColor: TEAL_LIGHT,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 18,
+  },
+  successTitle: {
+    fontSize: 22, fontWeight: '700', color: PRIMARY,
+    textAlign: 'center', marginBottom: 14,
+  },
+  successDivider: {
+    height: 1, backgroundColor: BORDER,
+    width: '100%', marginBottom: 14,
+  },
+  successBody: {
+    fontSize: 14, color: TEXT_MUTED,
+    textAlign: 'center', lineHeight: 22,
+    marginBottom: 24,
+  },
+  successBtn: {
+    width: '100%',
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  successBtnGradient: {
+    paddingVertical: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+  },
+  successBtnText: {
+    fontSize: 16, color: '#FFF',
+    fontWeight: '700', letterSpacing: 0.3,
+  },
 });
