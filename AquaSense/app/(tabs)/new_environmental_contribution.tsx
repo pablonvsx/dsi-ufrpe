@@ -26,6 +26,9 @@ import { getValidatedWaterBodies } from "@/services/firestore/water_bodies";
 import { CorpoHidrico } from "@/types/water_bodies";
 import { createCollaboratorMeasurement } from "@/services/firestore/measurements";
 import { salvarObservacao } from "@/services/firestore/observations";
+import { uploadMultiplasImagens, ResultadoUpload } from "@/services/storage/supabaseStorage";
+import { doc, updateDoc } from "firebase/firestore";
+import { db } from "@/config/firebase";
 
 type TipoContribuicao = "medicao" | "observacao";
 
@@ -372,8 +375,13 @@ export default function NewEnvironmentalContribution() {
     try {
       setSubmitting(true);
 
+      console.log("[Contribuicao] Supabase configurado:", true);
+      console.log("[Contribuicao] Quantidade de fotos selecionadas:", fotos.length);
+
+      let imagensMetadados: ResultadoUpload[] = [];
+
       if (formData.tipo === "medicao") {
-        await createCollaboratorMeasurement({
+        const docId = await createCollaboratorMeasurement({
           usuarioId: user.uid,
           usuarioNome: getUsuarioNome(),
 
@@ -393,10 +401,27 @@ export default function NewEnvironmentalContribution() {
           turbidez: formData.corMedicao,
           observacao: formData.descricao || formData.odorMedicao,
         });
+
+        console.log("[Contribuicao] Documento criado com ID:", docId);
+
+        if (fotos.length > 0 && docId) {
+          console.log("[Contribuicao] Iniciando upload de", fotos.length, "imagem(ns)...");
+          try {
+            imagensMetadados = await uploadMultiplasImagens(fotos, docId);
+            console.log("[Contribuicao] Upload concluido. Total enviado:", imagensMetadados.length);
+
+            await updateDoc(doc(db, "medicoesColaborador", docId), {
+              imagens: imagensMetadados,
+            });
+          } catch (uploadError: any) {
+            console.error("[Contribuicao] Erro no upload das imagens:", uploadError?.message ?? uploadError);
+            throw new Error("Falha ao enviar as fotos: " + (uploadError?.message ?? "erro desconhecido"));
+          }
+        }
       }
 
       if (formData.tipo === "observacao") {
-        await salvarObservacao({
+        const docId = await salvarObservacao({
           corpoHidricoId: formData.corpoHidricoId!,
           corpoHidricoNome: formData.corpoHidricoNome,
 
@@ -424,6 +449,23 @@ export default function NewEnvironmentalContribution() {
           lixo: formData.lixoPresente ? "sim" : "nao",
           lixoDesc: formData.descricaoLixo,
         });
+
+        console.log("[Contribuicao] Documento criado com ID:", docId);
+
+        if (fotos.length > 0 && docId) {
+          console.log("[Contribuicao] Iniciando upload de", fotos.length, "imagem(ns)...");
+          try {
+            imagensMetadados = await uploadMultiplasImagens(fotos, docId);
+            console.log("[Contribuicao] Upload concluido. Total enviado:", imagensMetadados.length);
+
+            await updateDoc(doc(db, "observacoes", docId), {
+              imagens: imagensMetadados,
+            });
+          } catch (uploadError: any) {
+            console.error("[Contribuicao] Erro no upload das imagens:", uploadError?.message ?? uploadError);
+            throw new Error("Falha ao enviar as fotos: " + (uploadError?.message ?? "erro desconhecido"));
+          }
+        }
       }
 
       showAlert(
@@ -433,7 +475,7 @@ export default function NewEnvironmentalContribution() {
         () => router.back()
       );
     } catch (error: any) {
-      console.error("Erro ao enviar contribuição:", error);
+      console.error("[Contribuicao] Erro ao enviar contribuicao:", error);
 
       showAlert(
         "Erro ao enviar",

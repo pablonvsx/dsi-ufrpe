@@ -11,12 +11,18 @@ import {
     Dimensions,
     Image,
     Modal,
+    LayoutAnimation,
+    UIManager,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFonts, Questrial_400Regular } from "@expo-google-fonts/questrial";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useRouter } from "expo-router";
+
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 const PRIMARY = "#004d48";
 const TEAL_MED = "#0d6e52";
@@ -27,6 +33,43 @@ const BLUE_ACTION = "#2563c7";
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
 type TabKey = "home" | "mapa" | "painel" | "perfil";
+
+// ─── FAQ ──────────────────────────────────────────────────────────────────────
+
+const FAQ_ITEMS = [
+    {
+        q: "Como faço uma medição simples?",
+        a: "Escolha o parâmetro que deseja medir (temperatura, pH ou observação visual), siga os passos do guia disponível nesta tela e registre o resultado pelo botão "+" na tela inicial. Quanto mais detalhes, melhor!",
+    },
+    {
+        q: "O que significa medir o pH da água?",
+        a: "O pH indica se a água é ácida, neutra ou alcalina, em uma escala de 0 a 14. O valor 7 é neutro. Para rios e lagos, a faixa saudável é entre 6,0 e 9,0 (CONAMA 357/2005). Valores fora disso podem sinalizar contaminação.",
+    },
+    {
+        q: "O que devo observar antes de registrar uma contribuição?",
+        a: "Observe a cor da água, se há espuma, resíduos ou odor incomum. Anote as condições do tempo (sol, chuva recente) e registre o local com o maior nível de detalhe possível. Fotografar o ponto é sempre recomendado.",
+    },
+    {
+        q: "Posso enviar uma contribuição sem foto?",
+        a: "Sim. A foto é opcional, mas ajuda muito a equipe técnica a confirmar as informações. Se não for possível fotografar, descreva o que viu com detalhes no campo de observações.",
+    },
+    {
+        q: "Quando devo fazer uma denúncia?",
+        a: "Faça uma denúncia quando identificar sinais claros de contaminação: despejo de esgoto, chorume, resíduos industriais, odor químico intenso ou mortandade de peixes. Nessa situação, registre com fotos e descreva o que foi observado.",
+    },
+    {
+        q: "O que acontece depois que envio uma contribuição?",
+        a: "Sua contribuição é analisada pela equipe técnica do AquaSense. Os dados são cruzados com outras fontes para gerar alertas e relatórios de qualidade hídrica. Você pode acompanhar o status pelo painel da comunidade.",
+    },
+    {
+        q: "Como sei se uma água está em situação de atenção?",
+        a: "No mapa do AquaSense, pontos em amarelo ou vermelho indicam situação de atenção ou risco. Você também pode verificar o histórico de medições de um ponto específico ao tocá-lo no mapa.",
+    },
+    {
+        q: "Posso registrar informações de mais de um corpo hídrico?",
+        a: "Sim! Não há limite de contribuições. Você pode registrar observações em quantos pontos quiser — rios, córregos, lagos ou reservatórios. Cada registro é vinculado automaticamente à localização informada.",
+    },
+];
 
 // ─── Conteúdo do Guia Completo ────────────────────────────────────────────────
 
@@ -151,6 +194,9 @@ export default function LearningCenter() {
     const [paramVisible, setParamVisible] = useState(false);
     const [paramIndex, setParamIndex] = useState(0);
 
+    // FAQ state
+    const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
+
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(22)).current;
     const cardFade = useRef(new Animated.Value(0)).current;
@@ -204,6 +250,11 @@ export default function LearningCenter() {
     function openParam(idx: number) {
         setParamIndex(idx);
         setParamVisible(true);
+    }
+
+    function toggleFaq(idx: number) {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setOpenFaqIndex(openFaqIndex === idx ? null : idx);
     }
 
     const currentGuide = GUIDE_STEPS[guideStep];
@@ -340,27 +391,29 @@ export default function LearningCenter() {
                             </View>
                         </View>
 
-                        
+                        {/* ── DÚVIDAS FREQUENTES ─────────────────────── */}
+                        <View style={styles.faqHeaderRow}>
+                            <View style={styles.faqHeaderIconCircle}>
+                                <Ionicons name="help-circle-outline" size={20} color={TEAL_MED} />
+                            </View>
+                            <Text style={[styles.sectionTitle, { fontFamily: questrial, marginBottom: 0, marginTop: 0 }]}>
+                                Dúvidas frequentes
+                            </Text>
+                        </View>
 
-                        {/* ── TIRAR DÚVIDAS ──────────────────────────── */}
-                        <TouchableOpacity
-                            style={styles.suportCard}
-                            onPress={() => router.push("/support_chat" as any)}
-                            activeOpacity={0.82}
-                        >
-                            <View style={styles.suportIconCircle}>
-                                <Ionicons name="headset-outline" size={22} color={TEAL_MED} />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                                <Text style={[styles.suportTitle, { fontFamily: questrial }]}>
-                                    Tirar dúvidas com a equipe técnica
-                                </Text>
-                                <Text style={[styles.suportBody, { fontFamily: questrial }]}>
-                                    Fale com nossa equipe sempre que precisar.
-                                </Text>
-                            </View>
-                            <Ionicons name="chevron-forward" size={18} color="#ccc" />
-                        </TouchableOpacity>
+                        <View style={styles.faqCard}>
+                            {FAQ_ITEMS.map((item, idx) => (
+                                <FaqItem
+                                    key={idx}
+                                    question={item.q}
+                                    answer={item.a}
+                                    isOpen={openFaqIndex === idx}
+                                    isLast={idx === FAQ_ITEMS.length - 1}
+                                    fontFamily={questrial}
+                                    onToggle={() => toggleFaq(idx)}
+                                />
+                            ))}
+                        </View>
 
                     </Animated.View>
                 </ScrollView>
@@ -591,6 +644,44 @@ export default function LearningCenter() {
     );
 }
 
+// ─── FaqItem ──────────────────────────────────────────────────────────────────
+
+function FaqItem({
+    question, answer, isOpen, isLast, fontFamily, onToggle,
+}: {
+    question: string;
+    answer: string;
+    isOpen: boolean;
+    isLast: boolean;
+    fontFamily?: string;
+    onToggle: () => void;
+}) {
+    return (
+        <View style={[styles.faqItem, !isLast && styles.faqItemBorder]}>
+            <TouchableOpacity
+                style={styles.faqRow}
+                onPress={onToggle}
+                activeOpacity={0.72}
+            >
+                <View style={[styles.faqDot, isOpen && styles.faqDotActive]} />
+                <Text style={[styles.faqQuestion, { fontFamily, color: isOpen ? PRIMARY : "#1a2e26" }]}>
+                    {question}
+                </Text>
+                <Ionicons
+                    name={isOpen ? "chevron-up" : "chevron-down"}
+                    size={16}
+                    color={isOpen ? TEAL_MED : "#ccc"}
+                />
+            </TouchableOpacity>
+            {isOpen && (
+                <View style={styles.faqAnswerWrap}>
+                    <Text style={[styles.faqAnswer, { fontFamily }]}>{answer}</Text>
+                </View>
+            )}
+        </View>
+    );
+}
+
 // ─── LearnItem ────────────────────────────────────────────────────────────────
 
 function LearnItem({
@@ -694,13 +785,46 @@ const styles = StyleSheet.create({
     // Recomendação
     recomCard: {
         backgroundColor: "#edf6f0", borderRadius: 18, padding: 16,
-        flexDirection: "row", gap: 12, alignItems: "flex-start", marginBottom: 14,
+        flexDirection: "row", gap: 12, alignItems: "flex-start", marginBottom: 20,
         borderWidth: 1, borderColor: "#c6e8d4", overflow: "hidden",
     },
     recomIconCircle: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#c6e8d4", alignItems: "center", justifyContent: "center", flexShrink: 0 },
     recomTitle: { fontSize: 14, fontWeight: "700", color: "#0d4a3e", marginBottom: 6 },
     recomBody: { fontSize: 13, color: "#2a7a5c", lineHeight: 19 },
     recomDecor: { position: "absolute", right: -6, bottom: -6 },
+
+    // FAQ
+    faqHeaderRow: {
+        flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12,
+    },
+    faqHeaderIconCircle: {
+        width: 32, height: 32, borderRadius: 16,
+        backgroundColor: "#e6f5ef", alignItems: "center", justifyContent: "center",
+    },
+    faqCard: {
+        backgroundColor: "#fff", borderRadius: 18, overflow: "hidden", marginBottom: 14,
+        borderWidth: 1, borderColor: "rgba(0,0,0,0.06)",
+        shadowColor: "#000", shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.06, shadowRadius: 8, elevation: 3,
+    },
+    faqItem: { paddingHorizontal: 16 },
+    faqItemBorder: { borderBottomWidth: 1, borderBottomColor: "#f0f0f0" },
+    faqRow: {
+        flexDirection: "row", alignItems: "center", gap: 10,
+        paddingVertical: 15,
+    },
+    faqDot: {
+        width: 7, height: 7, borderRadius: 4,
+        backgroundColor: "#d0e8df", flexShrink: 0,
+    },
+    faqDotActive: { backgroundColor: TEAL_MED },
+    faqQuestion: { flex: 1, fontSize: 14, fontWeight: "600", lineHeight: 20 },
+    faqAnswerWrap: {
+        paddingBottom: 14, paddingLeft: 17,
+    },
+    faqAnswer: {
+        fontSize: 13, color: TEXT_MUTED, lineHeight: 20,
+    },
 
     // Progresso
     progressCard: {
@@ -718,18 +842,6 @@ const styles = StyleSheet.create({
     progressStatusRow: { flexDirection: "row", alignItems: "center", gap: 6 },
     progressDotGray: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#b0c4c2" },
     progressStatusText: { fontSize: 12, color: TEXT_MUTED },
-
-    // Suporte
-    suportCard: {
-        backgroundColor: "#fff", borderRadius: 18, padding: 16,
-        flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 14,
-        borderWidth: 1, borderColor: "rgba(0,0,0,0.06)",
-        shadowColor: "#000", shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.06, shadowRadius: 8, elevation: 3,
-    },
-    suportIconCircle: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#e6f5ef", alignItems: "center", justifyContent: "center", flexShrink: 0 },
-    suportTitle: { fontSize: 14, fontWeight: "700", color: "#1a2e26", marginBottom: 3 },
-    suportBody: { fontSize: 13, color: TEXT_MUTED },
 
     // Navbar
     navWrapper: {

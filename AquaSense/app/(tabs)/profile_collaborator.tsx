@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -19,7 +19,6 @@ import { useFonts, Questrial_400Regular } from '@expo-google-fonts/questrial';
 import { Stack, useRouter } from 'expo-router';
 import {
   getAuth,
-  onAuthStateChanged,
   updateEmail,
   updatePassword,
   reauthenticateWithCredential,
@@ -48,14 +47,7 @@ const TEXT_MUTED = '#6b7a7a';
 const SURFACE    = '#FFFFFF';
 const BORDER     = '#eef2f1';
 
-const logoImg = require('../../assets/images/AquaSenseLogoAlinhada.png');
-
-// ── Dados de impacto ───────────────────────────────────────
-interface ImpactData {
-  medicoes: number;
-  ocorrencias: number;
-  contribuicoes: number;
-}
+const logoImg = require('../../assets/images/aquasense.png');
 
 // ── Helpers ────────────────────────────────────────────────
 const maskEmail = (email: string) => {
@@ -180,26 +172,6 @@ const ConfigRow = ({ icon, label, onPress, fontFamily, isLast }: ConfigRowProps)
   </>
 );
 
-// ── Coluna de impacto ──────────────────────────────────────
-interface ImpactColProps {
-  icon: string;
-  iconColor: string;
-  iconBg: string;
-  value: number;
-  label: string;
-  fontFamily?: string;
-}
-
-const ImpactCol = ({ icon, iconColor, iconBg, value, label, fontFamily }: ImpactColProps) => (
-  <View style={styles.impactCol}>
-    <View style={[styles.impactIconCircle, { backgroundColor: iconBg }]}>
-      <Ionicons name={icon as any} size={20} color={iconColor} />
-    </View>
-    <Text style={[styles.impactNumber, { fontFamily }]}>{value}</Text>
-    <Text style={[styles.impactLabel, { fontFamily }]}>{label}</Text>
-  </View>
-);
-
 // ── Tela principal ─────────────────────────────────────────
 export default function PerfilColaboradorScreen() {
   const [fontsLoaded] = useFonts({ Questrial_400Regular });
@@ -208,17 +180,14 @@ export default function PerfilColaboradorScreen() {
 
   const { user, userProfile, loadingAuth } = useAuth();
 
-  const [impact, setImpact] = useState<ImpactData>({ medicoes: 0, ocorrencias: 0, contribuicoes: 0 });
-  const [loadingImpact, setLoadingImpact] = useState(true);
-
   // ── Estados dos modais ─────────────────────────────────
-  const [modalEmailVisible,          setModalEmailVisible]          = useState(false);
-  const [modalReauthVisible,         setModalReauthVisible]         = useState(false);
-  const [modalDeactivateVisible,     setModalDeactivateVisible]     = useState(false);
-  const [modalDeleteVisible,         setModalDeleteVisible]         = useState(false);
+  const [modalEmailVisible,           setModalEmailVisible]           = useState(false);
+  const [modalReauthVisible,          setModalReauthVisible]          = useState(false);
+  const [modalDeactivateVisible,      setModalDeactivateVisible]      = useState(false);
+  const [modalDeleteVisible,          setModalDeleteVisible]          = useState(false);
   const [modalPasswordConfirmVisible, setModalPasswordConfirmVisible] = useState(false);
-  const [modalPasswordSentVisible,   setModalPasswordSentVisible]   = useState(false);
-  const [modalSignOutVisible,        setModalSignOutVisible]        = useState(false);
+  const [modalPasswordSentVisible,    setModalPasswordSentVisible]    = useState(false);
+  const [modalSignOutVisible,         setModalSignOutVisible]         = useState(false);
 
   // ── Estados de formulário ──────────────────────────────
   const [newEmail,        setNewEmail]        = useState('');
@@ -226,43 +195,6 @@ export default function PerfilColaboradorScreen() {
   const [pendingAction,   setPendingAction]   = useState<
     'EMAIL' | 'DEACTIVATE' | 'DELETE' | null
   >(null);
-
-  // ── Busca dados de impacto do Firestore ────────────────
-  useEffect(() => {
-    if (!user?.uid) return;
-
-    const fetchImpact = async () => {
-      setLoadingImpact(true);
-      try {
-        const uid = user.uid;
-
-        const qMedicoes = query(collection(db, 'observacoes'), where('uid', '==', uid));
-        const medicoesSnap = await getDocs(qMedicoes);
-
-        const qOcorrencias = query(collection(db, 'ocorrencias'), where('uid', '==', uid));
-        const ocorrenciasSnap = await getDocs(qOcorrencias);
-
-        const qContribuicoes = query(
-          collection(db, 'observacoes'),
-          where('uid', '==', uid),
-          where('status', '==', 'aprovada'),
-        );
-        const contribuicoesSnap = await getDocs(qContribuicoes);
-
-        setImpact({
-          medicoes:     medicoesSnap.size,
-          ocorrencias:  ocorrenciasSnap.size,
-          contribuicoes: contribuicoesSnap.size,
-        });
-      } catch (err) {
-        console.error('Erro ao buscar impacto:', err);
-      } finally {
-        setLoadingImpact(false);
-      }
-    };
-
-    fetchImpact();
-  }, [user?.uid]);
 
   // ── Formata data de criação ────────────────────────────
   const formatarDataEntrada = (): string => {
@@ -391,7 +323,7 @@ export default function PerfilColaboradorScreen() {
                 </Text>
               </View>
 
-              <Image source={logoImg} style={styles.headerLogo} resizeMode="contain" tintColor="#FFFFFF" />
+              <Image source={logoImg} style={styles.headerLogo} resizeMode="contain" />
             </View>
 
             <View style={styles.headerTitleBlock}>
@@ -453,50 +385,6 @@ export default function PerfilColaboradorScreen() {
                 </Text>
               </View>
             </View>
-          </View>
-
-          {/* ── Seu impacto ── */}
-          <View style={styles.card}>
-            <Text style={[styles.sectionTitle, { fontFamily: questrial }]}>Seu impacto</Text>
-
-            {loadingImpact ? (
-              <ActivityIndicator size="small" color={PRIMARY} style={{ marginVertical: 16 }} />
-            ) : (
-              <>
-                <View style={styles.impactRow}>
-                  <ImpactCol
-                    icon="water-outline"
-                    iconColor="#0a6b5e"
-                    iconBg="rgba(10,107,94,0.1)"
-                    value={impact.medicoes}
-                    label={'Medições\nenviadas'}
-                    fontFamily={questrial}
-                  />
-                  <View style={styles.impactDivider} />
-                  <ImpactCol
-                    icon="send-outline"
-                    iconColor="#2980b9"
-                    iconBg="rgba(41,128,185,0.1)"
-                    value={impact.ocorrencias}
-                    label={'Ocorrências\nreportadas'}
-                    fontFamily={questrial}
-                  />
-                  <View style={styles.impactDivider} />
-                  <ImpactCol
-                    icon="checkmark-circle-outline"
-                    iconColor="#27ae60"
-                    iconBg="rgba(39,174,96,0.1)"
-                    value={impact.contribuicoes}
-                    label={'Contribuições\naprovadas'}
-                    fontFamily={questrial}
-                  />
-                </View>
-
-                <Text style={[styles.impactFootnote, { fontFamily: questrial }]}>
-                  Sua participação ajuda a melhorar o monitoramento ambiental da região.
-                </Text>
-              </>
-            )}
           </View>
 
           {/* ── Conta ── */}
@@ -700,7 +588,7 @@ const styles = StyleSheet.create({
   },
   headerLocationRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   headerLocationText: { fontSize: 13, color: 'rgba(255,255,255,0.9)' },
-  headerLogo: { width: 36, height: 36 },
+  headerLogo: { width: 60, height: 60 },
   headerTitleBlock: { paddingHorizontal: 24, paddingTop: 10, paddingBottom: 32 },
   headerTitle: { fontSize: 30, color: '#FFFFFF', fontWeight: '700', letterSpacing: 0.2 },
   headerSubtitle: { fontSize: 14, color: 'rgba(255,255,255,0.75)', marginTop: 4, lineHeight: 20 },
@@ -744,18 +632,6 @@ const styles = StyleSheet.create({
   profileDetailRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 },
   detailIcon: { marginRight: 7 },
   profileDetailText: { fontSize: 13, color: '#555', flex: 1 },
-
-  // Impacto
-  impactRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 14 },
-  impactCol: { flex: 1, alignItems: 'center' },
-  impactDivider: { width: 1, backgroundColor: BORDER, marginHorizontal: 4, alignSelf: 'stretch' },
-  impactIconCircle: {
-    width: 44, height: 44, borderRadius: 22,
-    alignItems: 'center', justifyContent: 'center', marginBottom: 8,
-  },
-  impactNumber: { fontSize: 22, fontWeight: '700', color: '#1a1a1a', lineHeight: 26 },
-  impactLabel: { fontSize: 11, color: TEXT_MUTED, textAlign: 'center', lineHeight: 15, marginTop: 2 },
-  impactFootnote: { fontSize: 12, color: TEXT_MUTED, lineHeight: 17 },
 
   // Config row
   configRow: {

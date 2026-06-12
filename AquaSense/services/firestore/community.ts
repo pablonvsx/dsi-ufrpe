@@ -80,6 +80,8 @@ export interface CommunityPanelData {
     atividades: AtividadeComunidade[];
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function toDate(value: unknown): Date {
     if (value instanceof Timestamp) return value.toDate();
     if (value instanceof Date) return value;
@@ -88,22 +90,18 @@ function toDate(value: unknown): Date {
 
 function resumoMedicao(data: Record<string, unknown>): string {
     const partes: string[] = [];
-
     if (data.ph != null) partes.push(`pH: ${data.ph}`);
     if (data.turbidez) partes.push(`Turbidez: ${data.turbidez}`);
     if (data.temperatura != null) partes.push(`Temp.: ${data.temperatura}°C`);
-
     return partes.join(" • ") || "Medição registrada";
 }
 
 function resumoObservacao(data: Record<string, unknown>): string {
     const partes: string[] = [];
-
     if (data.cor) partes.push(`Cor: ${data.cor}`);
     if (data.odor) partes.push(`Odor: ${data.odor}`);
     if (data.lixo) partes.push(`Lixo: ${data.lixo}`);
     if (data.animais) partes.push(`Animais: ${data.animais}`);
-
     return partes.join(" • ") || "Observação ambiental registrada";
 }
 
@@ -114,23 +112,98 @@ function getUsuarioId(data: Record<string, unknown>): string | undefined {
     );
 }
 
-/**
- * Resolve o contexto comunitário do usuário.
- * O painel deve usar areaChave como filtro principal.
- */
+function mapAtividadeDenuncia(id: string, data: Record<string, unknown>): AtividadeComunidade {
+    return {
+        id,
+        tipo: "denuncia",
+        titulo: (data.titulo as string) ?? "Denúncia registrada",
+        descricao:
+            (data.descricao as string) ||
+            (data.tipoProblema as string) ||
+            "Problema ambiental reportado",
+        corpoHidricoId: data.corpoHidricoId as string | undefined,
+        corpoHidricoNome: data.corpoHidricoNome as string | undefined,
+        usuarioId: getUsuarioId(data),
+        usuarioNome: data.usuarioNome as string | undefined,
+        cidade: data.cidade as string | undefined,
+        estado: data.estado as string | undefined,
+        bairro: data.bairro as string | null | undefined,
+        areaChave: data.areaChave as string | undefined,
+        dataCriacao: toDate(data.dataCriacao),
+    };
+}
+
+// ─── buscarDenunciasMultiFiltro ───────────────────────────────────────────────
+//
+// Executa até 3 queries em paralelo (areaChave, corpoHidricoId, cidade) e
+// desduplicada por ID. Necessário porque corpos hídricos antigos não têm
+// areaChave e denúncias antigas podem não ter corpoHidricoId.
+
+async function buscarDenunciasMultiFiltro({
+    areaChave,
+    corpoHidricoId,
+    cidade,
+}: {
+    areaChave?: string | null | undefined;
+    corpoHidricoId?: string | null | undefined;
+    cidade?: string | null | undefined;
+}): Promise<{ id: string; data: Record<string, unknown> }[]> {
+    const resultados = new Map<string, Record<string, unknown>>();
+
+    const tentativas: Promise<void>[] = [];
+
+    if (areaChave) {
+        tentativas.push(
+            getDocs(query(
+                collection(db, COLECAO_DENUNCIAS),
+                where("areaChave", "==", areaChave),
+                orderBy("dataCriacao", "desc"),
+                limit(30)
+            ))
+            .then((snap) => snap.forEach((d) => resultados.set(d.id, d.data() as Record<string, unknown>)))
+            .catch((err) => console.warn("[community] denuncias por areaChave:", err))
+        );
+    }
+
+    if (corpoHidricoId) {
+        tentativas.push(
+            getDocs(query(
+                collection(db, COLECAO_DENUNCIAS),
+                where("corpoHidricoId", "==", corpoHidricoId),
+                orderBy("dataCriacao", "desc"),
+                limit(30)
+            ))
+            .then((snap) => snap.forEach((d) => resultados.set(d.id, d.data() as Record<string, unknown>)))
+            .catch((err) => console.warn("[community] denuncias por corpoHidricoId:", err))
+        );
+    }
+
+    if (cidade) {
+        tentativas.push(
+            getDocs(query(
+                collection(db, COLECAO_DENUNCIAS),
+                where("cidade", "==", cidade),
+                orderBy("dataCriacao", "desc"),
+                limit(30)
+            ))
+            .then((snap) => snap.forEach((d) => resultados.set(d.id, d.data() as Record<string, unknown>)))
+            .catch((err) => console.warn("[community] denuncias por cidade:", err))
+        );
+    }
+
+    await Promise.all(tentativas);
+
+    return Array.from(resultados.entries()).map(([id, data]) => ({ id, data }));
+}
+
+// ─── getCommunityContext ──────────────────────────────────────────────────────
+
 export async function getCommunityContext(uid: string): Promise<CommunityContext> {
     try {
         const usuarioSnap = await getDoc(doc(db, COLECAO_USUARIOS, uid));
 
         if (!usuarioSnap.exists()) {
-            return {
-                areaChave: null,
-                cidade: null,
-                estado: null,
-                bairro: null,
-                corpoHidricoId: null,
-                corpoHidrico: null,
-            };
+            return { areaChave: null, cidade: null, estado: null, bairro: null, corpoHidricoId: null, corpoHidrico: null };
         }
 
         const usuario = usuarioSnap.data();
@@ -139,20 +212,14 @@ export async function getCommunityContext(uid: string): Promise<CommunityContext
         const cidade = (usuario.cidade as string | undefined) ?? null;
         const estado = (usuario.estado as string | undefined) ?? null;
         const bairro = (usuario.bairro as string | null | undefined) ?? null;
-
-        const corpoHidricoId =
-            (usuario.ultimoCorpoHidricoAcessadoId as string | undefined) ?? null;
+        const corpoHidricoId = (usuario.ultimoCorpoHidricoAcessadoId as string | undefined) ?? null;
 
         let corpoHidrico: CorpoHidricoComunidade | null = null;
 
         if (corpoHidricoId) {
-            const corpoSnap = await getDoc(
-                doc(db, COLECAO_CORPOS_HIDRICOS, corpoHidricoId)
-            );
-
+            const corpoSnap = await getDoc(doc(db, COLECAO_CORPOS_HIDRICOS, corpoHidricoId));
             if (corpoSnap.exists()) {
                 const d = corpoSnap.data();
-
                 corpoHidrico = {
                     id: corpoSnap.id,
                     nome: (d.nome as string) ?? "Corpo hídrico",
@@ -165,463 +232,239 @@ export async function getCommunityContext(uid: string): Promise<CommunityContext
             }
         }
 
-        return {
-            areaChave,
-            cidade,
-            estado,
-            bairro,
-            corpoHidricoId,
-            corpoHidrico,
-        };
+        return { areaChave, cidade, estado, bairro, corpoHidricoId, corpoHidrico };
     } catch (err) {
         console.warn("[community] getCommunityContext:", err);
-
-        return {
-            areaChave: null,
-            cidade: null,
-            estado: null,
-            bairro: null,
-            corpoHidricoId: null,
-            corpoHidrico: null,
-        };
+        return { areaChave: null, cidade: null, estado: null, bairro: null, corpoHidricoId: null, corpoHidrico: null };
     }
 }
 
-/**
- * Estatísticas do painel por área/comunidade.
- *
- * contribuicoes = medições dos colaboradores + observações dos usuários comuns
- * denuncias = denúncias da área
- * participantes = usuários únicos que contribuíram na área
- * acoes = reservado para ações comunitárias futuras
- */
-export async function getCommunityStatsByArea(
-    areaChave: string
-): Promise<CommunityStats> {
-    const stats: CommunityStats = {
-        contribuicoes: 0,
-        denuncias: 0,
-        participantes: 0,
-        acoes: 0,
-    };
+// ─── getCommunityStatsByArea ──────────────────────────────────────────────────
 
+export async function getCommunityStatsByArea(areaChave: string): Promise<CommunityStats> {
+    const stats: CommunityStats = { contribuicoes: 0, denuncias: 0, participantes: 0, acoes: 0 };
     const participantes = new Set<string>();
 
     try {
-        const q = query(
-            collection(db, COLECAO_MEDICOES),
-            where("areaChave", "==", areaChave)
-        );
-
-        const snap = await getDocs(q);
+        const snap = await getDocs(query(collection(db, COLECAO_MEDICOES), where("areaChave", "==", areaChave)));
         stats.contribuicoes += snap.size;
-
-        snap.forEach((d) => {
-            const uid = getUsuarioId(d.data() as Record<string, unknown>);
-            if (uid) participantes.add(uid);
-        });
-    } catch (err) {
-        console.warn("[community] stats medicoes:", err);
-    }
+        snap.forEach((d) => { const uid = getUsuarioId(d.data() as Record<string, unknown>); if (uid) participantes.add(uid); });
+    } catch (err) { console.warn("[community] stats medicoes:", err); }
 
     try {
-        const q = query(
-            collection(db, COLECAO_OBSERVACOES),
-            where("areaChave", "==", areaChave)
-        );
-
-        const snap = await getDocs(q);
+        const snap = await getDocs(query(collection(db, COLECAO_OBSERVACOES), where("areaChave", "==", areaChave)));
         stats.contribuicoes += snap.size;
+        snap.forEach((d) => { const uid = getUsuarioId(d.data() as Record<string, unknown>); if (uid) participantes.add(uid); });
+    } catch (err) { console.warn("[community] stats observacoes:", err); }
 
-        snap.forEach((d) => {
-            const uid = getUsuarioId(d.data() as Record<string, unknown>);
-            if (uid) participantes.add(uid);
-        });
-    } catch (err) {
-        console.warn("[community] stats observacoes:", err);
-    }
-
+    // Denúncias: multi-filtro para cobrir documentos sem areaChave
     try {
-        const q = query(
-            collection(db, COLECAO_DENUNCIAS),
-            where("areaChave", "==", areaChave)
-        );
-
-        const snap = await getDocs(q);
-        stats.denuncias = snap.size;
-
-        snap.forEach((d) => {
-            const uid = getUsuarioId(d.data() as Record<string, unknown>);
-            if (uid) participantes.add(uid);
-        });
-    } catch (err) {
-        console.warn("[community] stats denuncias:", err);
-    }
+        const denuncias = await buscarDenunciasMultiFiltro({ areaChave });
+        stats.denuncias = denuncias.length;
+        denuncias.forEach(({ data }) => { const uid = getUsuarioId(data); if (uid) participantes.add(uid); });
+    } catch (err) { console.warn("[community] stats denuncias:", err); }
 
     stats.participantes = participantes.size;
-
     return stats;
 }
 
-/**
- * Mantém compatibilidade com chamadas antigas por corpo hídrico.
- */
-export async function getCommunityStats(
-    corpoHidricoId?: string
-): Promise<CommunityStats> {
-    const stats: CommunityStats = {
-        contribuicoes: 0,
-        denuncias: 0,
-        participantes: 0,
-        acoes: 0,
-    };
+// ─── getCommunityStats ────────────────────────────────────────────────────────
 
+export async function getCommunityStats(corpoHidricoId?: string): Promise<CommunityStats> {
+    const stats: CommunityStats = { contribuicoes: 0, denuncias: 0, participantes: 0, acoes: 0 };
     const participantes = new Set<string>();
 
     try {
         const q = corpoHidricoId
-            ? query(
-                  collection(db, COLECAO_MEDICOES),
-                  where("corpoHidricoId", "==", corpoHidricoId)
-              )
+            ? query(collection(db, COLECAO_MEDICOES), where("corpoHidricoId", "==", corpoHidricoId))
             : query(collection(db, COLECAO_MEDICOES));
-
         const snap = await getDocs(q);
         stats.contribuicoes += snap.size;
-
-        snap.forEach((d) => {
-            const uid = getUsuarioId(d.data() as Record<string, unknown>);
-            if (uid) participantes.add(uid);
-        });
-    } catch (err) {
-        console.warn("[community] getCommunityStats medicoes:", err);
-    }
+        snap.forEach((d) => { const uid = getUsuarioId(d.data() as Record<string, unknown>); if (uid) participantes.add(uid); });
+    } catch (err) { console.warn("[community] getCommunityStats medicoes:", err); }
 
     try {
         const q = corpoHidricoId
-            ? query(
-                  collection(db, COLECAO_OBSERVACOES),
-                  where("corpoHidricoId", "==", corpoHidricoId)
-              )
+            ? query(collection(db, COLECAO_OBSERVACOES), where("corpoHidricoId", "==", corpoHidricoId))
             : query(collection(db, COLECAO_OBSERVACOES));
-
         const snap = await getDocs(q);
         stats.contribuicoes += snap.size;
+        snap.forEach((d) => { const uid = getUsuarioId(d.data() as Record<string, unknown>); if (uid) participantes.add(uid); });
+    } catch (err) { console.warn("[community] getCommunityStats observacoes:", err); }
 
-        snap.forEach((d) => {
-            const uid = getUsuarioId(d.data() as Record<string, unknown>);
-            if (uid) participantes.add(uid);
-        });
-    } catch (err) {
-        console.warn("[community] getCommunityStats observacoes:", err);
-    }
-
+    // Denúncias: multi-filtro
     try {
-        const q = corpoHidricoId
-            ? query(
-                  collection(db, COLECAO_DENUNCIAS),
-                  where("corpoHidricoId", "==", corpoHidricoId)
-              )
-            : query(collection(db, COLECAO_DENUNCIAS));
-
-        const snap = await getDocs(q);
-        stats.denuncias = snap.size;
-
-        snap.forEach((d) => {
-            const uid = getUsuarioId(d.data() as Record<string, unknown>);
-            if (uid) participantes.add(uid);
-        });
-    } catch (err) {
-        console.warn("[community] getCommunityStats denuncias:", err);
-    }
+        const denuncias = await buscarDenunciasMultiFiltro({ corpoHidricoId });
+        stats.denuncias = denuncias.length;
+        denuncias.forEach(({ data }) => { const uid = getUsuarioId(data); if (uid) participantes.add(uid); });
+    } catch (err) { console.warn("[community] getCommunityStats denuncias:", err); }
 
     stats.participantes = participantes.size;
-
     return stats;
 }
 
-export async function getCommunityActivitiesByArea(
-    areaChave: string
-): Promise<AtividadeComunidade[]> {
+// ─── getCommunityActivitiesByArea ─────────────────────────────────────────────
+
+export async function getCommunityActivitiesByArea(areaChave: string): Promise<AtividadeComunidade[]> {
     const atividades: AtividadeComunidade[] = [];
 
     try {
-        const q = query(
+        const snap = await getDocs(query(
             collection(db, COLECAO_MEDICOES),
             where("areaChave", "==", areaChave),
             orderBy("dataCriacao", "desc"),
             limit(20)
-        );
-
-        const snap = await getDocs(q);
-
+        ));
         snap.forEach((d) => {
             const data = d.data() as Record<string, unknown>;
-
             atividades.push({
-                id: d.id,
-                tipo: "contribuicao",
-                titulo: "Nova medição registrada",
+                id: d.id, tipo: "contribuicao", titulo: "Nova medição registrada",
                 descricao: resumoMedicao(data),
                 corpoHidricoId: data.corpoHidricoId as string | undefined,
                 corpoHidricoNome: data.corpoHidricoNome as string | undefined,
-                usuarioId: getUsuarioId(data),
-                usuarioNome: data.usuarioNome as string | undefined,
-                cidade: data.cidade as string | undefined,
-                estado: data.estado as string | undefined,
-                bairro: data.bairro as string | null | undefined,
-                areaChave: data.areaChave as string | undefined,
+                usuarioId: getUsuarioId(data), usuarioNome: data.usuarioNome as string | undefined,
+                cidade: data.cidade as string | undefined, estado: data.estado as string | undefined,
+                bairro: data.bairro as string | null | undefined, areaChave: data.areaChave as string | undefined,
                 dataCriacao: toDate(data.dataCriacao),
             });
         });
-    } catch (err) {
-        console.warn("[community] activities medicoes:", err);
-    }
+    } catch (err) { console.warn("[community] activities medicoes:", err); }
 
     try {
-        const q = query(
+        const snap = await getDocs(query(
             collection(db, COLECAO_OBSERVACOES),
             where("areaChave", "==", areaChave),
             orderBy("dataCriacao", "desc"),
             limit(20)
-        );
-
-        const snap = await getDocs(q);
-
+        ));
         snap.forEach((d) => {
             const data = d.data() as Record<string, unknown>;
-
             atividades.push({
-                id: d.id,
-                tipo: "observacao",
-                titulo: "Nova observação registrada",
+                id: d.id, tipo: "observacao", titulo: "Nova observação registrada",
                 descricao: resumoObservacao(data),
                 corpoHidricoId: data.corpoHidricoId as string | undefined,
                 corpoHidricoNome: data.corpoHidricoNome as string | undefined,
-                usuarioId: getUsuarioId(data),
-                usuarioNome: data.usuarioNome as string | undefined,
-                cidade: data.cidade as string | undefined,
-                estado: data.estado as string | undefined,
-                bairro: data.bairro as string | null | undefined,
-                areaChave: data.areaChave as string | undefined,
+                usuarioId: getUsuarioId(data), usuarioNome: data.usuarioNome as string | undefined,
+                cidade: data.cidade as string | undefined, estado: data.estado as string | undefined,
+                bairro: data.bairro as string | null | undefined, areaChave: data.areaChave as string | undefined,
                 dataCriacao: toDate(data.dataCriacao),
             });
         });
-    } catch (err) {
-        console.warn("[community] activities observacoes:", err);
-    }
+    } catch (err) { console.warn("[community] activities observacoes:", err); }
 
+    // Denúncias: multi-filtro (areaChave + cidade do corpo hídrico como fallback)
     try {
-        const q = query(
-            collection(db, COLECAO_DENUNCIAS),
-            where("areaChave", "==", areaChave),
-            orderBy("dataCriacao", "desc"),
-            limit(20)
-        );
-
-        const snap = await getDocs(q);
-
-        snap.forEach((d) => {
-            const data = d.data() as Record<string, unknown>;
-
-            atividades.push({
-                id: d.id,
-                tipo: "denuncia",
-                titulo: (data.titulo as string) ?? "Denúncia registrada",
-                descricao:
-                    (data.descricao as string) ||
-                    (data.tipoProblema as string) ||
-                    "Problema ambiental reportado",
-                corpoHidricoId: data.corpoHidricoId as string | undefined,
-                corpoHidricoNome: data.corpoHidricoNome as string | undefined,
-                usuarioId: getUsuarioId(data),
-                usuarioNome: data.usuarioNome as string | undefined,
-                cidade: data.cidade as string | undefined,
-                estado: data.estado as string | undefined,
-                bairro: data.bairro as string | null | undefined,
-                areaChave: data.areaChave as string | undefined,
-                dataCriacao: toDate(data.dataCriacao),
-            });
-        });
-    } catch (err) {
-        console.warn("[community] activities denuncias:", err);
-    }
+        const denuncias = await buscarDenunciasMultiFiltro({ areaChave });
+        denuncias.forEach(({ id, data }) => atividades.push(mapAtividadeDenuncia(id, data)));
+    } catch (err) { console.warn("[community] activities denuncias:", err); }
 
     return atividades
         .sort((a, b) => b.dataCriacao.getTime() - a.dataCriacao.getTime())
         .slice(0, 30);
 }
 
-/**
- * Mantém compatibilidade com chamadas antigas por corpo hídrico.
- */
-export async function getCommunityActivities(
-    corpoHidricoId?: string
-): Promise<AtividadeComunidade[]> {
+// ─── getCommunityActivities ───────────────────────────────────────────────────
+
+export async function getCommunityActivities(corpoHidricoId?: string): Promise<AtividadeComunidade[]> {
     const atividades: AtividadeComunidade[] = [];
 
     try {
         const q = corpoHidricoId
-            ? query(
-                  collection(db, COLECAO_MEDICOES),
-                  where("corpoHidricoId", "==", corpoHidricoId),
-                  orderBy("dataCriacao", "desc"),
-                  limit(20)
-              )
-            : query(
-                  collection(db, COLECAO_MEDICOES),
-                  orderBy("dataCriacao", "desc"),
-                  limit(20)
-              );
-
+            ? query(collection(db, COLECAO_MEDICOES), where("corpoHidricoId", "==", corpoHidricoId), orderBy("dataCriacao", "desc"), limit(20))
+            : query(collection(db, COLECAO_MEDICOES), orderBy("dataCriacao", "desc"), limit(20));
         const snap = await getDocs(q);
-
         snap.forEach((d) => {
             const data = d.data() as Record<string, unknown>;
-
             atividades.push({
-                id: d.id,
-                tipo: "contribuicao",
-                titulo: "Nova medição registrada",
+                id: d.id, tipo: "contribuicao", titulo: "Nova medição registrada",
                 descricao: resumoMedicao(data),
                 corpoHidricoId: data.corpoHidricoId as string | undefined,
                 corpoHidricoNome: data.corpoHidricoNome as string | undefined,
-                usuarioId: getUsuarioId(data),
-                usuarioNome: data.usuarioNome as string | undefined,
-                cidade: data.cidade as string | undefined,
-                estado: data.estado as string | undefined,
-                bairro: data.bairro as string | null | undefined,
-                areaChave: data.areaChave as string | undefined,
+                usuarioId: getUsuarioId(data), usuarioNome: data.usuarioNome as string | undefined,
+                cidade: data.cidade as string | undefined, estado: data.estado as string | undefined,
+                bairro: data.bairro as string | null | undefined, areaChave: data.areaChave as string | undefined,
                 dataCriacao: toDate(data.dataCriacao),
             });
         });
-    } catch (err) {
-        console.warn("[community] getCommunityActivities medicoes:", err);
-    }
+    } catch (err) { console.warn("[community] getCommunityActivities medicoes:", err); }
 
     try {
         const q = corpoHidricoId
-            ? query(
-                  collection(db, COLECAO_OBSERVACOES),
-                  where("corpoHidricoId", "==", corpoHidricoId),
-                  orderBy("dataCriacao", "desc"),
-                  limit(20)
-              )
-            : query(
-                  collection(db, COLECAO_OBSERVACOES),
-                  orderBy("dataCriacao", "desc"),
-                  limit(20)
-              );
-
+            ? query(collection(db, COLECAO_OBSERVACOES), where("corpoHidricoId", "==", corpoHidricoId), orderBy("dataCriacao", "desc"), limit(20))
+            : query(collection(db, COLECAO_OBSERVACOES), orderBy("dataCriacao", "desc"), limit(20));
         const snap = await getDocs(q);
-
         snap.forEach((d) => {
             const data = d.data() as Record<string, unknown>;
-
             atividades.push({
-                id: d.id,
-                tipo: "observacao",
-                titulo: "Nova observação registrada",
+                id: d.id, tipo: "observacao", titulo: "Nova observação registrada",
                 descricao: resumoObservacao(data),
                 corpoHidricoId: data.corpoHidricoId as string | undefined,
                 corpoHidricoNome: data.corpoHidricoNome as string | undefined,
-                usuarioId: getUsuarioId(data),
-                usuarioNome: data.usuarioNome as string | undefined,
-                cidade: data.cidade as string | undefined,
-                estado: data.estado as string | undefined,
-                bairro: data.bairro as string | null | undefined,
-                areaChave: data.areaChave as string | undefined,
+                usuarioId: getUsuarioId(data), usuarioNome: data.usuarioNome as string | undefined,
+                cidade: data.cidade as string | undefined, estado: data.estado as string | undefined,
+                bairro: data.bairro as string | null | undefined, areaChave: data.areaChave as string | undefined,
                 dataCriacao: toDate(data.dataCriacao),
             });
         });
-    } catch (err) {
-        console.warn("[community] getCommunityActivities observacoes:", err);
-    }
+    } catch (err) { console.warn("[community] getCommunityActivities observacoes:", err); }
 
+    // Denúncias: multi-filtro
     try {
-        const q = corpoHidricoId
-            ? query(
-                  collection(db, COLECAO_DENUNCIAS),
-                  where("corpoHidricoId", "==", corpoHidricoId),
-                  orderBy("dataCriacao", "desc"),
-                  limit(20)
-              )
-            : query(
-                  collection(db, COLECAO_DENUNCIAS),
-                  orderBy("dataCriacao", "desc"),
-                  limit(20)
-              );
-
-        const snap = await getDocs(q);
-
-        snap.forEach((d) => {
-            const data = d.data() as Record<string, unknown>;
-
-            atividades.push({
-                id: d.id,
-                tipo: "denuncia",
-                titulo: (data.titulo as string) ?? "Denúncia registrada",
-                descricao:
-                    (data.descricao as string) ||
-                    (data.tipoProblema as string) ||
-                    "Problema ambiental reportado",
-                corpoHidricoId: data.corpoHidricoId as string | undefined,
-                corpoHidricoNome: data.corpoHidricoNome as string | undefined,
-                usuarioId: getUsuarioId(data),
-                usuarioNome: data.usuarioNome as string | undefined,
-                cidade: data.cidade as string | undefined,
-                estado: data.estado as string | undefined,
-                bairro: data.bairro as string | null | undefined,
-                areaChave: data.areaChave as string | undefined,
-                dataCriacao: toDate(data.dataCriacao),
-            });
-        });
-    } catch (err) {
-        console.warn("[community] getCommunityActivities denuncias:", err);
-    }
+        const denuncias = await buscarDenunciasMultiFiltro({ corpoHidricoId });
+        denuncias.forEach(({ id, data }) => atividades.push(mapAtividadeDenuncia(id, data)));
+    } catch (err) { console.warn("[community] getCommunityActivities denuncias:", err); }
 
     return atividades
         .sort((a, b) => b.dataCriacao.getTime() - a.dataCriacao.getTime())
         .slice(0, 30);
 }
 
-/**
- * Entrada principal do Painel Comunitário.
- *
- * Prioridade:
- * 1. Usar areaChave do usuário.
- * 2. Se não houver areaChave, cair para último corpo hídrico.
- * 3. Se não houver nenhum contexto, retornar vazio.
- */
+// ─── getCommunityPanelData ────────────────────────────────────────────────────
+
 export async function getCommunityPanelData(uid: string): Promise<CommunityPanelData> {
     const contexto = await getCommunityContext(uid);
 
+    // Caso 1: usuário tem areaChave no perfil
     if (contexto.areaChave) {
         const [stats, atividades] = await Promise.all([
             getCommunityStatsByArea(contexto.areaChave),
             getCommunityActivitiesByArea(contexto.areaChave),
         ]);
-
         return { contexto, stats, atividades };
     }
 
+    // Caso 2: usuário tem último corpo hídrico acessado
+    // Passa corpoHidricoId E cidade do corpo para cobrir denúncias sem corpoHidricoId
     if (contexto.corpoHidricoId) {
+        const cidadeCorpo = contexto.corpoHidrico?.cidade ?? contexto.cidade ?? undefined;
+
         const [stats, atividades] = await Promise.all([
+            // Stats: multi-filtro por corpoHidricoId
             getCommunityStats(contexto.corpoHidricoId),
-            getCommunityActivities(contexto.corpoHidricoId),
+            // Atividades: corpoHidricoId + cidade como fallback para denúncias antigas
+            (async (): Promise<AtividadeComunidade[]> => {
+                const ativs = await getCommunityActivities(contexto.corpoHidricoId!);
+
+                // Se não veio nenhuma denúncia pelo corpoHidricoId, tenta pela cidade
+                const temDenuncia = ativs.some((a) => a.tipo === "denuncia");
+                if (!temDenuncia && cidadeCorpo) {
+                    const denPorCidade = await buscarDenunciasMultiFiltro({ cidade: cidadeCorpo });
+                    denPorCidade.forEach(({ id, data }) => ativs.push(mapAtividadeDenuncia(id, data)));
+                }
+
+                return ativs
+                    .sort((a, b) => b.dataCriacao.getTime() - a.dataCriacao.getTime())
+                    .slice(0, 30);
+            })(),
         ]);
 
         return { contexto, stats, atividades };
     }
 
+    // Caso 3: sem contexto
     return {
         contexto,
-        stats: {
-            contribuicoes: 0,
-            denuncias: 0,
-            participantes: 0,
-            acoes: 0,
-        },
+        stats: { contribuicoes: 0, denuncias: 0, participantes: 0, acoes: 0 },
         atividades: [],
     };
 }
