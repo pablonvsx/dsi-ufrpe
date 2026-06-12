@@ -24,6 +24,9 @@ export interface ObservacaoInput {
     bairro?: string | null;
     areaChave?: string;
 
+    latitude?: number;
+    longitude?: number;
+
     cor: string | null;
     corDesc: string;
 
@@ -65,14 +68,21 @@ export async function salvarObservacao(input: ObservacaoInput): Promise<string> 
 
     const docRef = await addDoc(collection(db, "observacoes"), {
         ...input,
+
         usuarioId,
         criadoPor: input.criadoPor,
         usuarioNome: input.usuarioNome ?? null,
+
         corpoHidricoNome: input.corpoHidricoNome ?? null,
+
         cidade: input.cidade ?? null,
         estado: input.estado ?? "PE",
         bairro: input.bairro ?? null,
         areaChave: input.areaChave ?? null,
+
+        latitude: input.latitude ?? null,
+        longitude: input.longitude ?? null,
+
         dataCriacao: serverTimestamp(),
     });
 
@@ -170,6 +180,7 @@ export function calcularResumoObservacoes(observacoes: Observacao[]): ResumoObse
     observacoes.forEach((o) => {
         if (o.cor) corCount[o.cor] = (corCount[o.cor] ?? 0) + 1;
     });
+
     const corMaisFrequente =
         Object.entries(corCount).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 
@@ -177,16 +188,19 @@ export function calcularResumoObservacoes(observacoes: Observacao[]): ResumoObse
     observacoes.forEach((o) => {
         if (o.odor) odorCount[o.odor] = (odorCount[o.odor] ?? 0) + 1;
     });
+
     const odorMaisFrequente =
         Object.entries(odorCount).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 
     const comLixo = observacoes.filter((o) => o.lixo === "sim").length;
     const lixoRespondido = observacoes.filter((o) => o.lixo !== null).length;
+
     const percentualLixo =
         lixoRespondido > 0 ? Math.round((comLixo / lixoRespondido) * 100) : null;
 
     const comAnimais = observacoes.filter((o) => o.animais === "sim").length;
     const animaisRespondido = observacoes.filter((o) => o.animais !== null).length;
+
     const percentualAnimais =
         animaisRespondido > 0
             ? Math.round((comAnimais / animaisRespondido) * 100)
@@ -273,11 +287,15 @@ export function calcularResumoObservacoes(observacoes: Observacao[]): ResumoObse
     }
 
     const estrelas =
-        qualidade.label === "Boa" ? 5 :
-        qualidade.label === "Moderada" ? 3 :
-        qualidade.label === "Ruim" ? 2 :
-        qualidade.label === "Crítica" ? 1 :
-        0;
+        qualidade.label === "Boa"
+            ? 5
+            : qualidade.label === "Moderada"
+            ? 3
+            : qualidade.label === "Ruim"
+            ? 2
+            : qualidade.label === "Crítica"
+            ? 1
+            : 0;
 
     return {
         totalObservacoes: n,

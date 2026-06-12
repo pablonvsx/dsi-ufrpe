@@ -30,6 +30,7 @@ export default function RootLayout() {
               intermediário do fluxo de autenticação. */}
           <Stack.Screen name="awaiting-verification" options={{ headerShown: false }} />
           <Stack.Screen name="new_environmental_contribution" options={{ headerShown: false }} />
+          <Stack.Screen name="last_analysis" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false}} />
         </Stack>
         <StatusBar style="auto" />

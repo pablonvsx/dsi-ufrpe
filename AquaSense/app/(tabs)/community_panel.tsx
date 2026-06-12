@@ -26,7 +26,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { Stack, useRouter } from "expo-router";
 import Svg, { Polyline, Rect } from "react-native-svg";
 
-
 import { useAuth } from "@/contexts/auth-context";
 import {
     getCommunityPanelData,
@@ -35,12 +34,13 @@ import {
     type TipoAtividade,
 } from "@/services/firestore/community";
 
+import CollaboratorBottomNav from "@/components/collaboratorbottomnav";
+
 const PRIMARY = "#004d48";
 const TEAL_MED = "#0d6e52";
 const TEXT_MUTED = "#6b7a7a";
 const ORANGE = "#e07b1e";
 
-type TabKey = "home" | "mapa" | "alertas" | "perfil";
 type FilterKey = "todas" | "contribuicoes" | "denuncias" | "acoes";
 
 interface CorpoHidrico {
@@ -112,34 +112,6 @@ function MiniBarChart() {
     );
 }
 
-// ─── NavItem ──────────────────────────────────────────────────────────────────
-
-function NavItem({
-    icon, iconOutline, label, active, fontFamily, onPress, badge,
-}: {
-    icon: keyof typeof Ionicons.glyphMap;
-    iconOutline: keyof typeof Ionicons.glyphMap;
-    label: string;
-    active: boolean;
-    fontFamily?: string;
-    onPress: () => void;
-    badge?: number;
-}) {
-    return (
-        <TouchableOpacity style={styles.navItem} onPress={onPress} activeOpacity={0.7}>
-            <View style={{ position: "relative" }}>
-                <Ionicons name={active ? icon : iconOutline} size={24} color={active ? PRIMARY : "#b0c4c2"} />
-                {badge !== undefined && badge > 0 && (
-                    <View style={styles.navBadge}>
-                        <Text style={styles.navBadgeText}>{badge}</Text>
-                    </View>
-                )}
-            </View>
-            <Text style={[styles.navLabel, { fontFamily, color: active ? PRIMARY : "#b0c4c2" }]}>{label}</Text>
-        </TouchableOpacity>
-    );
-}
-
 // ─── EmptyState ───────────────────────────────────────────────────────────────
 
 function EmptyState({
@@ -177,7 +149,6 @@ export default function CommunityPanel() {
     const [fontsLoaded] = useFonts({ Questrial_400Regular });
     const questrial = fontsLoaded ? "Questrial_400Regular" : undefined;
 
-    const [activeTab, setActiveTab] = useState<TabKey>("alertas");
     const [activeFilter, setActiveFilter] = useState<FilterKey>("todas");
 
     // ── Estado de dados ─────────────────────────────────────────────────────
@@ -218,7 +189,6 @@ export default function CommunityPanel() {
         const fetchData = async () => {
             setLoading(true);
             try {
-                // 1. Resolve painel em uma única chamada
                 const { contexto, stats: s, atividades: a } =
                     await getCommunityPanelData(userProfile.uid);
 
@@ -233,7 +203,6 @@ export default function CommunityPanel() {
 
                 setAreaLabel(area || contexto.areaChave || null);
 
-                
                 if (contexto.corpoHidrico) {
                     setCorpoHidrico({
                         id: contexto.corpoHidrico.id,
@@ -244,7 +213,7 @@ export default function CommunityPanel() {
                 } else {
                     setCorpoHidrico(null);
                 }
-                
+
             } catch (err) {
                 console.error("[CommunityPanel] fetchData:", err);
             } finally {
@@ -263,16 +232,6 @@ export default function CommunityPanel() {
         if (activeFilter === "acoes") return a.tipo === "acao";
         return true;
     });
-
-    function handleTabPress(tab: TabKey) {
-        setActiveTab(tab);
-        switch (tab) {
-            case "home": router.replace("/home_collaborator_update" as any); break;
-            case "mapa": router.push("/map" as any); break;
-            case "alertas": router.push("/alerts" as any); break;
-            case "perfil": router.push("/profile_collaborator" as any); break;
-        }
-    }
 
     const FILTERS: { key: FilterKey; label: string; dotColor?: string }[] = [
         { key: "todas", label: "Todas" },
@@ -615,55 +574,11 @@ export default function CommunityPanel() {
                             </View>
                         )}
 
-                        {/* ── BOTÃO PUBLICAR ─────────────────────────────── */}
-                        <TouchableOpacity
-                            style={styles.publicarBtn}
-                            onPress={() => router.push("/community_post" as any)}
-                            activeOpacity={0.85}
-                        >
-                            <Ionicons name="create-outline" size={18} color={PRIMARY} style={{ marginRight: 8 }} />
-                            <Text style={[styles.publicarBtnText, { fontFamily: questrial }]}>
-                                Publicar atualização na comunidade
-                            </Text>
-                        </TouchableOpacity>
-
-                        {/* ── CARD CONVITE ───────────────────────────────── */}
-                        <View style={styles.conviteCard}>
-                            <View style={styles.conviteIconCircle}>
-                                <Ionicons name="people" size={22} color="#fff" />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                                <Text style={[styles.conviteTitle, { fontFamily: questrial }]}>
-                                    Convide mais pessoas para participar!
-                                </Text>
-                                <Text style={[styles.conviteBody, { fontFamily: questrial }]}>
-                                    Quanto mais pessoas engajadas, melhor cuidamos da nossa água.
-                                </Text>
-                            </View>
-                            <TouchableOpacity style={styles.conviteBtn} activeOpacity={0.8}>
-                                <Text style={[styles.conviteBtnText, { fontFamily: questrial }]}>Convidar</Text>
-                            </TouchableOpacity>
-                        </View>
-
                     </Animated.View>
                 </ScrollView>
 
                 {/* ── NAVBAR ─────────────────────────────────────────────── */}
-                <SafeAreaView edges={["bottom"]} style={styles.navWrapper}>
-                    <View style={styles.navBar}>
-                        <NavItem icon="home" iconOutline="home-outline" label="Home" active={activeTab === "home"} fontFamily={questrial} onPress={() => handleTabPress("home")} />
-                        <NavItem icon="map" iconOutline="map-outline" label="Mapa" active={activeTab === "mapa"} fontFamily={questrial} onPress={() => handleTabPress("mapa")} />
-                        <View style={styles.fabSpacer}>
-                            <TouchableOpacity style={styles.fab} onPress={() => router.push("/register_observation" as any)} activeOpacity={0.85}>
-                                <View style={styles.fabInner}>
-                                    <Ionicons name="add" size={32} color="#FFFFFF" />
-                                </View>
-                            </TouchableOpacity>
-                        </View>
-                        <NavItem icon="notifications" iconOutline="notifications-outline" label="Alertas" active={activeTab === "alertas"} fontFamily={questrial} onPress={() => handleTabPress("alertas")} />
-                        <NavItem icon="person" iconOutline="person-outline" label="Perfil" active={activeTab === "perfil"} fontFamily={questrial} onPress={() => handleTabPress("perfil")} />
-                    </View>
-                </SafeAreaView>
+                <CollaboratorBottomNav activeTab="painel" fontFamily={questrial} />
             </View>
         </>
     );
@@ -839,56 +754,4 @@ const styles = StyleSheet.create({
         borderRadius: 20, paddingVertical: 8, paddingHorizontal: 18,
     },
     emptyBtnText: { fontSize: 13, color: TEAL_MED, fontWeight: "600" },
-    publicarBtn: {
-        flexDirection: "row", alignItems: "center", justifyContent: "center",
-        borderWidth: 1.5, borderColor: "#c0d8cf", borderRadius: 14,
-        paddingVertical: 15, backgroundColor: "#fff", marginBottom: 12,
-        shadowColor: "#000", shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.04, shadowRadius: 4, elevation: 2,
-    },
-    publicarBtnText: { fontSize: 14, fontWeight: "600", color: PRIMARY },
-    conviteCard: {
-        backgroundColor: "#fff9f0", borderRadius: 16, padding: 14,
-        flexDirection: "row", alignItems: "center", gap: 12,
-        borderWidth: 1, borderColor: "#f0e0c8",
-    },
-    conviteIconCircle: {
-        width: 44, height: 44, borderRadius: 22, backgroundColor: ORANGE,
-        alignItems: "center", justifyContent: "center", flexShrink: 0,
-    },
-    conviteTitle: { fontSize: 13, fontWeight: "700", color: "#3a2010", marginBottom: 2 },
-    conviteBody: { fontSize: 11, color: "#7a5030", lineHeight: 15 },
-    conviteBtn: {
-        borderWidth: 1.5, borderColor: "#1a2e26", borderRadius: 20,
-        paddingVertical: 8, paddingHorizontal: 16, flexShrink: 0,
-    },
-    conviteBtnText: { fontSize: 13, fontWeight: "600", color: "#1a2e26" },
-    navWrapper: {
-        backgroundColor: "#fff", borderTopLeftRadius: 22, borderTopRightRadius: 22,
-        shadowColor: "#000", shadowOffset: { width: 0, height: -3 },
-        shadowOpacity: 0.07, shadowRadius: 10, elevation: 12,
-    },
-    navBar: {
-        flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-        paddingTop: 10,
-        paddingBottom: Platform.OS === "ios" ? 4 : 10,
-        paddingHorizontal: 8,
-    },
-    navItem: { width: "20%", alignItems: "center", justifyContent: "center", paddingVertical: 4 },
-    navLabel: { fontSize: 12, marginTop: 3, letterSpacing: 0.1 },
-    navBadge: {
-        position: "absolute", top: -4, right: -6,
-        backgroundColor: "#e53935", borderRadius: 8,
-        minWidth: 16, height: 16,
-        alignItems: "center", justifyContent: "center",
-        paddingHorizontal: 3, borderWidth: 1.5, borderColor: "#fff",
-    },
-    navBadgeText: { fontSize: 9, color: "#fff", fontWeight: "700" },
-    fabSpacer: { width: "20%", alignItems: "center", justifyContent: "center" },
-    fab: {
-        width: 56, height: 56, borderRadius: 28, marginTop: -22,
-        shadowColor: PRIMARY, shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.4, shadowRadius: 10, elevation: 8,
-    },
-    fabInner: { width: 56, height: 56, borderRadius: 28, backgroundColor: PRIMARY, alignItems: "center", justifyContent: "center" },
 });

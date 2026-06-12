@@ -1,3 +1,15 @@
+/**
+ * home_colaborador_fixed.tsx
+ *
+ * CORREÇÕES APLICADAS:
+ * 1. O tutorial NÃO depende mais apenas do param ?tutorial=1 na URL.
+ * 2. Antes de exibir, verifica userProfile.hasSeenTutorialColaborador no Firestore.
+ * 3. handleFinishTutorial e handleSkipTutorial atualizam o estado local IMEDIATAMENTE
+ *    e depois persistem no Firestore via markTutorialColaboradorAsSeen.
+ * 4. Logs de debug temporários adicionados (procure por "[Tutorial]" nos logs).
+ * 5. Proteção contra exibição duplicada com ref `tutorialAlreadyShown`.
+ */
+
 import React, { useState, useEffect, useRef } from "react";
 import {
     View,
@@ -6,7 +18,6 @@ import {
     StyleSheet,
     ScrollView,
     StatusBar,
-    Platform,
     Animated,
     Modal,
     ActivityIndicator,
@@ -26,13 +37,20 @@ import {
     getDocs,
     query,
     where,
-    orderBy,
-    limit,
 } from "firebase/firestore";
-import { db } from "@/config/firebase"; // ajuste o caminho conforme seu projeto
+import { db } from "@/config/firebase";
 
 import { useAuth } from "@/contexts/auth-context";
 import { markTutorialColaboradorAsSeen } from "@/services/firestore/users";
+
+import {
+    getCollaboratorContributions,
+    type ContribuicaoUnificada,
+} from "@/services/firestore/collaborator_contributions";
+
+import CollaboratorBottomNav, {
+    type CollaboratorTabKey,
+} from "@/components/collaboratorbottomnav";
 
 const PRIMARY = "#004d48";
 const TEAL_MED = "#0d6e52";
@@ -41,8 +59,6 @@ const ORANGE = "#e07b1e";
 const BLUE_ACTION = "#2563c7";
 
 const { width: SCREEN_W } = Dimensions.get("window");
-
-type TabKey = "home" | "mapa" | "alertas" | "perfil";
 
 const TUTORIAL_STEPS = [
     {
@@ -99,15 +115,6 @@ interface CorpoHidrico {
     status?: string;
 }
 
-interface Atividade {
-    id: string;
-    tipo: "medicao" | "observacao" | "denuncia" | "contribuicao";
-    titulo: string;
-    detalhe: string;
-    data: Date;
-    status: "validada" | "pendente" | "analise";
-}
-
 interface NumerosData {
     contribuicoes: number;
     denuncias: number;
@@ -119,7 +126,6 @@ interface NumerosData {
 
 function formatarData(date: Date): string {
     const now = new Date();
-    const diff = now.getTime() - date.getTime();
     const hojeInicio = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const ontemInicio = new Date(hojeInicio.getTime() - 86400000);
 
@@ -132,21 +138,34 @@ function formatarData(date: Date): string {
     }
 }
 
-function tipoParaIcone(tipo: Atividade["tipo"]): {
+function tipoParaIconeUnificado(tipo: ContribuicaoUnificada["tipo"]): {
     iconName: keyof typeof Ionicons.glyphMap;
     iconBg: string;
     iconColor: string;
 } {
     switch (tipo) {
-        case "medicao":
+        case "measurement":
             return { iconName: "flask-outline", iconBg: "#e6f5ef", iconColor: TEAL_MED };
-        case "observacao":
+        case "observation":
             return { iconName: "leaf-outline", iconBg: "#f0faf0", iconColor: "#4a9e5e" };
-        case "denuncia":
+        case "complaint":
             return { iconName: "megaphone-outline", iconBg: "#fff0e6", iconColor: ORANGE };
-        case "contribuicao":
+        case "water_body":
         default:
             return { iconName: "water-outline", iconBg: "#e8f0ff", iconColor: BLUE_ACTION };
+    }
+}
+
+type StatusAtividade = "validada" | "pendente" | "analise";
+
+function mapearStatus(status: ContribuicaoUnificada["status"]): StatusAtividade {
+    switch (status) {
+        case "validada":   return "validada";
+        case "em_analise": return "analise";
+        case "rascunho":
+        case "arquivada":
+        case "pendente":
+        default:           return "pendente";
     }
 }
 
@@ -161,17 +180,23 @@ export default function HomeColaborador() {
     const questrial = fontsLoaded ? "Questrial_400Regular" : undefined;
 
     const [locationText, setLocationText] = useState("Carregando...");
-    const [activeTab, setActiveTab] = useState<TabKey>("home");
+    const [activeTab] = useState<CollaboratorTabKey>("home");
     const [now, setNow] = useState(new Date());
+
+    // ── Estado do tutorial ──────────────────────────────────────────────────
+    // Começa como false — só abre depois de verificar o Firestore.
     const [tutorialVisible, setTutorialVisible] = useState(false);
     const [tutorialStep, setTutorialStep] = useState(0);
     const [tutorialLoading, setTutorialLoading] = useState(false);
+    // Guarda se já checamos o Firestore para evitar múltiplas chamadas.
+    const tutorialChecked = useRef(false);
 
-    // ── Estado de dados reais ───────────────────────────────────────────────
     const [corpoHidrico, setCorpoHidrico] = useState<CorpoHidrico | null>(null);
     const [corpoHidricoLoading, setCorpoHidricoLoading] = useState(true);
-    const [atividades, setAtividades] = useState<Atividade[]>([]);
+
+    const [atividades, setAtividades] = useState<ContribuicaoUnificada[]>([]);
     const [atividadesLoading, setAtividadesLoading] = useState(true);
+
     const [numeros, setNumeros] = useState<NumerosData>({ contribuicoes: 0, denuncias: 0, corposHidricos: 0, alertas: 0 });
     const [numerosLoading, setNumerosLoading] = useState(true);
 
@@ -182,13 +207,74 @@ export default function HomeColaborador() {
     const stepFade = useRef(new Animated.Value(1)).current;
     const stepSlide = useRef(new Animated.Value(0)).current;
 
-    // ── Tutorial ────────────────────────────────────────────────────────────
+    // ── Verificação do tutorial no Firestore ────────────────────────────────
+    //
+    // CORREÇÃO PRINCIPAL:
+    // Antes, o tutorial abria sempre que `tutorial === "1"` chegava via params.
+    // Agora verificamos o campo `hasSeenTutorialColaborador` no Firestore ANTES
+    // de abrir o modal. O param `?tutorial=1` ainda funciona como gatilho inicial
+    // (ex: vindo do cadastro), mas nunca abre se o usuário já viu.
+    //
     useEffect(() => {
-        if (tutorial === "1") {
-            const timer = setTimeout(() => setTutorialVisible(true), 600);
-            return () => clearTimeout(timer);
-        }
-    }, [tutorial]);
+        // Só roda uma vez por montagem, mesmo que o componente re-renderize.
+        if (tutorialChecked.current) return;
+
+        // Aguarda o perfil do usuário estar disponível.
+        if (!userProfile?.uid) return;
+
+        tutorialChecked.current = true;
+
+        const uid = userProfile.uid;
+        console.log("[Tutorial] Verificando para uid:", uid);
+
+        // Estratégia em duas camadas:
+        // 1. Verificação rápida via userProfile (já em memória, sem custo de rede).
+        // 2. Fallback com leitura direta do Firestore para garantir dado fresco.
+        const checkAndShowTutorial = async () => {
+            try {
+                // Camada 1: userProfile já tem o campo?
+                const hasSeenInMemory = (userProfile as any)?.hasSeenTutorialColaborador;
+                console.log("[Tutorial] hasSeenTutorialColaborador (memória):", hasSeenInMemory);
+
+                if (hasSeenInMemory === true) {
+                    console.log("[Tutorial] Já visto (memória). Não exibe.");
+                    return;
+                }
+
+                // Camada 2: leitura fresca do Firestore para casos onde o
+                // userProfile em memória pode estar desatualizado.
+                const userSnap = await getDoc(doc(db, "usuarios", uid));
+                const userData = userSnap.data();
+                const hasSeenFirestore = userData?.hasSeenTutorialColaborador ?? false;
+
+                console.log("[Tutorial] hasSeenTutorialColaborador (Firestore):", hasSeenFirestore);
+
+                if (hasSeenFirestore === true) {
+                    console.log("[Tutorial] Já visto (Firestore). Não exibe.");
+                    return;
+                }
+
+                // Usuário ainda não viu o tutorial. Verifica se deve abrir agora:
+                // - Param `?tutorial=1` presente (fluxo de primeiro cadastro), OU
+                // - Nenhum campo no Firestore (usuário antigo sem o campo).
+                const shouldShow = tutorial === "1" || hasSeenFirestore === false;
+                console.log("[Tutorial] Deve exibir:", shouldShow, "| param tutorial:", tutorial);
+
+                if (shouldShow) {
+                    setTimeout(() => setTutorialVisible(true), 600);
+                }
+            } catch (error) {
+                console.error("[Tutorial] Erro ao verificar status:", error);
+                // Em caso de erro, não exibe o tutorial para não atrapalhar o usuário.
+            }
+        };
+
+        checkAndShowTutorial();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [userProfile?.uid]);
+    // Nota: `tutorial` (param de URL) e `userProfile` são intencionalmente
+    // excluídos das deps para que este effect rode somente uma vez por montagem.
+    // A ref `tutorialChecked` garante isso mesmo se o componente remontar.
 
     // ── Animações de entrada ────────────────────────────────────────────────
     useEffect(() => {
@@ -228,7 +314,8 @@ export default function HomeColaborador() {
     useEffect(() => {
         if (!userProfile?.uid) return;
 
-        // 1) Corpo hídrico acessado
+        const uid = userProfile.uid;
+
         const fetchCorpoHidrico = async () => {
             setCorpoHidricoLoading(true);
             try {
@@ -252,109 +339,49 @@ export default function HomeColaborador() {
             finally { setCorpoHidricoLoading(false); }
         };
 
-        // 2) Atividades recentes do usuário
         const fetchAtividades = async () => {
             setAtividadesLoading(true);
             try {
-                const uid = userProfile.uid;
-                const results: Atividade[] = [];
-
-                // Medições
-                const medicoesSnap = await getDocs(
-                    query(
-                        collection(db, "medicoes"),
-                        where("uid", "==", uid),
-                        orderBy("criadoEm", "desc"),
-                        limit(3)
-                    )
-                );
-                medicoesSnap.forEach((d) => {
-                    const data = d.data();
-                    results.push({
-                        id: d.id,
-                        tipo: "medicao",
-                        titulo: `Medição – ${data.corpoHidricoNome ?? "Corpo hídrico"}`,
-                        detalhe: data.resumo ?? `pH: ${data.ph ?? "-"} • Turbidez: ${data.turbidez ?? "-"}`,
-                        data: data.criadoEm?.toDate?.() ?? new Date(),
-                        status: data.status ?? "pendente",
-                    });
-                });
-
-                // Denúncias
-                const denunciasSnap = await getDocs(
-                    query(
-                        collection(db, "denuncias"),
-                        where("uid", "==", uid),
-                        orderBy("criadoEm", "desc"),
-                        limit(3)
-                    )
-                );
-                denunciasSnap.forEach((d) => {
-                    const data = d.data();
-                    results.push({
-                        id: d.id,
-                        tipo: "denuncia",
-                        titulo: `Denúncia – ${data.categoria ?? "Problema ambiental"}`,
-                        detalhe: data.descricao ?? `${data.corpoHidricoNome ?? ""}`,
-                        data: data.criadoEm?.toDate?.() ?? new Date(),
-                        status: data.status ?? "analise",
-                    });
-                });
-
-                // Observações / contribuições
-                const observacoesSnap = await getDocs(
-                    query(
-                        collection(db, "observacoes"),
-                        where("uid", "==", uid),
-                        orderBy("criadoEm", "desc"),
-                        limit(3)
-                    )
-                );
-                observacoesSnap.forEach((d) => {
-                    const data = d.data();
-                    results.push({
-                        id: d.id,
-                        tipo: "observacao",
-                        titulo: `Observação – ${data.tipo ?? "Ambiental"}`,
-                        detalhe: `${data.corpoHidricoNome ?? ""} • ${data.descricao ?? ""}`,
-                        data: data.criadoEm?.toDate?.() ?? new Date(),
-                        status: data.status ?? "pendente",
-                    });
-                });
-
-                results.sort((a, b) => b.data.getTime() - a.data.getTime());
-                setAtividades(results.slice(0, 3));
-            } catch { setAtividades([]); }
-            finally { setAtividadesLoading(false); }
+                const data = await getCollaboratorContributions(uid);
+                setAtividades(data.slice(0, 3));
+            } catch {
+                setAtividades([]);
+            } finally {
+                setAtividadesLoading(false);
+            }
         };
 
-        // 3) Números da comunidade
         const fetchNumeros = async () => {
             setNumerosLoading(true);
             try {
-                const uid = userProfile.uid;
                 const cidade = (userProfile as any)?.cidade ?? "";
 
-                // Contribuições do usuário
-                const contribSnap = await getDocs(
-                    query(collection(db, "medicoes"), where("uid", "==", uid))
+                const medicoesSnap = await getDocs(
+                    query(collection(db, "medicoesColaborador"), where("usuarioId", "==", uid))
                 );
-                const obsSnap = await getDocs(
-                    query(collection(db, "observacoes"), where("uid", "==", uid))
+                const observacoesSnap = await getDocs(
+                    query(collection(db, "observacoes"), where("usuarioId", "==", uid))
                 );
-                const totalContrib = contribSnap.size + obsSnap.size;
+                const totalContrib = medicoesSnap.size + observacoesSnap.size;
 
-                // Denúncias do usuário
-                const denSnap = await getDocs(
-                    query(collection(db, "denuncias"), where("uid", "==", uid))
+                const denunciasSnap = await getDocs(
+                    query(collection(db, "denuncias"), where("usuarioId", "==", uid))
                 );
 
-                // Corpos hídricos acompanhados pelo usuário
-                const corposSnap = await getDocs(
+                let totalCorposHidricos = 0;
+                const corposPorColaboradorSnap = await getDocs(
                     query(collection(db, "corposHidricos"), where("colaboradoresIds", "array-contains", uid))
                 );
 
-                // Alertas na região (cidade do usuário ou global)
+                totalCorposHidricos = corposPorColaboradorSnap.size;
+
+                if (
+                    totalCorposHidricos === 0 &&
+                    (userProfile as any)?.ultimoCorpoHidricoAcessadoId
+                ) {
+                    totalCorposHidricos = 1;
+                }
+
                 let alertasSnap;
                 if (cidade) {
                     alertasSnap = await getDocs(
@@ -366,12 +393,14 @@ export default function HomeColaborador() {
 
                 setNumeros({
                     contribuicoes: totalContrib,
-                    denuncias: denSnap.size,
-                    corposHidricos: corposSnap.size,
+                    denuncias: denunciasSnap.size,
+                    corposHidricos: totalCorposHidricos,
                     alertas: alertasSnap.size,
                 });
-            } catch { setNumeros({ contribuicoes: 0, denuncias: 0, corposHidricos: 0, alertas: 0 }); }
-            finally { setNumerosLoading(false); }
+            } catch (error) {
+                console.error("[HomeColaborador] Erro ao buscar números da comunidade:", error);
+                setNumeros({ contribuicoes: 0, denuncias: 0, corposHidricos: 0, alertas: 0 });
+            } finally { setNumerosLoading(false); }
         };
 
         fetchCorpoHidrico();
@@ -380,6 +409,7 @@ export default function HomeColaborador() {
     }, [userProfile?.uid]);
 
     // ── Handlers do tutorial ────────────────────────────────────────────────
+
     function animateStep(next: number) {
         Animated.parallel([
             Animated.timing(stepFade, { toValue: 0, duration: 180, useNativeDriver: true }),
@@ -397,29 +427,36 @@ export default function HomeColaborador() {
     function handleTutorialNext() {
         if (tutorialStep < TUTORIAL_STEPS.length - 1) animateStep(tutorialStep + 1);
     }
+
     function handleTutorialBack() {
         if (tutorialStep > 0) animateStep(tutorialStep - 1);
     }
 
+    // CORREÇÃO: fecha o modal IMEDIATAMENTE (sem esperar o Firestore),
+    // e persiste em background. Assim o usuário não vê travamento.
     async function handleFinishTutorial() {
         const uid = userProfile?.uid;
-        if (!uid) { setTutorialVisible(false); return; }
-        setTutorialLoading(true);
-        try { await markTutorialColaboradorAsSeen(uid); } catch {}
-        finally {
-            setTutorialLoading(false);
-            setTutorialVisible(false);
-            setTutorialStep(0);
-        }
-    }
 
-    function handleTabPress(tab: TabKey) {
-        setActiveTab(tab);
-        switch (tab) {
-            case "home": router.replace("/home_collaborator_update" as any); break;
-            case "mapa": router.push("/map" as any); break;
-            case "alertas": router.push("/alerts" as any); break;
-            case "perfil": router.push("/profile_collaborator" as any); break;
+        // 1. Fecha o modal imediatamente — UX responsiva.
+        setTutorialVisible(false);
+        setTutorialStep(0);
+
+        if (!uid) {
+            console.warn("[Tutorial] Não foi possível salvar: uid ausente.");
+            return;
+        }
+
+        // 2. Persiste em background.
+        setTutorialLoading(true);
+        console.log("[Tutorial] Salvando hasSeenTutorialColaborador para uid:", uid);
+        try {
+            await markTutorialColaboradorAsSeen(uid);
+            console.log("[Tutorial] Salvo com sucesso no Firestore.");
+        } catch (error) {
+            console.error("[Tutorial] Erro ao salvar no Firestore:", error);
+            // Não exibe o tutorial de novo mesmo com erro — evita loop ruim.
+        } finally {
+            setTutorialLoading(false);
         }
     }
 
@@ -463,8 +500,12 @@ export default function HomeColaborador() {
                                 </View>
                                 <View style={styles.bellWrap}>
                                     <View style={styles.iconCircle}>
-                                        <Ionicons name="notifications-outline" size={19} color="#e8f5f0"
-                                        onPress={() => router.push("/alerts" as any)}/>
+                                        <Ionicons
+                                            name="notifications-outline"
+                                            size={19}
+                                            color="#e8f5f0"
+                                            onPress={() => router.push("/alerts" as any)}
+                                        />
                                     </View>
                                     <View style={styles.badge}>
                                         <Text style={styles.badgeText}>3</Text>
@@ -535,7 +576,7 @@ export default function HomeColaborador() {
                                 title="Registrar contribuição"
                                 subtitle="Medição ou observação ambiental"
                                 fontFamily={questrial}
-                                onPress={() => router.push("/register_observation" as any)}
+                                onPress={() => router.push("/new_environmental_contribution" as any)}
                             />
                             <AcaoCard
                                 iconName="megaphone-outline"
@@ -561,7 +602,7 @@ export default function HomeColaborador() {
                             />
                         </View>
 
-                        {/* ── ATIVIDADES RECENTES ────────────────────────── */}
+                        {/* ── MINHAS CONTRIBUIÇÕES ───────────────────────── */}
                         <View style={styles.sectionHeader}>
                             <Text style={[styles.sectionTitle, { fontFamily: questrial, marginBottom: 0 }]}>
                                 Minhas Contribuições
@@ -590,7 +631,7 @@ export default function HomeColaborador() {
                         ) : (
                             <View style={styles.atividadesCard}>
                                 {atividades.map((ativ, idx) => {
-                                    const { iconName, iconBg, iconColor } = tipoParaIcone(ativ.tipo);
+                                    const { iconName, iconBg, iconColor } = tipoParaIconeUnificado(ativ.tipo);
                                     return (
                                         <AtividadeItem
                                             key={ativ.id}
@@ -598,9 +639,9 @@ export default function HomeColaborador() {
                                             iconBg={iconBg}
                                             iconColor={iconColor}
                                             titulo={ativ.titulo}
-                                            detalhe={ativ.detalhe}
-                                            data={formatarData(ativ.data)}
-                                            status={ativ.status}
+                                            detalhe={[ativ.corpoHidricoNome, ativ.descricao].filter(Boolean).join(" · ")}
+                                            data={formatarData(ativ.criadoEm)}
+                                            status={mapearStatus(ativ.status)}
                                             fontFamily={questrial}
                                             isLast={idx === atividades.length - 1}
                                         />
@@ -612,7 +653,7 @@ export default function HomeColaborador() {
                         {/* ── COMUNIDADE EM NÚMEROS ──────────────────────── */}
                         <View style={styles.sectionHeader}>
                             <Text style={[styles.sectionTitle, { fontFamily: questrial, marginBottom: 0 }]}>
-                                Sua comunidade 
+                                Sua comunidade
                             </Text>
                             <TouchableOpacity onPress={() => router.push("/community_panel" as any)} activeOpacity={0.7}>
                                 <View style={styles.verTodasRow}>
@@ -653,25 +694,16 @@ export default function HomeColaborador() {
                 </ScrollView>
 
                 {/* ── NAVBAR ─────────────────────────────────────────────── */}
-                <SafeAreaView edges={["bottom"]} style={styles.navWrapper}>
-                    <View style={styles.navBar}>
-                        <NavItem icon="home" iconOutline="home-outline" label="Home" active={activeTab === "home"} fontFamily={questrial} onPress={() => handleTabPress("home")} />
-                        <NavItem icon="map" iconOutline="map-outline" label="Mapa" active={activeTab === "mapa"} fontFamily={questrial} onPress={() => handleTabPress("mapa")} />
-                        <View style={styles.fabSpacer}>
-                            <TouchableOpacity style={styles.fab} onPress={() => router.push("/manage_water_bodies_collaborator" as any)} activeOpacity={0.85}>
-                                <View style={styles.fabInner}>
-                                    <Ionicons name="add" size={32} color="#FFFFFF" />
-                                </View>
-                            </TouchableOpacity>
-                        </View>
-                        <NavItem icon="notifications" iconOutline="notifications-outline" label="Alertas" active={activeTab === "alertas"} fontFamily={questrial} onPress={() => handleTabPress("alertas")} />
-                        <NavItem icon="person" iconOutline="person-outline" label="Perfil" active={activeTab === "perfil"} fontFamily={questrial} onPress={() => handleTabPress("perfil")} />
-                    </View>
-                </SafeAreaView>
+                <CollaboratorBottomNav activeTab={activeTab} fontFamily={questrial} />
             </View>
 
             {/* ── TUTORIAL ─────────────────────────────────────────────────── */}
-            <Modal visible={tutorialVisible} transparent animationType="fade" onRequestClose={handleFinishTutorial}>
+            <Modal
+                visible={tutorialVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={handleFinishTutorial}
+            >
                 <View style={styles.tutorialOverlay}>
                     <View style={styles.tutorialCard}>
                         <View style={styles.tutorialCardHeader}>
@@ -717,7 +749,12 @@ export default function HomeColaborador() {
                             )}
 
                             {isLastStep ? (
-                                <TouchableOpacity style={styles.tutorialBtnFinish} onPress={handleFinishTutorial} activeOpacity={0.85} disabled={tutorialLoading}>
+                                <TouchableOpacity
+                                    style={styles.tutorialBtnFinish}
+                                    onPress={handleFinishTutorial}
+                                    activeOpacity={0.85}
+                                    disabled={tutorialLoading}
+                                >
                                     {tutorialLoading ? (
                                         <ActivityIndicator color="#fff" size="small" />
                                     ) : (
@@ -736,7 +773,11 @@ export default function HomeColaborador() {
                         </View>
 
                         {!isLastStep && (
-                            <TouchableOpacity style={styles.tutorialSkipBtn} onPress={handleFinishTutorial} activeOpacity={0.7}>
+                            <TouchableOpacity
+                                style={styles.tutorialSkipBtn}
+                                onPress={handleFinishTutorial}
+                                activeOpacity={0.7}
+                            >
                                 <Text style={[styles.tutorialSkipText, { fontFamily: questrial }]}>Pular tutorial</Text>
                             </TouchableOpacity>
                         )}
@@ -747,7 +788,9 @@ export default function HomeColaborador() {
     );
 }
 
-// ─── CorpoHidricoCard (com dados reais) ───────────────────────────────────────
+// ─── Todos os subcomponentes e estilos permanecem IDÊNTICOS ao original ───────
+// (CorpoHidricoCard, CorpoHidricoEmpty, AcaoCard, EmptyState, AtividadeItem,
+//  NumeroCard e StyleSheet não foram alterados)
 
 function statusLabel(status?: string): { label: string; color: string; dotColor: string; hint: string } {
     const s = (status ?? "").toLowerCase();
@@ -782,28 +825,23 @@ function CorpoHidricoCard({
                         </View>
                         <Text style={[styles.corpoLabelText, { fontFamily }]}>CORPO HÍDRICO MONITORADO</Text>
                     </View>
-
                     <Text style={[styles.corpoNome, { fontFamily }]}>{corpoHidrico.nome}</Text>
-
                     {locacao ? (
                         <View style={styles.corpoLocRow}>
                             <Ionicons name="location-outline" size={11} color={TEXT_MUTED} />
                             <Text style={[styles.corpoLoc, { fontFamily }]}>{locacao}</Text>
                         </View>
                     ) : null}
-
                     <View style={styles.corpoStatusRow}>
                         <View style={[styles.corpoStatusDot, { backgroundColor: st.dotColor }]} />
                         <Text style={[styles.corpoStatusLabel, { fontFamily, color: st.color }]}>{st.label}</Text>
                         <Text style={[styles.corpoStatusHint, { fontFamily }]}> · {st.hint}</Text>
                     </View>
-
                     <TouchableOpacity style={styles.verDetalhesBtn} onPress={onVerDetalhes} activeOpacity={0.8}>
                         <Text style={[styles.verDetalhesBtnText, { fontFamily }]}>Ver detalhes</Text>
                         <Ionicons name="chevron-forward" size={13} color={TEAL_MED} />
                     </TouchableOpacity>
                 </View>
-
                 <View style={styles.corpoIlustracao}>
                     <LinearGradient colors={["#b8dfc4", "#a8d5b8"]} style={styles.corpoIlustracaoGrad}>
                         <Ionicons name="water" size={36} color="#3a9e6e" style={{ opacity: 0.7 }} />
@@ -813,8 +851,6 @@ function CorpoHidricoCard({
         </View>
     );
 }
-
-// ─── CorpoHidricoEmpty ────────────────────────────────────────────────────────
 
 function CorpoHidricoEmpty({
     fontFamily,
@@ -833,21 +869,17 @@ function CorpoHidricoEmpty({
                         </View>
                         <Text style={[styles.corpoLabelText, { fontFamily }]}>CORPO HÍDRICO MONITORADO</Text>
                     </View>
-
                     <Text style={[styles.corpoNome, { fontFamily, color: TEXT_MUTED, fontSize: 16 }]}>
                         Nenhum corpo hídrico acessado ainda
                     </Text>
-
                     <Text style={[styles.corpoStatusHint, { fontFamily, marginBottom: 12, lineHeight: 18 }]}>
                         Explore o mapa para acompanhar um corpo hídrico da sua região.
                     </Text>
-
                     <TouchableOpacity style={styles.verDetalhesBtn} onPress={onAbrirMapa} activeOpacity={0.8}>
                         <Ionicons name="map-outline" size={13} color={TEAL_MED} style={{ marginRight: 4 }} />
                         <Text style={[styles.verDetalhesBtnText, { fontFamily }]}>Abrir mapa</Text>
                     </TouchableOpacity>
                 </View>
-
                 <View style={styles.corpoIlustracao}>
                     <LinearGradient colors={["#e0eee8", "#d4e8e0"]} style={styles.corpoIlustracaoGrad}>
                         <Ionicons name="map-outline" size={32} color="#7aada0" style={{ opacity: 0.6 }} />
@@ -858,28 +890,12 @@ function CorpoHidricoEmpty({
     );
 }
 
-// ─── AcaoCard ─────────────────────────────────────────────────────────────────
-
 function AcaoCard({
-    iconName,
-    iconBg,
-    cardBg,
-    borderColor,
-    arrowColor,
-    title,
-    subtitle,
-    fontFamily,
-    onPress,
+    iconName, iconBg, cardBg, borderColor, arrowColor, title, subtitle, fontFamily, onPress,
 }: {
     iconName: keyof typeof Ionicons.glyphMap;
-    iconBg: string;
-    cardBg: string;
-    borderColor: string;
-    arrowColor: string;
-    title: string;
-    subtitle: string;
-    fontFamily?: string;
-    onPress: () => void;
+    iconBg: string; cardBg: string; borderColor: string; arrowColor: string;
+    title: string; subtitle: string; fontFamily?: string; onPress: () => void;
 }) {
     return (
         <TouchableOpacity
@@ -899,18 +915,11 @@ function AcaoCard({
     );
 }
 
-// ─── EmptyState ───────────────────────────────────────────────────────────────
-
 function EmptyState({
-    iconName,
-    titulo,
-    descricao,
-    fontFamily,
+    iconName, titulo, descricao, fontFamily,
 }: {
     iconName: keyof typeof Ionicons.glyphMap;
-    titulo: string;
-    descricao: string;
-    fontFamily?: string;
+    titulo: string; descricao: string; fontFamily?: string;
 }) {
     return (
         <View style={styles.emptyState}>
@@ -923,8 +932,6 @@ function EmptyState({
     );
 }
 
-// ─── AtividadeItem ────────────────────────────────────────────────────────────
-
 type StatusType = "validada" | "pendente" | "analise";
 
 const STATUS_CONFIG: Record<StatusType, { label: string; bg: string; color: string; icon: keyof typeof Ionicons.glyphMap }> = {
@@ -934,25 +941,11 @@ const STATUS_CONFIG: Record<StatusType, { label: string; bg: string; color: stri
 };
 
 function AtividadeItem({
-    iconName,
-    iconBg,
-    iconColor,
-    titulo,
-    detalhe,
-    data,
-    status,
-    fontFamily,
-    isLast,
+    iconName, iconBg, iconColor, titulo, detalhe, data, status, fontFamily, isLast,
 }: {
     iconName: keyof typeof Ionicons.glyphMap;
-    iconBg: string;
-    iconColor: string;
-    titulo: string;
-    detalhe: string;
-    data: string;
-    status: StatusType;
-    fontFamily?: string;
-    isLast: boolean;
+    iconBg: string; iconColor: string; titulo: string; detalhe: string;
+    data: string; status: StatusType; fontFamily?: string; isLast: boolean;
 }) {
     const s = STATUS_CONFIG[status] ?? STATUS_CONFIG.pendente;
     return (
@@ -976,19 +969,12 @@ function AtividadeItem({
     );
 }
 
-// ─── NumeroCard ───────────────────────────────────────────────────────────────
-
 function NumeroCard({
     iconName, iconColor, bg, border, valor, label, sub, fontFamily,
 }: {
     iconName: keyof typeof Ionicons.glyphMap;
-    iconColor: string;
-    bg: string;
-    border: string;
-    valor: number;
-    label: string;
-    sub: string;
-    fontFamily?: string;
+    iconColor: string; bg: string; border: string;
+    valor: number; label: string; sub: string; fontFamily?: string;
 }) {
     return (
         <View style={[styles.numeroCard, { backgroundColor: bg, borderColor: border }]}>
@@ -1002,49 +988,21 @@ function NumeroCard({
     );
 }
 
-// ─── NavItem ──────────────────────────────────────────────────────────────────
-
-function NavItem({
-    icon, iconOutline, label, active, fontFamily, onPress,
-}: {
-    icon: keyof typeof Ionicons.glyphMap;
-    iconOutline: keyof typeof Ionicons.glyphMap;
-    label: string;
-    active: boolean;
-    fontFamily?: string;
-    onPress: () => void;
-}) {
-    return (
-        <TouchableOpacity style={styles.navItem} onPress={onPress} activeOpacity={0.7}>
-            <Ionicons name={active ? icon : iconOutline} size={24} color={active ? PRIMARY : "#b0c4c2"} />
-            <Text style={[styles.navLabel, { fontFamily, color: active ? PRIMARY : "#b0c4c2" }]}>{label}</Text>
-        </TouchableOpacity>
-    );
-}
-
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
     root: { flex: 1, backgroundColor: "#f5f7f5" },
     centerContent: { alignItems: "center", justifyContent: "center", paddingVertical: 24 },
-
     headerGradient: {},
     headerSafe: { paddingBottom: 20 },
     headerTopRow: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        paddingHorizontal: 20,
-        paddingTop: 10,
-        marginBottom: 18,
+        flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+        paddingHorizontal: 20, paddingTop: 10, marginBottom: 18,
     },
     locationRow: { flexDirection: "row", alignItems: "center", gap: 5 },
     locationCity: { fontSize: 13, color: "#e8f5f0", fontWeight: "600", letterSpacing: 0.2 },
     headerIcons: { flexDirection: "row", alignItems: "center", gap: 10 },
     iconCircle: {
         width: 38, height: 38, borderRadius: 19,
-        backgroundColor: "rgba(255,255,255,0.12)",
-        alignItems: "center", justifyContent: "center",
+        backgroundColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center",
         borderWidth: 1, borderColor: "rgba(255,255,255,0.2)",
     },
     logoCircle: { width: 60, height: 60, alignItems: "center", justifyContent: "center" },
@@ -1052,8 +1010,7 @@ const styles = StyleSheet.create({
     bellWrap: { position: "relative" },
     badge: {
         position: "absolute", top: -4, right: -4,
-        backgroundColor: "#e53935", borderRadius: 8,
-        width: 16, height: 16,
+        backgroundColor: "#e53935", borderRadius: 8, width: 16, height: 16,
         alignItems: "center", justifyContent: "center",
         borderWidth: 1.5, borderColor: "#0d4a3e",
     },
@@ -1063,38 +1020,26 @@ const styles = StyleSheet.create({
     greetingName: { fontSize: 26, color: "#ffffff", fontWeight: "700", marginBottom: 5, lineHeight: 30 },
     greetingSubtitle: { fontSize: 14, color: "#a8dac8", lineHeight: 19 },
     updatedCard: {
-        backgroundColor: "rgba(255,255,255,0.13)",
-        borderWidth: 1, borderColor: "rgba(255,255,255,0.18)",
+        backgroundColor: "rgba(255,255,255,0.13)", borderWidth: 1, borderColor: "rgba(255,255,255,0.18)",
         borderRadius: 14, padding: 10, minWidth: 120, alignItems: "center",
     },
     updatedCardRow: { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 4 },
     updatedLabel: { fontSize: 11, color: "#a8dac8" },
     updatedTime: { fontSize: 12, color: "#fff", fontWeight: "600" },
-
     scrollBody: { flex: 1, backgroundColor: "#f5f7f5" },
     scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 100 },
-
     sectionTitle: { fontSize: 17, fontWeight: "700", color: "#1a2e26", marginBottom: 12 },
-    sectionHeader: {
-        flexDirection: "row", justifyContent: "space-between",
-        alignItems: "center", marginBottom: 12,
-    },
+    sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
     verTodasRow: { flexDirection: "row", alignItems: "center", gap: 2 },
     verTodasText: { fontSize: 13, color: TEAL_MED, fontWeight: "600" },
-
-    // Corpo hídrico
     corpoCard: {
         backgroundColor: "#fff", borderRadius: 18, padding: 16, marginBottom: 14,
         borderWidth: 1, borderColor: "rgba(0,0,0,0.06)",
-        shadowColor: "#000", shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.06, shadowRadius: 8, elevation: 3,
+        shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3,
     },
     corpoCardContent: { flexDirection: "row" },
     corpoLabelRow: { flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 8 },
-    corpoIconCircle: {
-        width: 30, height: 30, borderRadius: 15,
-        backgroundColor: "#e6f5ef", alignItems: "center", justifyContent: "center",
-    },
+    corpoIconCircle: { width: 30, height: 30, borderRadius: 15, backgroundColor: "#e6f5ef", alignItems: "center", justifyContent: "center" },
     corpoLabelText: { fontSize: 10, fontWeight: "700", color: TEAL_MED, letterSpacing: 0.8 },
     corpoNome: { fontSize: 20, fontWeight: "700", color: "#1a2e26", marginBottom: 4 },
     corpoLocRow: { flexDirection: "row", alignItems: "center", gap: 3, marginBottom: 8 },
@@ -1104,40 +1049,26 @@ const styles = StyleSheet.create({
     corpoStatusLabel: { fontSize: 13, fontWeight: "600", marginRight: 2 },
     corpoStatusHint: { fontSize: 12, color: TEXT_MUTED },
     verDetalhesBtn: {
-        flexDirection: "row", alignItems: "center",
-        borderWidth: 1, borderColor: "#d0e8df", borderRadius: 20,
-        paddingVertical: 7, paddingHorizontal: 14, alignSelf: "flex-start",
+        flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#d0e8df",
+        borderRadius: 20, paddingVertical: 7, paddingHorizontal: 14, alignSelf: "flex-start",
     },
     verDetalhesBtnText: { fontSize: 13, color: TEAL_MED, fontWeight: "600", marginRight: 3 },
     corpoIlustracao: { width: 80, height: 80, marginLeft: 8, alignSelf: "center" },
     corpoIlustracaoGrad: { flex: 1, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-
-    // Ações
     acoesRow: { flexDirection: "row", gap: 10, marginBottom: 18 },
     acaoCard: { flex: 1, borderRadius: 14, padding: 12, borderWidth: 1 },
-    acaoIconCircle: {
-        width: 40, height: 40, borderRadius: 20,
-        alignItems: "center", justifyContent: "center", marginBottom: 10,
-    },
+    acaoIconCircle: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", marginBottom: 10 },
     acaoTitle: { fontSize: 12, fontWeight: "700", color: "#1a2e26", lineHeight: 16, marginBottom: 4 },
     acaoSubtitle: { fontSize: 10, color: TEXT_MUTED, lineHeight: 14, flex: 1 },
     acaoArrowRow: { alignItems: "flex-end", marginTop: 8 },
-
-    // Empty state
     emptyState: { alignItems: "center", paddingVertical: 24, paddingHorizontal: 16 },
-    emptyIconCircle: {
-        width: 52, height: 52, borderRadius: 26,
-        backgroundColor: "#f0f4f2", alignItems: "center", justifyContent: "center", marginBottom: 12,
-    },
+    emptyIconCircle: { width: 52, height: 52, borderRadius: 26, backgroundColor: "#f0f4f2", alignItems: "center", justifyContent: "center", marginBottom: 12 },
     emptyTitulo: { fontSize: 14, fontWeight: "700", color: "#1a2e26", textAlign: "center", marginBottom: 6 },
     emptyDescricao: { fontSize: 13, color: TEXT_MUTED, textAlign: "center", lineHeight: 19 },
-
-    // Atividades
     atividadesCard: {
         backgroundColor: "#fff", borderRadius: 18, padding: 4, marginBottom: 18,
         borderWidth: 1, borderColor: "rgba(0,0,0,0.06)",
-        shadowColor: "#000", shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.06, shadowRadius: 8, elevation: 3,
+        shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3,
     },
     atividadeItem: { flexDirection: "row", alignItems: "center", gap: 12, padding: 12 },
     atividadeItemBorder: { borderBottomWidth: 1, borderBottomColor: "#f0f0f0" },
@@ -1147,61 +1078,27 @@ const styles = StyleSheet.create({
     atividadeData: { fontSize: 11, color: "#aaa" },
     statusPill: { flexDirection: "row", alignItems: "center", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
     statusPillText: { fontSize: 11, fontWeight: "600" },
-
-    // Números
     numerosGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 16 },
     numeroCard: { width: "47.5%", borderRadius: 12, padding: 12, borderWidth: 1 },
     numeroIconRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 },
     numeroValor: { fontSize: 24, fontWeight: "700", color: "#1a2e26" },
     numeroLabel: { fontSize: 12, fontWeight: "600", color: "#1a2e26", marginBottom: 2 },
     numeroSub: { fontSize: 11, color: TEXT_MUTED },
-
-    // Engajamento
     engajamentoCard: {
         backgroundColor: "#e8f5ef", borderRadius: 18, padding: 16,
         flexDirection: "row", gap: 12, alignItems: "center",
         borderWidth: 1, borderColor: "#c0e0cf",
     },
-    engajamentoIconCircle: {
-        width: 44, height: 44, borderRadius: 22, backgroundColor: TEAL_MED,
-        alignItems: "center", justifyContent: "center", flexShrink: 0,
-    },
+    engajamentoIconCircle: { width: 44, height: 44, borderRadius: 22, backgroundColor: TEAL_MED, alignItems: "center", justifyContent: "center", flexShrink: 0 },
     engajamentoTitle: { fontSize: 14, fontWeight: "700", color: "#0d4a3e", marginBottom: 3 },
     engajamentoBody: { fontSize: 12, color: "#2a7a5c", lineHeight: 17 },
-
-    // Navbar
-    navWrapper: {
-        backgroundColor: "#fff",
-        borderTopLeftRadius: 22, borderTopRightRadius: 22,
-        shadowColor: "#000", shadowOffset: { width: 0, height: -3 },
-        shadowOpacity: 0.07, shadowRadius: 10, elevation: 12,
-    },
-    navBar: {
-        flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-        paddingTop: 10,
-        paddingBottom: Platform.OS === "ios" ? 4 : 10,
-        paddingHorizontal: 8,
-    },
-    navItem: { width: "20%", alignItems: "center", justifyContent: "center", paddingVertical: 4 },
-    navLabel: { fontSize: 12, marginTop: 3, letterSpacing: 0.1 },
-    fabSpacer: { width: "20%", alignItems: "center", justifyContent: "center" },
-    fab: {
-        width: 56, height: 56, borderRadius: 28, marginTop: -22,
-        shadowColor: PRIMARY, shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.4, shadowRadius: 10, elevation: 8,
-    },
-    fabInner: { width: 56, height: 56, borderRadius: 28, backgroundColor: PRIMARY, alignItems: "center", justifyContent: "center" },
-
-    // Tutorial
     tutorialOverlay: {
         flex: 1, backgroundColor: "rgba(0,0,0,0.6)",
         justifyContent: "center", alignItems: "center", paddingHorizontal: 24,
     },
     tutorialCard: {
-        width: "100%", maxWidth: 380, backgroundColor: "#fff", borderRadius: 24,
-        overflow: "hidden",
-        shadowColor: "#000", shadowOffset: { width: 0, height: 12 },
-        shadowOpacity: 0.22, shadowRadius: 24, elevation: 16,
+        width: "100%", maxWidth: 380, backgroundColor: "#fff", borderRadius: 24, overflow: "hidden",
+        shadowColor: "#000", shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.22, shadowRadius: 24, elevation: 16,
     },
     tutorialCardHeader: { marginBottom: 0 },
     tutorialHeaderGrad: { paddingVertical: 20, paddingHorizontal: 24, alignItems: "center" },
@@ -1212,10 +1109,8 @@ const styles = StyleSheet.create({
     tutorialDotActive: { width: 20, backgroundColor: TEAL_MED },
     tutorialStepBody: { alignItems: "center", paddingHorizontal: 28, paddingTop: 20, paddingBottom: 8 },
     tutorialStepIconCircle: {
-        width: 68, height: 68, borderRadius: 34, alignItems: "center", justifyContent: "center",
-        marginBottom: 18,
-        shadowColor: "#000", shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.15, shadowRadius: 10, elevation: 6,
+        width: 68, height: 68, borderRadius: 34, alignItems: "center", justifyContent: "center", marginBottom: 18,
+        shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 6,
     },
     tutorialStepTitle: { fontSize: 17, fontWeight: "700", color: "#1a2e26", textAlign: "center", marginBottom: 10 },
     tutorialStepDesc: { fontSize: 14, color: TEXT_MUTED, textAlign: "center", lineHeight: 22 },

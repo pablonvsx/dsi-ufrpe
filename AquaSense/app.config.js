@@ -17,6 +17,11 @@ module.exports = {
       bundleIdentifier: "com.pablonvsx.aquasense",
       config: {
         googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_API_KEY
+      },
+      infoPlist: {
+        NSCameraUsageDescription: "O AquaSense precisa de acesso à câmera para você tirar fotos ao registrar uma denúncia.",
+        NSPhotoLibraryUsageDescription: "O AquaSense precisa de acesso às suas fotos para anexar imagens à denúncia.",
+        NSLocationWhenInUseUsageDescription: "O AquaSense precisa da sua localização para registrar onde o problema ambiental ocorreu."
       }
     },
     android: {
@@ -33,7 +38,14 @@ module.exports = {
         monochromeImage: "./assets/images/android-icon-monochrome.png"
       },
       edgeToEdgeEnabled: true,
-      predictiveBackGestureEnabled: false
+      predictiveBackGestureEnabled: false,
+      permissions: [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ]
     },
     web: {
       output: "static",
@@ -52,6 +64,19 @@ module.exports = {
           "dark": {
             "backgroundColor": "#000000"
           }
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O AquaSense precisa de acesso às suas fotos para anexar imagens à denúncia.",
+          "cameraPermission": "O AquaSense precisa de acesso à câmera para você tirar fotos ao registrar uma denúncia."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "O AquaSense precisa da sua localização para registrar onde o problema ambiental ocorreu."
         }
       ]
     ],

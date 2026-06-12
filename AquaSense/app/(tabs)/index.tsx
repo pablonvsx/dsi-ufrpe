@@ -23,7 +23,7 @@ export default function TabsIndex() {
     }
 
     if (tipo === "tecnico") {
-        return <Redirect href={"/under-development" as any} />;
+        return <Redirect href={"/(tabs)/home_technician" as any} />;
     }
 
     // "comum" ou sem perfil
