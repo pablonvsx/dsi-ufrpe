@@ -27,7 +27,13 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { useAuth } from '@/contexts/auth-context';
+
+// ─── CORREÇÃO 1: importar getPendingAnalyses (mesma fonte da tela Análises) ───
+import { getPendingAnalyses } from '@/services/firestore/technicalAnalyses';
 import { getCriticalAnalyses } from '@/services/firestore/critical_analyses';
+
+// ─── CORREÇÃO 5: componente reutilizável da navbar ────────────────────────────
+import TechnicalBottomNav, { TechNavTab } from '@/components/technicalbottomnav';
 
 // ─── Paleta ────────────────────────────────────────────────────────────────────
 const PRIMARY      = '#004d48';
@@ -39,8 +45,6 @@ const BORDER_LIGHT = '#e0f2f1';
 const TEXT_MUTED   = '#6b7a7a';
 
 // ─── Tipos ─────────────────────────────────────────────────────────────────────
-type NavTabKey = 'home' | 'mapa' | 'alertas' | 'profile';
-
 export interface PendingAnalysisData {
     count: number;
     lastTitle: string;
@@ -79,7 +83,6 @@ function formatDate(date: Date) {
     return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
 }
 
-/** Converte Firestore Timestamp, Date ou string em Date. */
 function toDate(val: unknown): Date | null {
     if (!val) return null;
     if (val instanceof Timestamp) return val.toDate();
@@ -88,32 +91,28 @@ function toDate(val: unknown): Date | null {
         const d = new Date(val);
         return isNaN(d.getTime()) ? null : d;
     }
-    // Objeto com seconds (Timestamp serializado)
     if (typeof val === 'object' && 'seconds' in (val as any)) {
         return new Date((val as any).seconds * 1000);
     }
     return null;
 }
 
-/** Retorna o título de um documento de análise com múltiplos fallbacks. */
 function extractTitle(d: Record<string, any>): string {
     return d.titulo ?? d.nome ?? d.tipo ?? d.tipoAnalise ?? 'Análise';
 }
 
-/** Retorna o nome do ponto de um documento com múltiplos fallbacks. */
 function extractPoint(d: Record<string, any>): string {
     return (
         d.corpoHidricoNome ??
-        d.pontoMonitorado ??
-        d.local ??
-        d.localidade ??
-        d.nome ??
-        d.titulo ??
+        d.pontoMonitorado  ??
+        d.local            ??
+        d.localidade       ??
+        d.nome             ??
+        d.titulo           ??
         '—'
     );
 }
 
-/** Minutos atrás em relação a agora. */
 function minutesAgo(date: Date | null): number {
     if (!date) return 0;
     return Math.max(0, Math.round((Date.now() - date.getTime()) / 60_000));
@@ -128,122 +127,74 @@ const REGIAO_INICIAL = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * ANÁLISES PENDENTES
- * Busca em cascata: "analises" → "medicoesColaborador" → "observacoes"
- * Retorna todos os docs com status pendente/em_analise.
+ * CORREÇÃO 1 — ANÁLISES PENDENTES
+ *
+ * Agora delega para getPendingAnalyses(), exatamente a mesma função
+ * utilizada pela aba "Pendentes" da tela AnalisesUnion.
+ * Isso garante que Home e AnalisesUnion exibam sempre o mesmo número.
  */
-async function fetchPendingAnalyses(uid: string): Promise<PendingAnalysisData> {
-    const statusValues = ['pendente', 'em_analise', 'aguardando', 'aguardando_analise'];
+async function fetchPendingAnalyses(_uid: string): Promise<PendingAnalysisData> {
+    try {
+        // Usa o mesmo limite da tela Análises (50) para manter consistência
+        const items = await getPendingAnalyses(50);
 
-    // Fonte 1: coleção "analises" (coleção canônica do técnico)
-    // Tenta com e sem filtro por tecnicoId — ambas são válidas dependendo do modelo.
-    const sources: Array<{ col: string; field?: string }> = [
-        { col: 'analises' },
-        { col: 'medicoesColaborador' },
-        { col: 'observacoes' },
-    ];
+        console.log(`[HomeTecnico] Pendentes (via getPendingAnalyses): ${items.length} itens`);
 
-    let allDocs: Array<Record<string, any>> = [];
+        if (items.length === 0) return EMPTY_PENDING;
 
-    for (const src of sources) {
-        try {
-            const snap = await getDocs(
-                query(
-                    collection(db, src.col),
-                    where('status', 'in', statusValues),
-                    orderBy('criadoEm', 'desc'),
-                )
-            );
+        // Ordena por dataCriacao decrescente para pegar o mais recente
+        const sorted = [...items].sort(
+            (a, b) => b.dataCriacao.getTime() - a.dataCriacao.getTime(),
+        );
 
-            if (snap.size > 0) {
-                console.log(`[HomeTecnico] Pendentes: ${snap.size} docs em "${src.col}"`);
-                allDocs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                break; // usa a primeira coleção com resultados
-            } else {
-                console.log(`[HomeTecnico] Pendentes: "${src.col}" retornou 0 docs`);
-            }
-        } catch (e: any) {
-            // Índice ausente ou coleção inexistente — tenta sem orderBy
-            console.warn(`[HomeTecnico] Pendentes "${src.col}" com orderBy falhou, tentando sem:`, e?.code ?? e?.message);
-            try {
-                const snap2 = await getDocs(
-                    query(collection(db, src.col), where('status', 'in', statusValues))
-                );
-                if (snap2.size > 0) {
-                    console.log(`[HomeTecnico] Pendentes (sem orderBy): ${snap2.size} em "${src.col}"`);
-                    allDocs = (snap2.docs
-                        .map(d => ({ id: d.id, ...d.data() } as Record<string, any>))
-                        .sort((a, b) => {
-                            const da = toDate(a['criadoEm'])?.getTime() ?? 0;
-                            const db2 = toDate(b['criadoEm'])?.getTime() ?? 0;
-                            return db2 - da;
-                        }));
-                    break;
-                }
-            } catch (e2) {
-                console.warn(`[HomeTecnico] Pendentes "${src.col}" sem orderBy também falhou:`, e2);
-            }
-        }
-    }
+        const latest          = sorted[0];
+        const prioridade      = (latest as any).prioridade ?? (latest as any).urgencia ?? '';
+        const isHighPriority  = ['alta', 'critica', 'urgente'].includes(prioridade.toLowerCase());
 
-    if (allDocs.length === 0) {
-        console.log('[HomeTecnico] Pendentes: nenhum resultado em nenhuma coleção');
+        return {
+            count:           items.length,
+            lastTitle:       latest.corpoHidricoNome ?? extractTitle(latest as any),
+            lastMinutesAgo:  minutesAgo(latest.dataCriacao),
+            highPriority:    isHighPriority,
+        };
+    } catch (err) {
+        console.error('[HomeTecnico] Erro em fetchPendingAnalyses:', err);
         return EMPTY_PENDING;
     }
-
-    const latest = allDocs[0];
-    const latestDate = toDate(latest.criadoEm ?? latest.atualizadoEm);
-    const prioridade = (latest.prioridade ?? latest.urgencia ?? '').toLowerCase();
-    const isHighPriority = prioridade === 'alta' || prioridade === 'critica' || prioridade === 'urgente';
-
-    return {
-        count: allDocs.length,
-        lastTitle: extractTitle(latest),
-        lastMinutesAgo: minutesAgo(latestDate),
-        highPriority: isHighPriority,
-    };
 }
 
 /**
  * ANÁLISES CRÍTICAS
- * Delega inteiramente ao service getCriticalAnalyses() que já contém
- * toda a lógica real de classificação: pH, temperatura, turbidez,
- * odor, cor, lixo e tipo de denúncia.
- * Coleções consultadas: medicoesColaborador + observacoes + denuncias.
+ * Delega para getCriticalAnalyses() — sem alteração.
  */
 async function fetchCriticalAnalyses(): Promise<CriticalAnalysisData> {
     try {
         const items = await getCriticalAnalyses(100);
 
-        console.log(`[HomeTecnico] Críticas: ${items.length} registros encontrados`);
+        console.log(`[HomeTecnico] Críticas: ${items.length} registros`);
 
         if (items.length === 0) return EMPTY_CRITICAL;
 
-        // Pontos únicos com base em corpoHidricoNome (máx 3 para exibição)
         const points = [
             ...new Set(
                 items
                     .map(i => i.corpoHidricoNome)
-                    .filter((n): n is string => !!n && n !== 'Corpo hídrico')
+                    .filter((n): n is string => !!n && n !== 'Corpo hídrico'),
             ),
         ].slice(0, 3);
 
-        // Fallback: se todos têm o nome genérico, usa mesmo assim
         const displayPoints = points.length > 0
             ? points
             : [...new Set(items.map(i => i.corpoHidricoNome).filter(Boolean))].slice(0, 3);
 
-        // Data de atualização mais recente entre todos os registros
         const latestDate = items
             .map(i => i.dataCriacao)
             .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
 
-        console.log(`[HomeTecnico] Críticas pontos: ${displayPoints.join(', ')}`);
-
         return {
-            count: items.length,
-            points: displayPoints,
-            updatedMinutesAgo: minutesAgo(latestDate),
+            count:               items.length,
+            points:              displayPoints,
+            updatedMinutesAgo:   minutesAgo(latestDate),
         };
     } catch (error) {
         console.error('[HomeTecnico] Erro em fetchCriticalAnalyses:', error);
@@ -252,27 +203,22 @@ async function fetchCriticalAnalyses(): Promise<CriticalAnalysisData> {
 }
 
 /**
- * ÚLTIMA ANÁLISE REALIZADA
- * Busca a análise mais recente com status validada/concluída feita pelo técnico.
- *
- * Tenta por tecnicoId → analisadoPorId → usuarioId (graceful degradation).
+ * ÚLTIMA ANÁLISE REALIZADA — sem alteração.
  */
 async function fetchLastAnalysis(uid: string): Promise<LastAnalysisData> {
     const doneStatuses = ['validada', 'concluida', 'concluído', 'aprovada', 'finalizada'];
 
-    // Lista de tentativas: [coleção, campo de vínculo com uid]
     const attempts: Array<{ col: string; uidField: string }> = [
-        { col: 'analises',            uidField: 'tecnicoId'       },
-        { col: 'analises',            uidField: 'analisadoPorId'  },
-        { col: 'analises',            uidField: 'responsavelId'   },
-        { col: 'analises',            uidField: 'usuarioId'       },
-        { col: 'medicoesColaborador', uidField: 'analisadoPorId'  },
-        { col: 'medicoesColaborador', uidField: 'tecnicoId'       },
-        { col: 'medicoesColaborador', uidField: 'usuarioId'       },
+        { col: 'analises',            uidField: 'tecnicoId'      },
+        { col: 'analises',            uidField: 'analisadoPorId' },
+        { col: 'analises',            uidField: 'responsavelId'  },
+        { col: 'analises',            uidField: 'usuarioId'      },
+        { col: 'medicoesColaborador', uidField: 'analisadoPorId' },
+        { col: 'medicoesColaborador', uidField: 'tecnicoId'      },
+        { col: 'medicoesColaborador', uidField: 'usuarioId'      },
     ];
 
     for (const attempt of attempts) {
-        // Tenta com orderBy+limit (requer índice composto)
         for (const useOrderBy of [true, false]) {
             try {
                 const constraints: any[] = [
@@ -287,60 +233,38 @@ async function fetchLastAnalysis(uid: string): Promise<LastAnalysisData> {
                 const snap = await getDocs(query(collection(db, attempt.col), ...constraints));
 
                 if (snap.size > 0) {
-                    // Se veio sem orderBy, ordenar manualmente
                     const docs = snap.docs
                         .map(d => ({ id: d.id, ...d.data() } as Record<string, any>))
                         .sort((a, b) => {
-                            const da = toDate(a.criadoEm ?? a.atualizadoEm)?.getTime() ?? 0;
-                            const db2 = toDate(b.criadoEm ?? b.atualizadoEm)?.getTime() ?? 0;
+                            const da  = toDate(a.criadoEm  ?? a.atualizadoEm)?.getTime() ?? 0;
+                            const db2 = toDate(b.criadoEm  ?? b.atualizadoEm)?.getTime() ?? 0;
                             return db2 - da;
                         });
 
-                    const d = docs[0];
+                    const d       = docs[0];
                     const docDate = toDate(d.criadoEm ?? d.atualizadoEm ?? d.dataAnalise ?? d.analisadoEm);
                     const isValidated =
                         d.validadoPeloGestor === true ||
-                        d.status === 'validada' ||
+                        d.status === 'validada'        ||
                         d.status === 'aprovada';
 
                     const dateStr = docDate
                         ? `${formatDate(docDate)} • ${formatTime(docDate)}`
                         : '—';
 
-                    console.log(
-                        `[HomeTecnico] Última análise: "${extractTitle(d)}" | col: ${attempt.col} | campo: ${attempt.uidField} | status: ${d.status}`
-                    );
-
-                    return {
-                        name: extractTitle(d),
-                        date: dateStr,
-                        validated: isValidated,
-                    };
+                    return { name: extractTitle(d), date: dateStr, validated: isValidated };
                 }
 
-                // Se chegou aqui com orderBy e tamanho 0, tenta sem orderBy na próxima iteração
                 if (useOrderBy) continue;
-                // Sem orderBy também 0 — vai para próximo attempt
                 break;
-
             } catch (e: any) {
-                if (useOrderBy) {
-                    console.warn(
-                        `[HomeTecnico] Última análise "${attempt.col}"/"${attempt.uidField}" com orderBy falhou (índice?), tentando sem:`,
-                        e?.code ?? e?.message
-                    );
-                    continue; // tenta sem orderBy
-                }
-                console.warn(
-                    `[HomeTecnico] Última análise "${attempt.col}"/"${attempt.uidField}":`,
-                    e?.code ?? e?.message
-                );
+                if (useOrderBy) { continue; }
+                console.warn(`[HomeTecnico] Última análise "${attempt.col}"/"${attempt.uidField}":`, e?.code ?? e?.message);
                 break;
             }
         }
     }
 
-    console.log('[HomeTecnico] Última análise: nenhum resultado em nenhuma tentativa');
     return EMPTY_LAST_ANALYSIS;
 }
 
@@ -355,10 +279,10 @@ const Header: React.FC<HeaderProps> = ({ cityLabel, loading, fontFamily }) => (
         <View style={styles.headerLeft}>
             <Ionicons name="location-outline" size={14} color="#7ecfb3" />
             <View style={{ marginLeft: 7 }}>
-                <Text style={[styles.headerCity, { fontFamily }]}>
+                <Text style={[styles.headerCity, fontFamily ? { fontFamily } : undefined]}>
                     {loading ? 'Localizando...' : cityLabel}
                 </Text>
-                <Text style={[styles.headerTeam, { fontFamily }]}>Equipe Técnica</Text>
+                <Text style={[styles.headerTeam, fontFamily ? { fontFamily } : undefined]}>Equipe Técnica</Text>
             </View>
         </View>
         <Image
@@ -384,17 +308,17 @@ const TitleBlock: React.FC<TitleBlockProps> = ({ fontFamily }) => {
             style={styles.titleBlock}
         >
             <View style={{ flex: 1, paddingRight: 10 }}>
-                <Text style={[styles.titleMain, { fontFamily }]}>Painel Técnico</Text>
-                <Text style={[styles.titleSub, { fontFamily }]}>
+                <Text style={[styles.titleMain, fontFamily ? { fontFamily } : undefined]}>Painel Técnico</Text>
+                <Text style={[styles.titleSub, fontFamily ? { fontFamily } : undefined]}>
                     Acompanhe e analise as demandas técnicas{'\n'}da sua equipe em tempo real.
                 </Text>
             </View>
             <View style={styles.updatedBadge}>
                 <View style={styles.updatedBadgeRow}>
                     <Ionicons name="time-outline" size={12} color="rgba(255,255,255,0.9)" />
-                    <Text style={[styles.updatedTitle, { fontFamily }]}>Atualizado agora</Text>
+                    <Text style={[styles.updatedTitle, fontFamily ? { fontFamily } : undefined]}>Atualizado agora</Text>
                 </View>
-                <Text style={[styles.updatedDate, { fontFamily }]}>
+                <Text style={[styles.updatedDate, fontFamily ? { fontFamily } : undefined]}>
                     {formatTime(now)} • {formatDate(now)}
                 </Text>
             </View>
@@ -403,7 +327,12 @@ const TitleBlock: React.FC<TitleBlockProps> = ({ fontFamily }) => {
 };
 
 // ─── Card: Análises pendentes ──────────────────────────────────────────────────
-interface PendingCardProps { data: PendingAnalysisData; onPress: () => void; fontFamily?: string; loading?: boolean; }
+interface PendingCardProps {
+    data: PendingAnalysisData;
+    onPress: () => void;
+    fontFamily?: string;
+    loading?: boolean;
+}
 const PendingCard: React.FC<PendingCardProps> = ({ data, onPress, fontFamily, loading }) => (
     <View style={styles.card}>
         <View style={styles.cardRow}>
@@ -411,15 +340,15 @@ const PendingCard: React.FC<PendingCardProps> = ({ data, onPress, fontFamily, lo
                 <Ionicons name="document-text-outline" size={22} color={PRIMARY_MID} />
             </View>
             <View style={{ flex: 1, marginLeft: 14 }}>
-                <Text style={[styles.cardTitle, { fontFamily }]}>Análises pendentes</Text>
-                <Text style={[styles.cardDesc, { fontFamily }]}>
+                <Text style={[styles.cardTitle, fontFamily ? { fontFamily } : undefined]}>Análises pendentes</Text>
+                <Text style={[styles.cardDesc,  fontFamily ? { fontFamily } : undefined]}>
                     Demandas aguardando{'\n'}sua análise técnica
                 </Text>
             </View>
             <View style={styles.countRow}>
                 {loading
                     ? <ActivityIndicator color={PRIMARY_MID} size="small" style={{ marginRight: 8 }} />
-                    : <Text style={[styles.countNumber, { fontFamily }]}>{data.count}</Text>
+                    : <Text style={[styles.countNumber, fontFamily ? { fontFamily } : undefined]}>{data.count}</Text>
                 }
                 <Ionicons name="chevron-forward" size={18} color="#1a1a1a" />
             </View>
@@ -428,12 +357,12 @@ const PendingCard: React.FC<PendingCardProps> = ({ data, onPress, fontFamily, lo
         <View style={styles.lastReceived}>
             <Ionicons name="time-outline" size={14} color={PRIMARY_MID} style={{ marginTop: 1, flexShrink: 0 }} />
             <View style={{ flex: 1, marginLeft: 8 }}>
-                <Text style={[styles.lastReceivedLabel, { fontFamily }]}>Última recebida</Text>
+                <Text style={[styles.lastReceivedLabel, fontFamily ? { fontFamily } : undefined]}>Última recebida</Text>
                 {loading
                     ? <ActivityIndicator color={PRIMARY_MID} size="small" style={{ alignSelf: 'flex-start', marginTop: 2 }} />
                     : <>
-                        <Text style={[styles.lastReceivedTitle, { fontFamily }]}>{data.lastTitle}</Text>
-                        <Text style={[styles.lastReceivedTime, { fontFamily }]}>
+                        <Text style={[styles.lastReceivedTitle, fontFamily ? { fontFamily } : undefined]}>{data.lastTitle}</Text>
+                        <Text style={[styles.lastReceivedTime,  fontFamily ? { fontFamily } : undefined]}>
                             {data.lastMinutesAgo === 0 ? 'Agora mesmo' : `Há ${data.lastMinutesAgo} minutos`}
                         </Text>
                     </>
@@ -441,14 +370,17 @@ const PendingCard: React.FC<PendingCardProps> = ({ data, onPress, fontFamily, lo
             </View>
             {!loading && data.highPriority && (
                 <View style={styles.priorityBadge}>
-                    <Text style={[styles.priorityText, { fontFamily }]}>Prioridade alta</Text>
+                    <Text style={[styles.priorityText, fontFamily ? { fontFamily } : undefined]}>Prioridade alta</Text>
                     <View style={styles.priorityDot} />
                 </View>
             )}
         </View>
 
+        {/* CORREÇÃO 2: navega para AnalisesUnion abrindo na aba "pendentes" */}
         <TouchableOpacity style={styles.cardFooterBtn} onPress={onPress} activeOpacity={0.7}>
-            <Text style={[styles.cardFooterBtnText, { fontFamily }]}>Ver todas as análises pendentes</Text>
+            <Text style={[styles.cardFooterBtnText, fontFamily ? { fontFamily } : undefined]}>
+                Ver todas as análises pendentes
+            </Text>
             <Ionicons name="arrow-forward" size={15} color={PRIMARY_MID} />
         </TouchableOpacity>
     </View>
@@ -476,28 +408,28 @@ const BottomCards: React.FC<BottomCardsProps> = ({
                     <Ionicons name="warning-outline" size={20} color={ORANGE} />
                 </View>
                 <View style={{ flex: 1, marginLeft: 10 }}>
-                    <Text style={[styles.cardTitle, { fontFamily }]}>Análises críticas</Text>
-                    <Text style={[styles.cardDesc, { fontFamily }]}>Requerem atenção{'\n'}imediata</Text>
+                    <Text style={[styles.cardTitle, fontFamily ? { fontFamily } : undefined]}>Análises críticas</Text>
+                    <Text style={[styles.cardDesc,  fontFamily ? { fontFamily } : undefined]}>Requerem atenção{'\n'}imediata</Text>
                 </View>
             </View>
             <View style={[styles.countRow, { marginTop: 10 }]}>
                 {loadingCritical
                     ? <ActivityIndicator color={ORANGE} size="small" style={{ marginRight: 8 }} />
-                    : <Text style={[styles.countNumber, { color: ORANGE, fontFamily }]}>{critical.count}</Text>
+                    : <Text style={[styles.countNumber, { color: ORANGE }, fontFamily ? { fontFamily } : undefined]}>{critical.count}</Text>
                 }
                 <Ionicons name="chevron-forward" size={18} color="#1a1a1a" />
             </View>
             <View style={styles.criticalPoints}>
                 <Ionicons name="location-outline" size={12} color={TEXT_MUTED} />
                 <View style={{ marginLeft: 4, flex: 1 }}>
-                    <Text style={[styles.criticalPointsLabel, { fontFamily }]}>Principais pontos</Text>
+                    <Text style={[styles.criticalPointsLabel, fontFamily ? { fontFamily } : undefined]}>Principais pontos</Text>
                     {loadingCritical
                         ? <ActivityIndicator color={TEXT_MUTED} size="small" style={{ alignSelf: 'flex-start', marginTop: 2 }} />
                         : <>
-                            <Text style={[styles.criticalPointsNames, { fontFamily }]} numberOfLines={2}>
+                            <Text style={[styles.criticalPointsNames, fontFamily ? { fontFamily } : undefined]} numberOfLines={2}>
                                 {critical.points.length > 0 ? critical.points.join(' • ') : '—'}
                             </Text>
-                            <Text style={[styles.criticalPointsTime, { fontFamily }]}>
+                            <Text style={[styles.criticalPointsTime, fontFamily ? { fontFamily } : undefined]}>
                                 {critical.updatedMinutesAgo === 0
                                     ? 'Agora mesmo'
                                     : `Atualizado há ${critical.updatedMinutesAgo} min`}
@@ -506,8 +438,9 @@ const BottomCards: React.FC<BottomCardsProps> = ({
                     }
                 </View>
             </View>
+            {/* CORREÇÃO 3: navega para AnalisesUnion abrindo na aba "criticas" */}
             <TouchableOpacity style={styles.criticalFooter} onPress={onCriticalPress} activeOpacity={0.7}>
-                <Text style={[styles.criticalFooterText, { fontFamily }]}>Ver análises críticas</Text>
+                <Text style={[styles.criticalFooterText, fontFamily ? { fontFamily } : undefined]}>Ver análises críticas</Text>
                 <Ionicons name="arrow-forward" size={13} color={ORANGE} />
             </TouchableOpacity>
         </View>
@@ -519,30 +452,30 @@ const BottomCards: React.FC<BottomCardsProps> = ({
                     <Ionicons name="time-outline" size={20} color={PRIMARY_MID} />
                 </View>
                 <View style={{ flex: 1, marginLeft: 10 }}>
-                    <Text style={[styles.cardTitle, { fontFamily }]}>Última análise{'\n'}realizada</Text>
-                    <Text style={[styles.cardDesc, { fontFamily }]}>Acompanhe seu{'\n'}último trabalho</Text>
+                    <Text style={[styles.cardTitle, fontFamily ? { fontFamily } : undefined]}>Última análise{'\n'}realizada</Text>
+                    <Text style={[styles.cardDesc,  fontFamily ? { fontFamily } : undefined]}>Acompanhe seu{'\n'}último trabalho</Text>
                 </View>
             </View>
             {loadingLast
                 ? <ActivityIndicator color={PRIMARY_MID} size="small" style={{ alignSelf: 'flex-start', marginTop: 12 }} />
                 : <>
-                    <Text style={[styles.lastAnalysisTitle, { fontFamily }]} numberOfLines={2}>
+                    <Text style={[styles.lastAnalysisTitle, fontFamily ? { fontFamily } : undefined]} numberOfLines={2}>
                         {lastAnalysis.name}
                     </Text>
                     <View style={styles.lastAnalysisDate}>
                         <Ionicons name="calendar-outline" size={13} color={TEXT_MUTED} />
-                        <Text style={[styles.lastAnalysisDateText, { fontFamily }]}>{lastAnalysis.date}</Text>
+                        <Text style={[styles.lastAnalysisDateText, fontFamily ? { fontFamily } : undefined]}>{lastAnalysis.date}</Text>
                     </View>
                     {lastAnalysis.validated && (
                         <View style={styles.validatedBadge}>
                             <Ionicons name="checkmark-circle" size={14} color={PRIMARY_MID} />
-                            <Text style={[styles.validatedText, { fontFamily }]}>Validada pelo gestor</Text>
+                            <Text style={[styles.validatedText, fontFamily ? { fontFamily } : undefined]}>Validada pelo gestor</Text>
                         </View>
                     )}
                 </>
             }
             <TouchableOpacity style={styles.detailsBtn} onPress={onDetailsPress} activeOpacity={0.7}>
-                <Text style={[styles.detailsBtnText, { fontFamily }]}>Ver detalhes</Text>
+                <Text style={[styles.detailsBtnText, fontFamily ? { fontFamily } : undefined]}>Ver detalhes</Text>
                 <Ionicons name="arrow-forward" size={13} color={PRIMARY_MID} />
             </TouchableOpacity>
         </View>
@@ -551,10 +484,10 @@ const BottomCards: React.FC<BottomCardsProps> = ({
 
 // ─── Mapa ──────────────────────────────────────────────────────────────────────
 const MAP_LEGEND = [
-    { color: '#E53935', label: 'Crítico (2)' },
-    { color: ORANGE,    label: 'Atenção (3)' },
-    { color: PRIMARY_MID, label: 'Normal (5)' },
-    { color: '#9E9E9E', label: 'Sem dados (1)' },
+    { color: '#E53935',   label: 'Crítico (2)'  },
+    { color: ORANGE,      label: 'Atenção (3)'  },
+    { color: PRIMARY_MID, label: 'Normal (5)'   },
+    { color: '#9E9E9E',   label: 'Sem dados (1)'},
 ];
 
 interface MapSectionProps { onViewMap: () => void; fontFamily?: string; }
@@ -562,11 +495,13 @@ const MapSection: React.FC<MapSectionProps> = ({ onViewMap, fontFamily }) => (
     <View style={styles.mapSection}>
         <View style={styles.mapHeader}>
             <View>
-                <Text style={[styles.mapTitle, { fontFamily }]}>Mapa técnico</Text>
-                <Text style={[styles.mapSubtitle, { fontFamily }]}>Visão geral dos pontos monitorados</Text>
+                <Text style={[styles.mapTitle,    fontFamily ? { fontFamily } : undefined]}>Mapa técnico</Text>
+                <Text style={[styles.mapSubtitle, fontFamily ? { fontFamily } : undefined]}>
+                    Visão geral dos pontos monitorados
+                </Text>
             </View>
             <TouchableOpacity style={styles.mapCompleteBtn} onPress={onViewMap} activeOpacity={0.7}>
-                <Text style={[styles.mapCompleteBtnText, { fontFamily }]}>Ver mapa completo</Text>
+                <Text style={[styles.mapCompleteBtnText, fontFamily ? { fontFamily } : undefined]}>Ver mapa completo</Text>
                 <Ionicons name="map-outline" size={14} color={PRIMARY_MID} />
             </TouchableOpacity>
         </View>
@@ -584,7 +519,7 @@ const MapSection: React.FC<MapSectionProps> = ({ onViewMap, fontFamily }) => (
                     {MAP_LEGEND.map(item => (
                         <View key={item.label} style={styles.mapLegendItem}>
                             <View style={[styles.mapLegendDot, { backgroundColor: item.color }]} />
-                            <Text style={[styles.mapLegendText, { fontFamily }]}>{item.label}</Text>
+                            <Text style={[styles.mapLegendText, fontFamily ? { fontFamily } : undefined]}>{item.label}</Text>
                         </View>
                     ))}
                 </View>
@@ -592,42 +527,6 @@ const MapSection: React.FC<MapSectionProps> = ({ onViewMap, fontFamily }) => (
         </TouchableOpacity>
     </View>
 );
-
-// ─── Tab bar ───────────────────────────────────────────────────────────────────
-interface TabBarProps { active: NavTabKey; onTab: (tab: NavTabKey) => void; onAdd: () => void; fontFamily?: string; }
-const TabBar: React.FC<TabBarProps> = ({ active, onTab, onAdd, fontFamily }) => {
-    const leftTabs:  { key: NavTabKey; icon: keyof typeof Ionicons.glyphMap; label: string }[] = [
-        { key: 'home', icon: 'home-outline', label: 'Home' },
-        { key: 'mapa', icon: 'map-outline',  label: 'Mapa' },
-    ];
-    const rightTabs: { key: NavTabKey; icon: keyof typeof Ionicons.glyphMap; label: string }[] = [
-        { key: 'alertas', icon: 'notifications-outline', label: 'Alertas' },
-        { key: 'profile', icon: 'person-outline',        label: 'Perfil'  },
-    ];
-    const renderTab = (t: typeof leftTabs[0]) => {
-        const isActive = active === t.key;
-        return (
-            <TouchableOpacity key={t.key} style={styles.navTabItem} onPress={() => onTab(t.key)} activeOpacity={0.7}>
-                <Ionicons
-                    name={isActive ? t.icon.replace('-outline', '') as any : t.icon}
-                    size={23} color={isActive ? PRIMARY : '#aaa'}
-                />
-                <Text style={[styles.navTabLabel, { fontFamily }, isActive && styles.navTabLabelActive]}>
-                    {t.label}
-                </Text>
-            </TouchableOpacity>
-        );
-    };
-    return (
-        <View style={styles.tabBar}>
-            {leftTabs.map(renderTab)}
-            <TouchableOpacity style={styles.tabAddBtn} onPress={onAdd} activeOpacity={0.85}>
-                <Ionicons name="add" size={30} color="#fff" />
-            </TouchableOpacity>
-            {rightTabs.map(renderTab)}
-        </View>
-    );
-};
 
 // ─── Tela principal ────────────────────────────────────────────────────────────
 export default function HomeTechnician() {
@@ -637,7 +536,8 @@ export default function HomeTechnician() {
     const [fontsLoaded] = useFonts({ Questrial_400Regular });
     const fontFamily = fontsLoaded ? 'Questrial_400Regular' : undefined;
 
-    const [activeTab, setActiveTab] = useState<NavTabKey>('home');
+    // CORREÇÃO 4+5: activeTab usa TechNavTab e navbar é o componente reutilizável
+    const [activeTab, setActiveTab] = useState<TechNavTab>('home');
     useFocusEffect(useCallback(() => { setActiveTab('home'); }, []));
 
     const [cityLabel,       setCityLabel]       = useState('Carregando...');
@@ -652,7 +552,6 @@ export default function HomeTechnician() {
     const [loadingCritical, setLoadingCritical] = useState(true);
     const [loadingLast,     setLoadingLast]     = useState(true);
 
-    // Evita múltiplas buscas paralelas
     const fetchRef = useRef(false);
 
     // ── Localização ────────────────────────────────────────────────────────────
@@ -661,7 +560,7 @@ export default function HomeTechnician() {
             try {
                 const { status } = await Location.requestForegroundPermissionsAsync();
                 if (status !== 'granted') { setCityLabel('Sem localização'); return; }
-                const loc = await Location.getCurrentPositionAsync({});
+                const loc     = await Location.getCurrentPositionAsync({});
                 const [place] = await Location.reverseGeocodeAsync(loc.coords);
                 if (place) {
                     const city  = place.city ?? place.subregion ?? '';
@@ -677,7 +576,6 @@ export default function HomeTechnician() {
     }, []);
 
     // ── Busca de dados Firestore ───────────────────────────────────────────────
-    // Usa userProfile?.uid (mesmo padrão do colaborador) com fallback para user?.uid
     useEffect(() => {
         const uid = (userProfile as any)?.uid ?? user?.uid;
         if (!uid) return;
@@ -686,37 +584,49 @@ export default function HomeTechnician() {
 
         console.log('[HomeTecnico] Iniciando busca de dados para uid:', uid);
 
-        // As três buscas são independentes — falha de uma não bloqueia as outras
         fetchPendingAnalyses(uid)
-            .then(data => setPendingData(data))
-            .catch(e => console.error('[HomeTecnico] Erro inesperado em pendentes:', e))
+            .then(data  => setPendingData(data))
+            .catch(e    => console.error('[HomeTecnico] Erro inesperado em pendentes:', e))
             .finally(() => setLoadingPending(false));
 
         fetchCriticalAnalyses()
-            .then(data => setCriticalData(data))
-            .catch(e => console.error('[HomeTecnico] Erro inesperado em críticas:', e))
+            .then(data  => setCriticalData(data))
+            .catch(e    => console.error('[HomeTecnico] Erro inesperado em críticas:', e))
             .finally(() => setLoadingCritical(false));
 
         fetchLastAnalysis(uid)
-            .then(data => setLastAnalysisData(data))
-            .catch(e => console.error('[HomeTecnico] Erro inesperado em última análise:', e))
+            .then(data  => setLastAnalysisData(data))
+            .catch(e    => console.error('[HomeTecnico] Erro inesperado em última análise:', e))
             .finally(() => setLoadingLast(false));
 
     }, [(userProfile as any)?.uid ?? user?.uid]);
 
     // ── Navegação ──────────────────────────────────────────────────────────────
-    const handleTab = useCallback((tab: NavTabKey) => {
-        setActiveTab(tab);
-        if (tab === 'mapa')    router.push('/(tabs)/map'     as any);
-        if (tab === 'alertas') router.push('/alerts'         as any);
-        if (tab === 'profile') router.replace('/(tabs)/profile' as any);
+
+    /**
+     * CORREÇÃO 2 — "Ver análises pendentes"
+     * Navega para AnalisesUnion com params { tab: 'pendentes' }
+     */
+    const handlePending = useCallback(() => {
+        router.push({
+            pathname: '/(tabs)/analyses_union',
+            params:   { tab: 'pendentes' },
+        } as any);
     }, [router]);
 
-    const handleAdd      = useCallback(() => router.push('/(tabs)/register_observation' as any), [router]);
-    const handlePending  = useCallback(() => router.replace('/(tabs)/pending_analyses'  as any), [router]);
-    const handleCritical = useCallback(() => router.push('/(tabs)/critical_analyses'    as any), [router]);
-    const handleDetails  = useCallback(() => router.push('/(tabs)/last_analysis'        as any), [router]);
-    const handleViewMap  = useCallback(() => router.push('/(tabs)/map'                  as any), [router]);
+    /**
+     * CORREÇÃO 3 — "Ver análises críticas"
+     * Navega para analyses_union.tsx com params { tab: 'criticas' }
+     */
+    const handleCritical = useCallback(() => {
+        router.push({
+            pathname: '/(tabs)/analyses_union',
+            params:   { tab: 'criticas' },
+        } as any);
+    }, [router]);
+
+    const handleDetails = useCallback(() => router.push('/(tabs)/last_analysis'    as any), [router]);
+    const handleViewMap = useCallback(() => router.push('/(tabs)/map_technician'   as any), [router]);
 
     if (!fontsLoaded) {
         return (
@@ -761,12 +671,13 @@ export default function HomeTechnician() {
                 <View style={{ height: 24 }} />
             </ScrollView>
 
-            <TabBar active={activeTab} onTab={handleTab} onAdd={handleAdd} fontFamily={fontFamily} />
+            {/* CORREÇÃO 4+5: navbar reutilizável com aba "Análises" em vez de "Mapa" */}
+            <TechnicalBottomNav active={activeTab} fontFamily={fontFamily} />
         </SafeAreaView>
     );
 }
 
-// ─── Styles (idêntico ao home_tecnico_fixed — nenhuma alteração de layout) ─────
+// ─── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
     screen: { flex: 1, backgroundColor: PRIMARY },
     header: {
@@ -863,7 +774,7 @@ const styles = StyleSheet.create({
         marginTop: 6, paddingTop: 10, borderTopWidth: 1, borderTopColor: BORDER_LIGHT,
     },
     detailsBtnText: { fontSize: 12, color: PRIMARY_MID, fontWeight: '600' },
-    mapSection: { marginHorizontal: 16, marginTop: 24 },
+    mapSection:  { marginHorizontal: 16, marginTop: 24 },
     mapHeader: {
         flexDirection: 'row', justifyContent: 'space-between',
         alignItems: 'flex-start', marginBottom: 12,
@@ -886,21 +797,4 @@ const styles = StyleSheet.create({
     mapLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     mapLegendDot:  { width: 9, height: 9, borderRadius: 4.5 },
     mapLegendText: { fontSize: 11, color: '#1a1a1a', fontWeight: '500' },
-    tabBar: {
-        flexDirection: 'row', backgroundColor: '#fff',
-        paddingBottom: Platform.OS === 'ios' ? 0 : 8, paddingTop: 10, paddingHorizontal: 8,
-        alignItems: 'center', justifyContent: 'space-around',
-        borderTopWidth: 1, borderTopColor: BORDER_LIGHT,
-        shadowColor: '#000', shadowOffset: { width: 0, height: -2 },
-        shadowOpacity: 0.06, shadowRadius: 8, elevation: 12,
-    },
-    navTabItem:        { alignItems: 'center', flex: 1, paddingVertical: 2 },
-    navTabLabel:       { fontSize: 11, color: '#aaa', marginTop: 3 },
-    navTabLabelActive: { color: PRIMARY, fontWeight: '600' },
-    tabAddBtn: {
-        width: 56, height: 56, borderRadius: 28, backgroundColor: PRIMARY,
-        alignItems: 'center', justifyContent: 'center', marginBottom: 16,
-        shadowColor: PRIMARY, shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.45, shadowRadius: 8, elevation: 8,
-    },
 });
