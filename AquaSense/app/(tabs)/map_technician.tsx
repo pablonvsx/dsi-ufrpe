@@ -20,7 +20,9 @@ import {
   calcularResumoObservacoes,
   ResumoObservacoes,
 } from '@/services/firestore/observations';
+import { getCollaboratorMeasurementsByWaterBody } from '@/services/firestore/measurements';
 import { useAuth } from '@/contexts/auth-context';
+import TechnicalBottomNav from '@/components/technicalbottomnavbar';
 
 import stateData from '@/assets/map_layers/pe_aquasense.json';
 import municipiosData from '@/assets/map_layers/municipios_pe.json';
@@ -29,7 +31,6 @@ import municipiosData from '@/assets/map_layers/municipios_pe.json';
 
 const PRIMARY          = '#004d48';
 const TEAL_MED         = '#0d6e52';
-const TEAL_DARK        = '#0a3d32';
 const TEXT_DARK        = '#1a2e26';
 const TEXT_MUTED       = '#6b7a7a';
 const BORDER_LIGHT     = '#e0f2f1';
@@ -44,9 +45,8 @@ const STATUS_GRAY_BG   = '#f5f5f5';
 
 const { height: SCREEN_H } = Dimensions.get('window');
 
-// Bottom-sheet snap points
-const SHEET_COLLAPSED = SCREEN_H * 0.38;
-const SHEET_EXPANDED  = SCREEN_H * 0.82;
+const SHEET_COLLAPSED = SCREEN_H * 0.55;
+const SHEET_EXPANDED  = SCREEN_H * 0.88;
 
 const REGIAO_INICIAL = {
   latitude: -8.28,
@@ -55,7 +55,7 @@ const REGIAO_INICIAL = {
   longitudeDelta: 4.5,
 };
 
-// ─── Helpers de data/hora ─────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatarDataHoraAtual(): string {
   const agora = new Date();
@@ -65,31 +65,6 @@ function formatarDataHoraAtual(): string {
   const horas  = String(agora.getHours()).padStart(2, '0');
   const minutos = String(agora.getMinutes()).padStart(2, '0');
   return `${dia}/${mes}/${ano} · ${horas}:${minutos}`;
-}
-
-// ─── Dados mockados realistas ─────────────────────────────────────────────────
-
-const MOCK_DADOS: Record<string, {
-  situacaoAtual: string;
-  estadoTecnico: string;
-  prioridade: string;
-  ultimaAnalise: string;
-  proximaRevisao: string;
-  riscoAmbiental: string;
-  indicadores: { odor: string; corAgua: string; espuma: string; lixo: string };
-}> = {};
-
-function getMockDados(corpoId?: string) {
-  if (corpoId && MOCK_DADOS[corpoId]) return MOCK_DADOS[corpoId];
-  return {
-    situacaoAtual:  'Odor forte recorrente, presença de lixo nas margens, água escura e espuma frequente.',
-    estadoTecnico:  'Aguardando análise',
-    prioridade:     'Alta',
-    ultimaAnalise:  '08/05/2025 · 18:42',
-    proximaRevisao: 'Em até 5 dias',
-    riscoAmbiental: 'Elevado',
-    indicadores: { odor: 'Forte', corAgua: 'Escura', espuma: 'Visível', lixo: 'Presente' },
-  };
 }
 
 // ─── Map type options ─────────────────────────────────────────────────────────
@@ -127,29 +102,7 @@ function statusConfig(s: 'critical' | 'attention' | 'normal' | 'nodata') {
   }
 }
 
-// ─── NavItem ──────────────────────────────────────────────────────────────────
-
-function NavItem({
-  icon, iconOutline, label, active, fontFamily, onPress,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  iconOutline: keyof typeof Ionicons.glyphMap;
-  label: string;
-  active: boolean;
-  fontFamily?: string;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity style={styles.navItem} onPress={onPress} activeOpacity={0.7}>
-      <Ionicons name={active ? icon : iconOutline} size={24} color={active ? PRIMARY : '#b0c4c2'} />
-      <Text style={[styles.navLabel, { fontFamily, color: active ? PRIMARY : '#b0c4c2' }]}>
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
-}
-
-// ─── Stat item (bottom sheet) ─────────────────────────────────────────────────
+// ─── Stat item ────────────────────────────────────────────────────────────────
 
 function StatItem({
   icon, value, label, iconColor, iconBg,
@@ -171,7 +124,7 @@ function StatItem({
   );
 }
 
-// ─── Filter Modal (mobile-friendly chips) ─────────────────────────────────────
+// ─── Filter Modal ─────────────────────────────────────────────────────────────
 
 type StatusFilterKey = 'all' | 'critical' | 'attention' | 'normal' | 'nodata';
 
@@ -191,7 +144,6 @@ function FilterModal({
     analises:    true,
   });
 
-  // Status chips — mobile-friendly, toda a área clicável
   const statusOptions: {
     key: StatusFilterKey;
     label: string;
@@ -199,11 +151,11 @@ function FilterModal({
     bg: string;
     borderColor: string;
   }[] = [
-    { key: 'all',       label: 'Todos',    color: PRIMARY,        bg: '#e8f5f0',        borderColor: PRIMARY        },
-    { key: 'critical',  label: 'Críticos', color: STATUS_RED,     bg: STATUS_RED_BG,    borderColor: STATUS_RED     },
-    { key: 'attention', label: 'Atenção',  color: STATUS_YELLOW,  bg: STATUS_YELLOW_BG, borderColor: STATUS_YELLOW  },
-    { key: 'normal',    label: 'Normais',  color: STATUS_GREEN,   bg: STATUS_GREEN_BG,  borderColor: STATUS_GREEN   },
-    { key: 'nodata',    label: 'Sem dados',color: STATUS_GRAY,    bg: STATUS_GRAY_BG,   borderColor: STATUS_GRAY    },
+    { key: 'all',       label: 'Todos',     color: PRIMARY,        bg: '#e8f5f0',        borderColor: PRIMARY        },
+    { key: 'critical',  label: 'Críticos',  color: STATUS_RED,     bg: STATUS_RED_BG,    borderColor: STATUS_RED     },
+    { key: 'attention', label: 'Atenção',   color: STATUS_YELLOW,  bg: STATUS_YELLOW_BG, borderColor: STATUS_YELLOW  },
+    { key: 'normal',    label: 'Normais',   color: STATUS_GREEN,   bg: STATUS_GREEN_BG,  borderColor: STATUS_GREEN   },
+    { key: 'nodata',    label: 'Sem dados', color: STATUS_GRAY,    bg: STATUS_GRAY_BG,   borderColor: STATUS_GRAY    },
   ];
 
   const typeOptions: {
@@ -229,7 +181,6 @@ function FilterModal({
             </TouchableOpacity>
           </View>
 
-          {/* ── Status: chips grandes ──────────────────────────────────── */}
           <Text style={styles.modalSectionTitle}>Exibir no mapa</Text>
           <View style={styles.chipsRow}>
             {statusOptions.map((opt) => {
@@ -256,7 +207,6 @@ function FilterModal({
 
           <View style={styles.modalDivider} />
 
-          {/* ── Tipo de registro: cards clicáveis ─────────────────────── */}
           <Text style={styles.modalSectionTitle}>Filtrar por tipo de registro</Text>
           {typeOptions.map((opt) => {
             const isChecked = checkedTypes[opt.key];
@@ -336,7 +286,7 @@ function LegendModal({ visible, onClose }: { visible: boolean; onClose: () => vo
   );
 }
 
-// ─── Indicador item (expanded sheet) ─────────────────────────────────────────
+// ─── Indicador item ───────────────────────────────────────────────────────────
 
 function IndicadorItem({ label, valor, cor }: { label: string; valor: string; cor: string }) {
   return (
@@ -352,59 +302,68 @@ function IndicadorItem({ label, valor, cor }: { label: string; valor: string; co
 function BottomSheet({
   corpo,
   resumo,
+  totalMedicoes,
+  totalAnaliseTecnica,
   loadingResumo,
   sheetHeight,
   isExpanded,
   panHandlers,
   fontFamily,
-  onVerDetalhes,
   onNovaAnalise,
+  onVerDetalhes,
   onVerHistorico,
-  onClose,
 }: {
   corpo: CorpoHidrico;
   resumo: ResumoObservacoes | null;
+  totalMedicoes: number;
+  totalAnaliseTecnica: number;
   loadingResumo: boolean;
   sheetHeight: Animated.Value;
   isExpanded: boolean;
   panHandlers: any;
   fontFamily?: string;
-  onVerDetalhes: () => void;
   onNovaAnalise: () => void;
+  onVerDetalhes: () => void;
   onVerHistorico: () => void;
-  onClose: () => void;
 }) {
   const status = statusFromCorpo(corpo);
   const cfg    = statusConfig(status);
-  const mock   = getMockDados(corpo.id);
 
-  const obs       = resumo?.totalObservacoes ?? 12;
-  const medicoes  = resumo?.totalMedicoes    ?? 3;
-  const denuncias = (corpo as any).denunciasRecentes ?? 4;
-  const analises  = (corpo as any).analisesTecnicas  ?? 1;
+  const obs       = resumo?.totalObservacoes ?? 0;
+  const medicoes  = totalMedicoes;
+  const denuncias = (corpo as any).denunciasRecentes ?? 0;
 
-  const situacaoAtual  = (corpo as any).situacaoAtual  ?? mock.situacaoAtual;
-  const estadoTecnico  = (corpo as any).estadoTecnico  ?? mock.estadoTecnico;
-  const prioridade     = (corpo as any).prioridade     ?? mock.prioridade;
-  const ultimaAnalise  = (corpo as any).ultimaAnalise  ?? mock.ultimaAnalise;
-  const proximaRevisao = (corpo as any).proximaRevisao ?? mock.proximaRevisao;
-  const riscoAmbiental = (corpo as any).riscoAmbiental ?? mock.riscoAmbiental;
-  const indicadores    = (corpo as any).indicadores    ?? mock.indicadores;
-  const dataAtualizada = formatarDataHoraAtual();
+  const situacaoAtual   = (corpo as any).situacaoAtual   ?? null;
+  const indicadores     = (corpo as any).indicadores     ?? null;
+  const estadoTecnico   = (corpo as any).estadoTecnico   ?? null;
+  const riscoAmbiental  = (corpo as any).riscoAmbiental  ?? null;
 
-  // Cor de prioridade
-  const prioridadeColor =
-    prioridade === 'Alta' || prioridade === 'alta'       ? STATUS_RED    :
-    prioridade === 'Média' || prioridade === 'media'      ? STATUS_YELLOW :
-    STATUS_GREEN;
+  // Estado técnico — campos individuais com fallback para "—"
+  const etStatus     = estadoTecnico?.status             ?? '—';
+  const etPrioridade = estadoTecnico?.prioridade         ?? '—';
+  const etUltima     = estadoTecnico?.ultimaAnalise      ?? '—';
+  const etProxima    = estadoTecnico?.proximaRevisao     ?? '—';
 
-  // Cor do indicador
   const corIndicador = (val: string) => {
     const v = val.toLowerCase();
     if (v === 'forte' || v === 'presente' || v === 'escura' || v === 'visível') return STATUS_RED;
     if (v === 'moderado' || v === 'moderada' || v === 'leve')                   return STATUS_YELLOW;
     return STATUS_GREEN;
   };
+
+  const riscoConfig = () => {
+    if (!riscoAmbiental) return null;
+    const r = riscoAmbiental.toLowerCase();
+    if (r === 'elevado') return { label: 'Elevado', color: STATUS_RED,    bg: STATUS_RED_BG    };
+    if (r === 'médio' || r === 'medio') return { label: 'Médio', color: STATUS_YELLOW, bg: STATUS_YELLOW_BG };
+    return { label: 'Baixo', color: STATUS_GREEN, bg: STATUS_GREEN_BG };
+  };
+  const risco = riscoConfig();
+
+  const dataAtualizada = formatarDataHoraAtual();
+
+  // Hora atual formatada para "Hoje, HH:MM"
+  const horaAtual = `${new Date().getHours().toString().padStart(2,'0')}:${new Date().getMinutes().toString().padStart(2,'0')}`;
 
   return (
     <Animated.View style={[styles.bottomSheet, { height: sheetHeight }]}>
@@ -415,7 +374,7 @@ function BottomSheet({
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 24 }}
+        contentContainerStyle={{ paddingBottom: 32 }}
         scrollEventThrottle={8}
       >
         {/* ── Cabeçalho ──────────────────────────────────────────────── */}
@@ -428,11 +387,11 @@ function BottomSheet({
             <View style={styles.bsLocRow}>
               <Ionicons name="location-outline" size={11} color={TEXT_MUTED} />
               <Text style={[styles.bsLoc, { fontFamily }]}>
-                {[corpo.municipio, corpo.estado].filter(Boolean).join(' - ') || 'Olinda - PE'}
+                {[corpo.municipio, (corpo as any).estado].filter(Boolean).join(' - ') || 'Pernambuco'}
               </Text>
             </View>
             <Text style={[styles.bsAtualizacao, { fontFamily }]}>
-              Última atualização: Hoje, {new Date().getHours().toString().padStart(2,'0')}:{new Date().getMinutes().toString().padStart(2,'0')}
+              Última atualização: Hoje, {horaAtual}
             </Text>
           </View>
           <View style={[styles.statusBadge, { backgroundColor: cfg.color }]}>
@@ -442,14 +401,13 @@ function BottomSheet({
 
         {/* ── Alerta crítico ──────────────────────────────────────────── */}
         {status === 'critical' && (
-          <TouchableOpacity style={styles.alertaBanner} activeOpacity={0.8}>
+          <View style={styles.alertaBanner}>
             <Ionicons name="warning" size={16} color={STATUS_RED} />
             <Text style={[styles.alertaText, { fontFamily }]}>Risco elevado de contaminação</Text>
-            <Ionicons name="chevron-forward" size={14} color={STATUS_RED} />
-          </TouchableOpacity>
+          </View>
         )}
 
-        {/* ── Resumo operacional ──────────────────────────────────────── */}
+        {/* ── Resumo operacional ───────────────────────────────────────── */}
         <Text style={[styles.bsSectionTitle, { fontFamily }]}>
           Resumo operacional <Text style={styles.bsSectionSub}>(últimos 7 dias)</Text>
         </Text>
@@ -459,118 +417,144 @@ function BottomSheet({
             <ActivityIndicator color={TEAL_MED} size="small" style={{ flex: 1, paddingVertical: 12 }} />
           ) : (
             <>
-              <StatItem icon="chatbubble-outline"    value={obs}       label={'Observações'}        iconColor={TEAL_MED}      iconBg="#e6f5ef"          />
-              <StatItem icon="flask-outline"         value={medicoes}  label={'Medições\nsimples'}   iconColor="#2563c7"        iconBg="#e8f0ff"          />
-              <StatItem icon="warning-outline"       value={denuncias} label={'Denúncias\nrecentes'} iconColor={STATUS_YELLOW} iconBg={STATUS_YELLOW_BG} />
-              <StatItem icon="document-text-outline" value={analises}  label={'Análise\ntécnica'}    iconColor={TEAL_MED}      iconBg="#e6f5ef"          />
+              <StatItem
+                icon="chatbubble-outline"
+                value={obs}
+                label={'Observações'}
+                iconColor={TEAL_MED}
+                iconBg="#e6f5ef"
+              />
+              <StatItem
+                icon="flask-outline"
+                value={medicoes}
+                label={'Medições\nsimples'}
+                iconColor="#2563c7"
+                iconBg="#e8f0ff"
+              />
+              <StatItem
+                icon="warning-outline"
+                value={denuncias}
+                label={'Denúncias\nrecentes'}
+                iconColor={STATUS_YELLOW}
+                iconBg={STATUS_YELLOW_BG}
+              />
+              <StatItem
+                icon="document-text-outline"
+                value={totalAnaliseTecnica}
+                label={'Análise\ntécnica'}
+                iconColor={PRIMARY}
+                iconBg="#e8f5f0"
+              />
             </>
           )}
         </View>
 
-        {/* ── Situação atual ──────────────────────────────────────────── */}
+        {/* ── Situação atual ───────────────────────────────────────────── */}
         <Text style={[styles.bsSectionTitle, { fontFamily }]}>Situação atual</Text>
         <View style={styles.bsSituacaoBox}>
-          <Text style={[styles.bsSituacaoText, { fontFamily }]} numberOfLines={isExpanded ? undefined : 3}>
-            {situacaoAtual}
+          <Text style={[styles.bsSituacaoText, { fontFamily }]}>
+            {situacaoAtual ?? 'Nenhum dado disponível'}
           </Text>
         </View>
 
-        {/* ── Estado técnico ──────────────────────────────────────────── */}
+        {/* ── Estado técnico ───────────────────────────────────────────── */}
         <Text style={[styles.bsSectionTitle, { fontFamily }]}>Estado técnico</Text>
-        <View style={styles.bsEstadoGrid}>
-          <View style={styles.bsEstadoRow}>
-            <Text style={[styles.bsEstadoLabel, { fontFamily }]}>Status</Text>
-            <View style={[styles.estadoBadge, { backgroundColor: STATUS_YELLOW_BG }]}>
-              <Text style={[styles.estadoBadgeText, { color: STATUS_YELLOW, fontFamily }]}>{estadoTecnico}</Text>
-            </View>
+        <View style={styles.estadoTecnicoBox}>
+          <View style={styles.estadoRow}>
+            <Text style={[styles.estadoLabel, { fontFamily }]}>Status</Text>
+            {etStatus !== '—' ? (
+              <View style={styles.statusPillYellow}>
+                <Text style={styles.statusPillText}>{etStatus}</Text>
+              </View>
+            ) : (
+              <Text style={[styles.estadoValor, { fontFamily, color: TEXT_MUTED }]}>—</Text>
+            )}
           </View>
-          <View style={styles.bsEstadoRow}>
-            <Text style={[styles.bsEstadoLabel, { fontFamily }]}>Prioridade</Text>
-            <Text style={[styles.bsEstadoVal, { color: prioridadeColor, fontWeight: '700', fontFamily }]}>
-              {prioridade}
+          <View style={styles.estadoDivider} />
+          <View style={styles.estadoRow}>
+            <Text style={[styles.estadoLabel, { fontFamily }]}>Prioridade</Text>
+            <Text style={[
+              styles.estadoValor,
+              { fontFamily },
+              etPrioridade === 'Alta' && { color: STATUS_RED },
+              etPrioridade === 'Média' && { color: STATUS_YELLOW },
+              etPrioridade === 'Baixa' && { color: STATUS_GREEN },
+              etPrioridade === '—' && { color: TEXT_MUTED },
+            ]}>
+              {etPrioridade}
             </Text>
           </View>
-          <View style={styles.bsEstadoRow}>
-            <Text style={[styles.bsEstadoLabel, { fontFamily }]}>Última análise</Text>
-            <Text style={[styles.bsEstadoVal, { fontFamily }]}>{ultimaAnalise}</Text>
+          <View style={styles.estadoDivider} />
+          <View style={styles.estadoRow}>
+            <Text style={[styles.estadoLabel, { fontFamily }]}>Última análise</Text>
+            <Text style={[styles.estadoValor, { fontFamily, color: etUltima === '—' ? TEXT_MUTED : TEXT_DARK }]}>{etUltima}</Text>
           </View>
-          <View style={[styles.bsEstadoRow, { borderBottomWidth: 0 }]}>
-            <Text style={[styles.bsEstadoLabel, { fontFamily }]}>Próxima revisão sugerida</Text>
-            <Text style={[styles.bsEstadoVal, { fontFamily }]}>{proximaRevisao}</Text>
+          <View style={styles.estadoDivider} />
+          <View style={styles.estadoRow}>
+            <Text style={[styles.estadoLabel, { fontFamily }]}>Próxima revisão sugerida</Text>
+            <Text style={[styles.estadoValor, { fontFamily, color: etProxima === '—' ? TEXT_MUTED : TEXT_DARK }]}>{etProxima}</Text>
           </View>
         </View>
 
-        {/* ── Seção expandida ─────────────────────────────────────────── */}
-        {isExpanded && (
-          <>
-            {/* Risco ambiental */}
-            <Text style={[styles.bsSectionTitle, { fontFamily }]}>Risco ambiental</Text>
-            <View style={[styles.riscoBadgeRow]}>
-              <View style={[styles.riscoBadge, { backgroundColor: STATUS_RED_BG, borderColor: '#f5c6c6' }]}>
-                <Ionicons name="alert-circle" size={16} color={STATUS_RED} />
-                <Text style={[styles.riscoBadgeText, { color: STATUS_RED, fontFamily }]}>{riscoAmbiental}</Text>
-              </View>
-            </View>
-
-            {/* Principais indicadores */}
-            <Text style={[styles.bsSectionTitle, { fontFamily }]}>Principais indicadores</Text>
-            <View style={styles.indicadoresGrid}>
-              <IndicadorItem label="Odor"      valor={indicadores.odor}    cor={corIndicador(indicadores.odor)}    />
-              <IndicadorItem label="Cor da água" valor={indicadores.corAgua} cor={corIndicador(indicadores.corAgua)} />
-              <IndicadorItem label="Espuma"    valor={indicadores.espuma}  cor={corIndicador(indicadores.espuma)}  />
-              <IndicadorItem label="Lixo"      valor={indicadores.lixo}    cor={corIndicador(indicadores.lixo)}    />
-            </View>
-
-            {/* Ações rápidas */}
-            <Text style={[styles.bsSectionTitle, { fontFamily }]}>Ações rápidas</Text>
-            <View style={styles.acoesRapidasRow}>
-              <TouchableOpacity style={styles.acaoCard} onPress={onVerDetalhes} activeOpacity={0.85}>
-                <View style={styles.acaoCardIcon}>
-                  <Ionicons name="document-text-outline" size={18} color={PRIMARY} />
-                </View>
-                <Text style={[styles.acaoCardText, { fontFamily }]}>Ver detalhes{'\n'}completos</Text>
-                <Ionicons name="arrow-forward" size={14} color={TEXT_MUTED} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.acaoCard} onPress={onNovaAnalise} activeOpacity={0.85}>
-                <View style={styles.acaoCardIcon}>
-                  <Ionicons name="flask-outline" size={18} color={PRIMARY} />
-                </View>
-                <Text style={[styles.acaoCardText, { fontFamily }]}>Nova análise{'\n'}técnica</Text>
-                <Ionicons name="arrow-forward" size={14} color={TEXT_MUTED} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.acaoCard} onPress={onVerHistorico} activeOpacity={0.85}>
-                <View style={styles.acaoCardIcon}>
-                  <Ionicons name="time-outline" size={18} color={PRIMARY} />
-                </View>
-                <Text style={[styles.acaoCardText, { fontFamily }]}>Ver histórico{'\n'}de registros</Text>
-                <Ionicons name="arrow-forward" size={14} color={TEXT_MUTED} />
-              </TouchableOpacity>
-            </View>
-          </>
-        )}
-
-        {/* ── Botões de ação (estado colapsado) ──────────────────────── */}
-        {!isExpanded && (
-          <View style={styles.bsActionsCollapsed}>
-            {/* Ver detalhes — botão principal */}
-            <TouchableOpacity style={styles.bsBtnPrimary} onPress={onVerDetalhes} activeOpacity={0.85}>
-              <Ionicons name="document-text-outline" size={14} color="#fff" />
-              <Text style={[styles.bsBtnPrimaryText, { fontFamily }]}>Ver detalhes</Text>
-              <Ionicons name="arrow-forward" size={13} color="#fff" />
-            </TouchableOpacity>
-            {/* Secundários */}
-            <View style={styles.bsBtnsSecRow}>
-              <TouchableOpacity style={styles.bsBtnSec} onPress={onNovaAnalise} activeOpacity={0.85}>
-                <Ionicons name="flask-outline" size={13} color={TEXT_DARK} />
-                <Text style={[styles.bsBtnSecText, { fontFamily }]}>Nova análise</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.bsBtnSec} onPress={onVerHistorico} activeOpacity={0.85}>
-                <Ionicons name="time-outline" size={13} color={TEXT_DARK} />
-                <Text style={[styles.bsBtnSecText, { fontFamily }]}>Ver histórico</Text>
-              </TouchableOpacity>
-            </View>
+        {/* ── Risco ambiental ──────────────────────────────────────────── */}
+        <Text style={[styles.bsSectionTitle, { fontFamily }]}>Risco ambiental</Text>
+        {risco ? (
+          <View style={[styles.riscoBadge, { backgroundColor: risco.bg }]}>
+            <Ionicons name="alert-circle" size={16} color={risco.color} />
+            <Text style={[styles.riscoText, { color: risco.color, fontFamily }]}>{risco.label}</Text>
+          </View>
+        ) : (
+          <View style={[styles.riscoBadge, { backgroundColor: STATUS_GRAY_BG }]}>
+            <Text style={[styles.riscoText, { color: TEXT_MUTED, fontFamily }]}>Nenhum dado disponível</Text>
           </View>
         )}
+
+        {/* ── Principais indicadores ───────────────────────────────────── */}
+        <Text style={[styles.bsSectionTitle, { fontFamily }]}>Principais indicadores</Text>
+        {indicadores ? (
+          <View style={styles.indicadoresGrid}>
+            {indicadores.odor    && <IndicadorItem label="Odor"        valor={indicadores.odor}    cor={corIndicador(indicadores.odor)}    />}
+            {indicadores.corAgua && <IndicadorItem label="Cor da água" valor={indicadores.corAgua} cor={corIndicador(indicadores.corAgua)} />}
+            {indicadores.espuma  && <IndicadorItem label="Espuma"      valor={indicadores.espuma}  cor={corIndicador(indicadores.espuma)}  />}
+            {indicadores.lixo    && <IndicadorItem label="Lixo"        valor={indicadores.lixo}    cor={corIndicador(indicadores.lixo)}    />}
+          </View>
+        ) : (
+          <View style={styles.indicadoresGrid}>
+            {(['Odor', 'Cor da água', 'Espuma', 'Lixo'] as const).map((lbl) => (
+              <View key={lbl} style={styles.indicadorItem}>
+                <Text style={styles.indicadorLabel}>{lbl}</Text>
+                <Text style={[styles.indicadorValor, { color: TEXT_MUTED }]}>—</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* ── Ações rápidas ────────────────────────────────────────────── */}
+        <Text style={[styles.bsSectionTitle, { fontFamily }]}>Ações rápidas</Text>
+        <View style={styles.acoesRow}>
+          <TouchableOpacity style={styles.acaoCard} onPress={onVerDetalhes} activeOpacity={0.8}>
+            <Ionicons name="document-text-outline" size={22} color={PRIMARY} />
+            <Text style={[styles.acaoLabel, { fontFamily }]}>Ver detalhes{'\n'}completos</Text>
+            <Ionicons name="arrow-forward" size={14} color={TEXT_MUTED} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.acaoCard} onPress={onNovaAnalise} activeOpacity={0.8}>
+            <Ionicons name="flask-outline" size={22} color={PRIMARY} />
+            <Text style={[styles.acaoLabel, { fontFamily }]}>Nova análise{'\n'}técnica</Text>
+            <Ionicons name="arrow-forward" size={14} color={TEXT_MUTED} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.acaoCard} onPress={onVerHistorico} activeOpacity={0.8}>
+            <Ionicons name="time-outline" size={22} color={PRIMARY} />
+            <Text style={[styles.acaoLabel, { fontFamily }]}>Ver histórico{'\n'}de registros</Text>
+            <Ionicons name="arrow-forward" size={14} color={TEXT_MUTED} />
+          </TouchableOpacity>
+        </View>
+
+        {/* ── Análise técnica ──────────────────────────────────────────── */}
+        <TouchableOpacity style={styles.bsBtnPrimary} onPress={onNovaAnalise} activeOpacity={0.85}>
+          <Ionicons name="flask-outline" size={14} color="#fff" />
+          <Text style={[styles.bsBtnPrimaryText, { fontFamily }]}>Nova análise técnica</Text>
+          <Ionicons name="arrow-forward" size={13} color="#fff" />
+        </TouchableOpacity>
 
         {/* ── Timestamp ───────────────────────────────────────────────── */}
         <Text style={[styles.bsTimestamp, { fontFamily }]}>
@@ -592,12 +576,11 @@ export default function MapaTecnico() {
   const [fontsLoaded] = useFonts({ Questrial_400Regular });
   const questrial = fontsLoaded ? 'Questrial_400Regular' : undefined;
 
-  // ── Map state ──────────────────────────────────────────────────────────────
-  const [tipoMapa, setTipoMapa]           = useState<MapTypeKey>('satellite');
-  const [showFilterModal, setShowFilterModal] = useState(false);
-  const [showLegendModal, setShowLegendModal] = useState(false);
-  const [showLayersModal, setShowLayersModal] = useState(false);
-  const [statusFilter, setStatusFilter]   = useState<StatusFilterKey>('all');
+  const [tipoMapa, setTipoMapa]               = useState<MapTypeKey>('satellite');
+  const [showFilterModal, setShowFilterModal]   = useState(false);
+  const [showLegendModal, setShowLegendModal]   = useState(false);
+  const [showLayersModal, setShowLayersModal]   = useState(false);
+  const [statusFilter, setStatusFilter]         = useState<StatusFilterKey>('all');
 
   const [visibilidade, setVisibilidade] = useState({
     municipios:     true,
@@ -606,24 +589,22 @@ export default function MapaTecnico() {
     pontosDeUso:    true,
   });
 
-  // ── Data ───────────────────────────────────────────────────────────────────
   const [corposValidados,  setCorposValidados]  = useState<CorpoHidrico[]>([]);
   const [corposPendentes,  setCorposPendentes]  = useState<CorpoHidrico[]>([]);
   const [pontosDeUso,      setPontosDeUso]      = useState<PontoDeUso[]>([]);
   const [loadingData,      setLoadingData]      = useState(true);
 
-  // ── Search ─────────────────────────────────────────────────────────────────
   const [searchQuery,   setSearchQuery]   = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchResults, setSearchResults] = useState<CorpoHidrico[]>([]);
 
-  // ── Selected body ──────────────────────────────────────────────────────────
-  const [selectedCorpo, setSelectedCorpo] = useState<CorpoHidrico | null>(null);
-  const [resumo,        setResumo]        = useState<ResumoObservacoes | null>(null);
-  const [loadingResumo, setLoadingResumo] = useState(false);
-  const [detalheVisible, setDetalheVisible] = useState(false);
+  const [selectedCorpo,       setSelectedCorpo]       = useState<CorpoHidrico | null>(null);
+  const [resumo,               setResumo]               = useState<ResumoObservacoes | null>(null);
+  const [totalMedicoes,        setTotalMedicoes]        = useState(0);
+  const [totalAnaliseTecnica,  setTotalAnaliseTecnica]  = useState(0);
+  const [loadingResumo,        setLoadingResumo]        = useState(false);
+  const [detalheVisible,       setDetalheVisible]       = useState(false);
 
-  // ── Bottom sheet animation ─────────────────────────────────────────────────
   const sheetHeight      = useRef(new Animated.Value(SHEET_COLLAPSED)).current;
   const sheetHeightValue = useRef(SHEET_COLLAPSED);
   const lastGestureDy    = useRef(0);
@@ -631,7 +612,6 @@ export default function MapaTecnico() {
   const [sheetIsExpanded, setSheetIsExpanded] = useState(false);
   const focusHandled     = useRef(false);
 
-  // Header entrance animation
   const fadeAnim  = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(16)).current;
 
@@ -642,7 +622,6 @@ export default function MapaTecnico() {
     ]).start();
   }, []);
 
-  // ── Sheet listeners ────────────────────────────────────────────────────────
   useEffect(() => {
     sheetHeight.addListener(({ value }) => { sheetHeightValue.current = value; });
     return () => sheetHeight.removeAllListeners();
@@ -674,7 +653,6 @@ export default function MapaTecnico() {
     })
   ).current;
 
-  // ── Localização inicial ────────────────────────────────────────────────────
   useEffect(() => {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -689,7 +667,6 @@ export default function MapaTecnico() {
     })();
   }, []);
 
-  // ── Carrega dados do Firestore ─────────────────────────────────────────────
   useEffect(() => {
     (async () => {
       setLoadingData(true);
@@ -716,7 +693,6 @@ export default function MapaTecnico() {
           pontosSnap.docs.map((d) => ({ id: d.id, ...d.data() } as PontoDeUso)).filter(hasCoords)
         );
 
-        // Foco automático via parâmetro de rota
         if (focusCorpoId && !focusHandled.current) {
           focusHandled.current = true;
           const alvo = [...validados, ...pendentes].find((c) => c.id === focusCorpoId);
@@ -738,7 +714,6 @@ export default function MapaTecnico() {
     })();
   }, [focusCorpoId]);
 
-  // ── Busca ──────────────────────────────────────────────────────────────────
   const todosCorpos = [...corposValidados, ...corposPendentes];
 
   useEffect(() => {
@@ -766,10 +741,11 @@ export default function MapaTecnico() {
     abrirDetalhes(corpo);
   }
 
-  // ── Abre bottom sheet ──────────────────────────────────────────────────────
   const abrirDetalhes = useCallback(async (corpo: CorpoHidrico) => {
     setSelectedCorpo(corpo);
     setResumo(null);
+    setTotalMedicoes(0);
+    setTotalAnaliseTecnica(0);
     sheetHeight.setValue(SHEET_COLLAPSED);
     isExpandedRef.current = false;
     setSheetIsExpanded(false);
@@ -779,17 +755,30 @@ export default function MapaTecnico() {
       setLastWaterBody(corpo.id);
       setLoadingResumo(true);
       try {
-        const obs = await buscarObservacoesPorCorpo(corpo.id);
+        // Busca observações, medições simples e análises técnicas em paralelo
+        const [obs, medicoes, analisesSnap] = await Promise.all([
+          buscarObservacoesPorCorpo(corpo.id),
+          // getCollaboratorMeasurementsByWaterBody busca na coleção correta de medições
+          getCollaboratorMeasurementsByWaterBody(corpo.id),
+          // Busca análises técnicas na coleção 'analisesTecnicas' filtrada pelo corpo
+          getDocs(query(
+            collection(db, 'analisesTecnicas'),
+            where('corpoHidricoId', '==', corpo.id)
+          )),
+        ]);
         setResumo(calcularResumoObservacoes(obs));
+        setTotalMedicoes(medicoes.length);
+        setTotalAnaliseTecnica(analisesSnap.size);
       } catch {
         setResumo(calcularResumoObservacoes([]));
+        setTotalMedicoes(0);
+        setTotalAnaliseTecnica(0);
       } finally {
         setLoadingResumo(false);
       }
     }
   }, [setLastWaterBody]);
 
-  // ── Ir para minha localização ──────────────────────────────────────────────
   const goToMyLocation = async () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') return;
@@ -800,18 +789,14 @@ export default function MapaTecnico() {
     }, 1000);
   };
 
-  // ── Filtragem de marcadores ────────────────────────────────────────────────
   function applyStatusFilter(corpos: CorpoHidrico[]) {
     if (statusFilter === 'all') return corpos;
     return corpos.filter((c) => statusFromCorpo(c) === statusFilter);
   }
 
-  const corposVisiveis   = applyStatusFilter(visibilidade.corposHidricos ? corposValidados : []);
-  const pendentesVisiveis = applyStatusFilter(visibilidade.pendentes     ? corposPendentes : []);
+  const corposVisiveis    = applyStatusFilter(visibilidade.corposHidricos ? corposValidados : []);
+  const pendentesVisiveis = applyStatusFilter(visibilidade.pendentes      ? corposPendentes : []);
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // RENDER
-  // ─────────────────────────────────────────────────────────────────────────
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
@@ -829,40 +814,25 @@ export default function MapaTecnico() {
             <Animated.View
               style={[styles.headerTopRow, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
             >
-              {/* Hamburger — mantido conforme protótipo */}
-              <TouchableOpacity style={styles.menuBtn} activeOpacity={0.8}>
-                <Ionicons name="menu" size={22} color="#e8f5f0" />
-              </TouchableOpacity>
+              {/* Espaço vazio à esquerda para balancear o layout */}
+              <View style={{ width: 36 }} />
 
-              {/* Logo AquaSense real + role */}
+              {/* Título centralizado */}
               <View style={styles.headerCenter}>
-                <Image
-                  source={require('@/assets/images/aquasense.png')}
-                  style={styles.headerLogo}
-                  resizeMode="contain"
-                />
-                <Text style={[styles.headerRole, { fontFamily: questrial }]}>TÉCNICO</Text>
+                <Text style={[styles.pageTitle, { fontFamily: questrial }]}>
+                  Mapa de monitoramento
+                </Text>
+                <Text style={[styles.pageSubtitle, { fontFamily: questrial }]}>
+                  Visão operacional dos corpos hídricos
+                </Text>
               </View>
 
-              {/* Apenas notificações — perfil removido (existe na barra inferior) */}
-              <TouchableOpacity style={styles.iconBtn} activeOpacity={0.8}>
-                <Ionicons name="notifications-outline" size={21} color="#e8f5f0" />
-                <View style={styles.notifBadge}>
-                  <Text style={styles.notifBadgeText}>3</Text>
-                </View>
-              </TouchableOpacity>
-            </Animated.View>
-
-            {/* Título */}
-            <Animated.View
-              style={[styles.headerTitleBlock, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
-            >
-              <Text style={[styles.pageTitle, { fontFamily: questrial }]}>
-                Mapa de monitoramento
-              </Text>
-              <Text style={[styles.pageSubtitle, { fontFamily: questrial }]}>
-                Visão operacional dos corpos hídricos
-              </Text>
+              {/* Logo AquaSense no canto superior direito (onde ficava o sino) */}
+              <Image
+                source={require('@/assets/images/aquasense.png')}
+                style={styles.headerLogoRight}
+                resizeMode="contain"
+              />
             </Animated.View>
 
             {/* Search + Filtros */}
@@ -897,7 +867,7 @@ export default function MapaTecnico() {
               </TouchableOpacity>
             </Animated.View>
 
-            {/* ── Alternância de tipo de mapa — abaixo da busca, dentro do header ── */}
+            {/* Alternância de tipo de mapa */}
             <Animated.View
               style={[styles.mapTypeRow, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
             >
@@ -968,7 +938,7 @@ export default function MapaTecnico() {
           </View>
         )}
 
-        {/* ══ MAPA REAL ══════════════════════════════════════════════════ */}
+        {/* ══ MAPA ═══════════════════════════════════════════════════════ */}
         <MapView
           ref={mapRef}
           style={styles.mapa}
@@ -983,19 +953,15 @@ export default function MapaTecnico() {
             if (searchFocused) { Keyboard.dismiss(); setSearchFocused(false); }
           }}
         >
-          {/* Camada municípios */}
           {visibilidade.municipios && (
             <Geojson
               geojson={municipiosData as any}
-              strokeColor={
-                tipoMapa === 'standard' || tipoMapa === 'terrain' ? '#FF8C00' : '#FFFFFF'
-              }
+              strokeColor={tipoMapa === 'standard' || tipoMapa === 'terrain' ? '#FF8C00' : '#FFFFFF'}
               fillColor="rgba(255,255,255,0.08)"
               strokeWidth={1}
             />
           )}
 
-          {/* Limite do estado */}
           <Geojson
             geojson={stateData as any}
             fillColor="rgba(255,0,0,0)"
@@ -1003,7 +969,6 @@ export default function MapaTecnico() {
             strokeWidth={3}
           />
 
-          {/* Corpos hídricos validados */}
           {corposVisiveis.map((item) => {
             const s   = statusFromCorpo(item);
             const cfg = statusConfig(s);
@@ -1020,7 +985,6 @@ export default function MapaTecnico() {
             );
           })}
 
-          {/* Corpos hídricos pendentes */}
           {pendentesVisiveis.map((item) => (
             <Marker
               key={`pend-${item.id}`}
@@ -1033,7 +997,6 @@ export default function MapaTecnico() {
             </Marker>
           ))}
 
-          {/* Pontos de uso */}
           {visibilidade.pontosDeUso && pontosDeUso.map((item) => (
             <Marker
               key={`pu-${item.id}`}
@@ -1046,7 +1009,7 @@ export default function MapaTecnico() {
           ))}
         </MapView>
 
-        {/* ══ SIDEBAR — lateral esquerda, centralizado verticalmente ════ */}
+        {/* ══ SIDEBAR ════════════════════════════════════════════════════ */}
         <View style={styles.sidebar}>
           <TouchableOpacity
             style={styles.sidebarBtn}
@@ -1068,7 +1031,7 @@ export default function MapaTecnico() {
 
           <TouchableOpacity
             style={styles.sidebarBtn}
-            onPress={() => setShowLegendModal(true)}   // Abre modal, não legenda inline
+            onPress={() => setShowLegendModal(true)}
             activeOpacity={0.8}
           >
             <Ionicons name="information-circle-outline" size={22} color={TEXT_DARK} />
@@ -1090,47 +1053,27 @@ export default function MapaTecnico() {
           <BottomSheet
             corpo={selectedCorpo}
             resumo={resumo}
+            totalMedicoes={totalMedicoes}
+            totalAnaliseTecnica={totalAnaliseTecnica}
             loadingResumo={loadingResumo}
             sheetHeight={sheetHeight}
             isExpanded={sheetIsExpanded}
             panHandlers={panResponder.panHandlers}
             fontFamily={questrial}
-            onVerDetalhes={() => {
-              if (!sheetIsExpanded) {
-                snapSheet(true);
-              } else {
-                router.push({ pathname: '/water_body_detail', params: { id: selectedCorpo.id } } as any);
-              }
-            }}
             onNovaAnalise={() => {
               router.push({ pathname: '/new_analysis', params: { corpoId: selectedCorpo.id } } as any);
             }}
-            onVerHistorico={() => {
-              router.push({ pathname: '/history', params: { corpoId: selectedCorpo.id } } as any);
+            onVerDetalhes={() => {
+              router.push({ pathname: '/water_body_details', params: { id: selectedCorpo.id } } as any);
             }}
-            onClose={() => {
-              setDetalheVisible(false);
-              setSelectedCorpo(null);
+            onVerHistorico={() => {
+              router.push({ pathname: '/water_body_history', params: { id: selectedCorpo.id } } as any);
             }}
           />
         )}
 
-        {/* ══ BOTTOM NAV ═════════════════════════════════════════════════ */}
-        <View style={styles.navWrapper}>
-          <View style={styles.navBar}>
-            <NavItem icon="home"      iconOutline="home-outline"      label="Início"   active={false} fontFamily={questrial} onPress={() => router.back()} />
-            <NavItem icon="analytics" iconOutline="analytics-outline" label="Análises" active={false} fontFamily={questrial} onPress={() => {}} />
-            <View style={styles.fabSpacer}>
-              <TouchableOpacity style={styles.fab} activeOpacity={0.85}>
-                <LinearGradient colors={[TEAL_MED, PRIMARY]} style={styles.fabInner}>
-                  <Ionicons name="add" size={26} color="#fff" />
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-            <NavItem icon="map"    iconOutline="map-outline"    label="Mapa"   active={true}  fontFamily={questrial} onPress={() => {}} />
-            <NavItem icon="person" iconOutline="person-outline" label="Perfil" active={false} fontFamily={questrial} onPress={() => {}} />
-          </View>
-        </View>
+        {/* ══ NAVBAR TÉCNICA ═════════════════════════════════════════════ */}
+        <TechnicalBottomNav active="analises" fontFamily={questrial} />
       </View>
 
       {/* ══ MODAIS ════════════════════════════════════════════════════════ */}
@@ -1146,7 +1089,6 @@ export default function MapaTecnico() {
         onClose={() => setShowLegendModal(false)}
       />
 
-      {/* Camadas modal */}
       <Modal visible={showLayersModal} transparent animationType="slide" onRequestClose={() => setShowLayersModal(false)}>
         <View style={styles.modalOverlayBottom}>
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowLayersModal(false)} />
@@ -1193,40 +1135,67 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#f4f7f5' },
 
   // ── Header ────────────────────────────────────────────────────────────────
-  headerGradient: { zIndex: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 6 },
-  headerSafe:     { paddingBottom: 10 },
+  headerGradient: {
+    zIndex: 10,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15, shadowRadius: 8, elevation: 6,
+  },
+  headerSafe: { paddingBottom: 10 },
 
-  headerTopRow:   { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 8, marginBottom: 10 },
-  menuBtn:        { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' },
+  // Título + logo no canto direito — sem hambúrguer, sem sino, sem "TÉCNICO"
+  headerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    marginBottom: 8,
+  },
+  headerCenter: { flex: 1, alignItems: 'flex-start' },
+  pageTitle:    { fontSize: 20, fontWeight: '700', color: '#fff', letterSpacing: 0.2 },
+  pageSubtitle: { fontSize: 12, color: 'rgba(255,255,255,0.65)', marginTop: 2 },
 
-  headerCenter:   { flex: 1, alignItems: 'center' },
-  headerLogo:     { height: 26, width: 140 },                // logo real
-  headerRole:     { fontSize: 9, color: 'rgba(255,255,255,0.65)', letterSpacing: 2, marginTop: 2 },
+  // Logo no canto superior direito (onde ficava o sino)
+  headerLogoRight: { width: 90, height: 28 },
 
-  iconBtn:        { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center', position: 'relative' },
-  notifBadge:     { position: 'absolute', top: -3, right: -3, backgroundColor: '#e53935', borderRadius: 7, minWidth: 14, height: 14, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2, borderWidth: 1.5, borderColor: '#0d4a3e' },
-  notifBadgeText: { fontSize: 8, color: '#fff', fontWeight: '700' },
-
-  headerTitleBlock: { paddingHorizontal: 18, marginBottom: 12 },
-  pageTitle:        { fontSize: 20, fontWeight: '700', color: '#fff', letterSpacing: 0.2 },
-  pageSubtitle:     { fontSize: 12, color: 'rgba(255,255,255,0.65)', marginTop: 2 },
-
-  searchRow:        { flexDirection: 'row', paddingHorizontal: 16, gap: 10, marginBottom: 10 },
-  searchBox:        { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: 12, paddingHorizontal: 12, height: 42, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 4, elevation: 2 },
+  searchRow:        {
+    flexDirection: 'row', paddingHorizontal: 16, gap: 10, marginBottom: 10,
+  },
+  searchBox:        {
+    flex: 1, flexDirection: 'row', alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: 12,
+    paddingHorizontal: 12, height: 42,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08, shadowRadius: 4, elevation: 2,
+  },
   searchBoxFocused: { shadowOpacity: 0.18, elevation: 5 },
   searchInput:      { flex: 1, fontSize: 13, color: TEXT_DARK, paddingVertical: 0 },
-  filterBtn:        { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.35)', borderRadius: 12, paddingHorizontal: 14, height: 42 },
-  filterBtnText:    { fontSize: 13, color: '#fff', fontWeight: '600' },
+  filterBtn:        {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.35)',
+    borderRadius: 12, paddingHorizontal: 14, height: 42,
+  },
+  filterBtnText: { fontSize: 13, color: '#fff', fontWeight: '600' },
 
-  // Modos do mapa — dentro do header, abaixo da busca
-  mapTypeRow:       { flexDirection: 'row', paddingHorizontal: 16, gap: 6, marginBottom: 2 },
-  mapTypeBtn:       { flex: 1, alignItems: 'center', paddingVertical: 7, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.18)' },
-  mapTypeBtnActive: { backgroundColor: '#fff', borderColor: '#fff' },
-  mapTypeText:      { fontSize: 12, color: 'rgba(255,255,255,0.75)', fontWeight: '600' },
-  mapTypeTextActive:{ color: PRIMARY, fontWeight: '700' },
+  mapTypeRow:        { flexDirection: 'row', paddingHorizontal: 16, gap: 6, marginBottom: 2 },
+  mapTypeBtn:        {
+    flex: 1, alignItems: 'center', paddingVertical: 7, borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.18)',
+  },
+  mapTypeBtnActive:  { backgroundColor: '#fff', borderColor: '#fff' },
+  mapTypeText:       { fontSize: 12, color: 'rgba(255,255,255,0.75)', fontWeight: '600' },
+  mapTypeTextActive: { color: PRIMARY, fontWeight: '700' },
 
   // ── Search dropdown ───────────────────────────────────────────────────────
-  searchDropdown:      { position: 'absolute', left: 0, right: 0, zIndex: 100, marginTop: Platform.OS === 'ios' ? 210 : 190, backgroundColor: '#fff', marginHorizontal: 12, borderRadius: 16, maxHeight: 280, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 8, overflow: 'hidden' },
+  searchDropdown: {
+    position: 'absolute', left: 0, right: 0, zIndex: 100,
+    marginTop: Platform.OS === 'ios' ? 195 : 175,
+    backgroundColor: '#fff', marginHorizontal: 12, borderRadius: 16,
+    maxHeight: 280,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15, shadowRadius: 10, elevation: 8, overflow: 'hidden',
+  },
   searchDropdownItem:  { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 14, gap: 10 },
   searchDropdownIcon:  { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   searchDropdownName:  { fontSize: 14, color: '#333', fontWeight: '600' },
@@ -1235,29 +1204,36 @@ const styles = StyleSheet.create({
   pendentePillText:    { fontSize: 10, color: STATUS_YELLOW, fontWeight: '700' },
 
   // ── Map ───────────────────────────────────────────────────────────────────
-  mapa:         { flex: 1 },
-  customMarker: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff', shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 5 },
+  mapa: { flex: 1 },
+  customMarker: {
+    width: 30, height: 30, borderRadius: 15,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: '#fff',
+    shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 }, elevation: 5,
+  },
 
-  // ── Sidebar — esquerda, centralizado verticalmente ────────────────────────
-  sidebar:      {
-    position: 'absolute',
-    left: 12,
-    top: '35%',          // centralizado verticalmente sobre o mapa
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8,
-    elevation: 5,
-    overflow: 'hidden',
-    zIndex: 5,
-    transform: [{ translateY: -80 }], // ajuste fino de centro
+  // ── Sidebar ───────────────────────────────────────────────────────────────
+  sidebar: {
+    position: 'absolute', left: 12, top: 16,
+    backgroundColor: '#fff', borderRadius: 14,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1, shadowRadius: 8, elevation: 5,
+    overflow: 'hidden', zIndex: 5,
   },
   sidebarBtn:   { alignItems: 'center', paddingVertical: 11, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: '#f0f0f0', minWidth: 58 },
   sidebarLabel: { fontSize: 9, color: TEXT_DARK, marginTop: 3, fontWeight: '600', textAlign: 'center' },
 
   // ── Bottom Sheet ──────────────────────────────────────────────────────────
-  bottomSheet:      { backgroundColor: '#fff', borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 16, shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 12, zIndex: 20 },
+  bottomSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 22, borderTopRightRadius: 22,
+    paddingHorizontal: 16,
+    shadowColor: '#000', shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1, shadowRadius: 12, elevation: 12, zIndex: 20,
+  },
   dragHandleWrapper: { alignItems: 'center', paddingVertical: 10 },
-  dragHandle:       { width: 36, height: 4, backgroundColor: '#dde5e2', borderRadius: 2 },
+  dragHandle:        { width: 36, height: 4, backgroundColor: '#dde5e2', borderRadius: 2 },
 
   bsHeaderRow:  { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 10 },
   bsIconCircle: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
@@ -1269,61 +1245,108 @@ const styles = StyleSheet.create({
   statusBadge:     { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 5, alignSelf: 'flex-start', marginLeft: 6 },
   statusBadgeText: { fontSize: 11, color: '#fff', fontWeight: '700', letterSpacing: 0.5 },
 
-  alertaBanner: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: STATUS_RED_BG, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 10, borderWidth: 1, borderColor: '#f5c6c6' },
-  alertaText:   { flex: 1, fontSize: 13, color: STATUS_RED, fontWeight: '600' },
+  alertaBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: STATUS_RED_BG, borderRadius: 10,
+    paddingVertical: 10, paddingHorizontal: 12, marginBottom: 10,
+    borderWidth: 1, borderColor: '#f5c6c6',
+  },
+  alertaText: { flex: 1, fontSize: 13, color: STATUS_RED, fontWeight: '600' },
 
-  bsSectionTitle: { fontSize: 11, fontWeight: '700', color: TEXT_MUTED, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6, marginTop: 4 },
-  bsSectionSub:   { fontSize: 11, fontWeight: '400', textTransform: 'none', letterSpacing: 0 },
+  bsSectionTitle: {
+    fontSize: 11, fontWeight: '700', color: TEXT_MUTED,
+    textTransform: 'uppercase', letterSpacing: 0.6,
+    marginBottom: 6, marginTop: 10,
+  },
+  bsSectionSub: { fontSize: 11, fontWeight: '400', textTransform: 'none', letterSpacing: 0 },
 
-  statsRow:      { flexDirection: 'row', backgroundColor: '#f8faf8', borderRadius: 14, padding: 10, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' },
-  statItem:      { flex: 1, alignItems: 'center', gap: 2 },
-  statIconCircle:{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
-  statValue:     { fontSize: 20, fontWeight: '700', color: TEXT_DARK, lineHeight: 24 },
-  statLabel:     { fontSize: 9, color: TEXT_MUTED, textAlign: 'center', lineHeight: 12 },
+  // Stats row — 4 colunas
+  statsRow:       {
+    flexDirection: 'row', backgroundColor: '#f8faf8', borderRadius: 14,
+    padding: 10, marginBottom: 10, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+  },
+  statItem:       { flex: 1, alignItems: 'center', gap: 2 },
+  statIconCircle: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
+  statValue:      { fontSize: 18, fontWeight: '700', color: TEXT_DARK, lineHeight: 22 },
+  statLabel:      { fontSize: 9, color: TEXT_MUTED, textAlign: 'center', lineHeight: 12 },
 
-  // Situação atual — sem ícone de pessoa
-  bsSituacaoBox:  { backgroundColor: '#f8faf8', borderRadius: 12, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)' },
+  bsSituacaoBox:  {
+    backgroundColor: '#f8faf8', borderRadius: 12, padding: 12,
+    marginBottom: 6, borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)',
+  },
   bsSituacaoText: { fontSize: 13, color: TEXT_DARK, lineHeight: 19 },
 
-  bsEstadoGrid:  { backgroundColor: '#f8faf8', borderRadius: 12, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)' },
-  bsEstadoRow:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  bsEstadoLabel: { fontSize: 12, color: TEXT_MUTED, flex: 1 },
-  bsEstadoVal:   { fontSize: 13, color: TEXT_DARK, textAlign: 'right', flex: 1 },
-  estadoBadge:   { alignSelf: 'flex-start', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
-  estadoBadgeText:{ fontSize: 12, fontWeight: '600' },
+  // ── Estado técnico ────────────────────────────────────────────────────────
+  estadoTecnicoBox: {
+    backgroundColor: '#f8faf8', borderRadius: 12,
+    borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', marginBottom: 6,
+    overflow: 'hidden',
+  },
+  estadoRow:     {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 14, paddingVertical: 12,
+  },
+  estadoDivider: { height: 1, backgroundColor: '#f0f0f0', marginHorizontal: 14 },
+  estadoLabel:   { fontSize: 13, color: TEXT_MUTED },
+  estadoValor:   { fontSize: 13, color: TEXT_DARK, fontWeight: '600' },
+  statusPillYellow: {
+    backgroundColor: STATUS_YELLOW_BG, borderRadius: 20,
+    paddingHorizontal: 10, paddingVertical: 4,
+    borderWidth: 1, borderColor: '#ffe082',
+  },
+  statusPillText: { fontSize: 12, color: STATUS_YELLOW, fontWeight: '700' },
 
-  // Risco ambiental (expandido)
-  riscoBadgeRow: { marginBottom: 10 },
-  riscoBadge:    { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1 },
-  riscoBadgeText:{ fontSize: 13, fontWeight: '700' },
+  // ── Risco ambiental ───────────────────────────────────────────────────────
+  riscoBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    alignSelf: 'flex-start', borderRadius: 20,
+    paddingHorizontal: 14, paddingVertical: 8, marginBottom: 6,
+  },
+  riscoText: { fontSize: 14, fontWeight: '700' },
 
-  // Indicadores (expandido)
-  indicadoresGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  indicadorItem:   { flex: 1, minWidth: '44%', backgroundColor: '#f8faf8', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', alignItems: 'center' },
+  // ── Indicadores ───────────────────────────────────────────────────────────
+  indicadoresGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
+  indicadorItem:   {
+    flex: 1, minWidth: '44%', backgroundColor: '#f8faf8', borderRadius: 12,
+    padding: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', alignItems: 'center',
+  },
   indicadorLabel:  { fontSize: 11, color: TEXT_MUTED, marginBottom: 4, fontWeight: '600' },
   indicadorValor:  { fontSize: 16, fontWeight: '700' },
 
-  // Ações rápidas (expandido)
-  acoesRapidasRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  acaoCard:        { flex: 1, backgroundColor: '#f0f7f4', borderRadius: 14, padding: 12, alignItems: 'center', gap: 6, borderWidth: 1, borderColor: '#d0e8e0' },
-  acaoCardIcon:    { width: 36, height: 36, borderRadius: 18, backgroundColor: '#e6f5ef', alignItems: 'center', justifyContent: 'center' },
-  acaoCardText:    { fontSize: 10, color: TEXT_DARK, fontWeight: '600', textAlign: 'center', lineHeight: 14 },
+  // ── Ações rápidas ─────────────────────────────────────────────────────────
+  acoesRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  acaoCard: {
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#f8faf8', borderRadius: 14, paddingVertical: 14, paddingHorizontal: 8,
+    borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', gap: 4,
+  },
+  acaoLabel: { fontSize: 11, color: TEXT_DARK, textAlign: 'center', fontWeight: '600', lineHeight: 15 },
 
-  // Botões colapsados
-  bsActionsCollapsed: { marginBottom: 8, gap: 8 },
-  bsBtnPrimary:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 14 },
-  bsBtnPrimaryText:   { fontSize: 14, color: '#fff', fontWeight: '700' },
-  bsBtnsSecRow:       { flexDirection: 'row', gap: 8 },
-  bsBtnSec:           { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#f0f4f2', borderRadius: 14, paddingVertical: 12, borderWidth: 1, borderColor: '#dde8e4' },
-  bsBtnSecText:       { fontSize: 12, color: TEXT_DARK, fontWeight: '600' },
+  // ── Botão principal ───────────────────────────────────────────────────────
+  bsBtnPrimary: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 14, marginBottom: 8,
+  },
+  bsBtnPrimaryText: { fontSize: 14, color: '#fff', fontWeight: '700' },
 
   bsTimestamp: { fontSize: 10, color: TEXT_MUTED, textAlign: 'center', marginTop: 4 },
 
-  // ── Modals ────────────────────────────────────────────────────────────────
+  // ── Modais ────────────────────────────────────────────────────────────────
   modalOverlay:       { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   modalOverlayBottom: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
-  modalCard:          { backgroundColor: '#fff', borderRadius: 20, padding: 20, width: '100%', maxWidth: 380, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.2, shadowRadius: 20, elevation: 16 },
-  menuBottom:         { backgroundColor: 'rgba(255,255,255,0.98)', width: '100%', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '60%', elevation: 8, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8, paddingBottom: Platform.OS === 'ios' ? 36 : 24 },
+  modalCard:          {
+    backgroundColor: '#fff', borderRadius: 20, padding: 20,
+    width: '100%', maxWidth: 380,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2, shadowRadius: 20, elevation: 16,
+  },
+  menuBottom: {
+    backgroundColor: 'rgba(255,255,255,0.98)', width: '100%',
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 24, maxHeight: '60%', elevation: 8,
+    shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8,
+    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
+  },
   menuHeader:         { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   menuDivider:        { height: 1, backgroundColor: BORDER_LIGHT, marginBottom: 16 },
   modalHeader:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
@@ -1331,41 +1354,30 @@ const styles = StyleSheet.create({
   modalSectionTitle:  { fontSize: 13, fontWeight: '700', color: TEXT_DARK, marginBottom: 10 },
   modalDivider:       { height: 1, backgroundColor: '#f0f0f0', marginVertical: 14 },
 
-  // Chips de status (mobile-friendly)
-  chipsRow:   { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
-  chip:       { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 50, borderWidth: 1.5, backgroundColor: '#f8f8f8' },
-  chipDot:    { width: 8, height: 8, borderRadius: 4 },
-  chipText:   { fontSize: 13 },
+  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
+  chip:     { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 50, borderWidth: 1.5, backgroundColor: '#f8f8f8' },
+  chipDot:  { width: 8, height: 8, borderRadius: 4 },
+  chipText: { fontSize: 13 },
 
-  // Cards de tipo (mobile-friendly)
-  typeCard:        { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12, backgroundColor: '#f8faf8', marginBottom: 8, borderWidth: 1.5, borderColor: '#f0f0f0' },
-  typeCardChecked: { backgroundColor: '#e8f5ef', borderColor: '#b2dbc8' },
-  typeCardIcon:    { width: 32, height: 32, borderRadius: 16, backgroundColor: '#e8e8e8', alignItems: 'center', justifyContent: 'center' },
+  typeCard:            { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12, backgroundColor: '#f8faf8', marginBottom: 8, borderWidth: 1.5, borderColor: '#f0f0f0' },
+  typeCardChecked:     { backgroundColor: '#e8f5ef', borderColor: '#b2dbc8' },
+  typeCardIcon:        { width: 32, height: 32, borderRadius: 16, backgroundColor: '#e8e8e8', alignItems: 'center', justifyContent: 'center' },
   typeCardIconChecked: { backgroundColor: PRIMARY },
-  typeCardText:    { flex: 1, fontSize: 14, color: TEXT_MUTED, fontWeight: '500' },
+  typeCardText:        { flex: 1, fontSize: 14, color: TEXT_MUTED, fontWeight: '500' },
   typeCardTextChecked: { color: TEXT_DARK, fontWeight: '600' },
 
   applyBtn:     { backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginTop: 8 },
   applyBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 
-  legendRow:       { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 14 },
-  legendIconCircle:{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  legendTitle:     { fontSize: 14, fontWeight: '700', color: TEXT_DARK, marginBottom: 2 },
-  legendDesc:      { fontSize: 12, color: TEXT_MUTED, lineHeight: 16 },
+  legendRow:        { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 14 },
+  legendIconCircle: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  legendTitle:      { fontSize: 14, fontWeight: '700', color: TEXT_DARK, marginBottom: 2 },
+  legendDesc:       { fontSize: 12, color: TEXT_MUTED, lineHeight: 16 },
 
-  toggleRow:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 13, paddingHorizontal: 12, backgroundColor: '#f9fafa', marginBottom: 8, borderRadius: 10, borderWidth: 1, borderColor: '#f0f0f0' },
-  toggleLabel:      { fontSize: 14, fontWeight: '600', color: '#333' },
-  toggle:           { width: 48, height: 26, backgroundColor: '#ddd', borderRadius: 13, padding: 2, justifyContent: 'center' },
-  toggleAtivo:      { backgroundColor: PRIMARY },
-  toggleCircle:     { width: 22, height: 22, borderRadius: 11, backgroundColor: '#fff', alignSelf: 'flex-start' },
-  toggleCircleAtivo:{ alignSelf: 'flex-end' },
-
-  // ── Bottom nav ────────────────────────────────────────────────────────────
-  navWrapper: { backgroundColor: '#fff', borderTopLeftRadius: 22, borderTopRightRadius: 22, shadowColor: '#000', shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.07, shadowRadius: 10, elevation: 12, zIndex: 30 },
-  navBar:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 4 : 10, paddingHorizontal: 8 },
-  navItem:    { width: '20%', alignItems: 'center', justifyContent: 'center', paddingVertical: 4 },
-  navLabel:   { fontSize: 12, marginTop: 3, letterSpacing: 0.1 },
-  fabSpacer:  { width: '20%', alignItems: 'center', justifyContent: 'center' },
-  fab:        { width: 56, height: 56, borderRadius: 28, marginTop: -22, shadowColor: PRIMARY, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 8 },
-  fabInner:   { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
+  toggleRow:         { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 13, paddingHorizontal: 12, backgroundColor: '#f9fafa', marginBottom: 8, borderRadius: 10, borderWidth: 1, borderColor: '#f0f0f0' },
+  toggleLabel:       { fontSize: 14, fontWeight: '600', color: '#333' },
+  toggle:            { width: 48, height: 26, backgroundColor: '#ddd', borderRadius: 13, padding: 2, justifyContent: 'center' },
+  toggleAtivo:       { backgroundColor: PRIMARY },
+  toggleCircle:      { width: 22, height: 22, borderRadius: 11, backgroundColor: '#fff', alignSelf: 'flex-start' },
+  toggleCircleAtivo: { alignSelf: 'flex-end' },
 });
