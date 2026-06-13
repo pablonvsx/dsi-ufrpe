@@ -331,7 +331,7 @@ export default function AnalysesScreen() {
      * Fallback para 'pendentes' quando o parâmetro estiver ausente ou inválido.
      */
     const params    = useLocalSearchParams<{ tab?: string }>();
-    
+
     const [activeTab,   setActiveTab]   = useState<TabKey>(toTabKey(params.tab));
     const [searchQuery, setSearchQuery] = useState('');
 
@@ -441,9 +441,32 @@ export default function AnalysesScreen() {
     }, [criticalData, searchQuery]);
 
     // ── Navegação ─────────────────────────────────────────────────────────────
+
+    /**
+     * MUDANÇA: ao clicar em "Analisar", navega para new_analyses passando
+     * os dados do corpo hídrico e o tipo (pendente | critica).
+     */
     const handleAnalyze = useCallback((id: string) => {
-        router.push({ pathname: '/(tabs)/analysis_detail', params: { id } } as any);
-    }, [router]);
+        // Localiza o item em qualquer uma das listas para extrair o corpo hídrico
+        const itemPendente = pendingData.find(i => i.id === id);
+        const itemHistorico = historyData.find(i => i.id === id);
+        const itemCritico   = criticalData.find(i => i.id === id);
+
+        const item = itemPendente ?? itemHistorico ?? itemCritico;
+
+        const tipo: 'pendente' | 'critica' =
+            activeTab === 'criticas' ? 'critica' : 'pendente';
+
+        router.push({
+            pathname: '/(tabs)/new_analyses',
+            params: {
+                origem:           'analises',
+                tipo,
+                corpoHidricoId:   (item as any)?.corpoHidricoId   ?? '',
+                nomeCorpoHidrico: (item as any)?.corpoHidricoNome  ?? '',
+            },
+        } as any);
+    }, [router, activeTab, pendingData, historyData, criticalData]);
 
     // ── Lista ─────────────────────────────────────────────────────────────────
     const isLoading =
