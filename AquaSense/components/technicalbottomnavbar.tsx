@@ -67,8 +67,9 @@ const TechnicalBottomNav: React.FC<TechnicalBottomNavProps> = ({ active, fontFam
         [active, router],
     );
 
+    // ── MUDANÇA: botão "+" navega para a tela de Nova Análise Técnica ──────────
     const handleAdd = useCallback(() => {
-        router.push('/(tabs)/register_observation' as any);
+        router.push('/(tabs)/new_analyses' as any);
     }, [router]);
 
     const renderTab = (tab: typeof LEFT_TABS[0]) => {
