@@ -33,7 +33,7 @@ import { getPendingAnalyses } from '@/services/firestore/technicalAnalyses';
 import { getCriticalAnalyses } from '@/services/firestore/critical_analyses';
 
 // ─── CORREÇÃO 5: componente reutilizável da navbar ────────────────────────────
-import TechnicalBottomNav, { TechNavTab } from '@/components/technicalbottomnav';
+import TechnicalBottomNav, { TechNavTab } from '@/components/technicalbottomnavbar';
 
 // ─── Paleta ────────────────────────────────────────────────────────────────────
 const PRIMARY      = '#004d48';
