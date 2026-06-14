@@ -29,7 +29,7 @@ export default function ManagerBottomNav({ activeTab, fontFamily }: ManagerBotto
                 router.replace("/(tabs)/home_manager" as any);
                 break;
             case "validacoes":
-                router.push("/(tabs)/manage_water_bodies" as any);
+                router.push("/(tabs)/validacoes_manager" as any);
                 break;
             case "dashboard":
                 router.replace("/(tabs)/home_manager" as any);
