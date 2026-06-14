@@ -35,7 +35,7 @@ export default function ManagerBottomNav({ activeTab, fontFamily }: ManagerBotto
                 router.replace("/(tabs)/home_manager" as any);
                 break;
             case "mapa":
-                router.push("/map" as any);
+                router.push("/(tabs)/map_manager" as any);                
                 break;
             case "perfil":
                 router.push("/(tabs)/profile" as any);
