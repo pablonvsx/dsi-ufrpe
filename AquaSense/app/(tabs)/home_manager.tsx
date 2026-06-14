@@ -236,7 +236,7 @@ export default function HomeManager() {
                         {/* Card 1: Alertas */}
                         <TouchableOpacity 
                             style={[styles.quickCard, styles.alertCard]}
-                            onPress={() => {}}
+                            onPress={() => router.push("/(tabs)/alerts_manager" as any)}
                             activeOpacity={0.7}
                         >
                             <View style={[styles.quickCardIcon, { backgroundColor: "#FFE8E8" }]}>
@@ -278,7 +278,7 @@ export default function HomeManager() {
                         {/* Card 4: Gerenciar Corpos Hídricos */}
                         <TouchableOpacity 
                             style={[styles.quickCard, styles.waterBodiesCard]}
-                            onPress={() => router.push("/(tabs)/manage_water_bodies" as any)}
+                            onPress={() => router.push("/(tabs)/validacoes_manager" as any)}
                             activeOpacity={0.7}
                         >
                             <View style={[styles.quickCardIcon, { backgroundColor: "#E0E8FF" }]}>
