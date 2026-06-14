@@ -24,6 +24,8 @@ import {
   NivelAlerta,
 } from "@/services/firestore/alerts";
 
+import CollaboratorBottomNav from "@/components/collaboratorbottomnav";
+
 const PRIMARY = "#004d48";
 const SURFACE = "#F5F9F8";
 const TEXT_MUTED = "#6b7a7a";
@@ -320,93 +322,9 @@ export default function AlertsScreen() {
         )}
       </ScrollView>
 
-      <SafeAreaView edges={["bottom"]} style={styles.navBarWrapper}>
-        <View style={styles.navBar}>
-          <NavBarItem
-            icon="home"
-            iconOutline="home-outline"
-            label="Home"
-            active={false}
-            fontFamily={questrial}
-            onPress={() => router.replace("/home_collaborator_update" as any)}
-          />
-
-          <NavBarItem
-            icon="map"
-            iconOutline="map-outline"
-            label="Mapa"
-            active={false}
-            fontFamily={questrial}
-            onPress={() => router.replace("/map" as any)}
-          />
-
-          <TouchableOpacity
-            style={styles.fabButton}
-            onPress={() => router.push("/register_water_body" as any)}
-            activeOpacity={0.85}
-          >
-            <View style={styles.fabInner}>
-              <Ionicons name="add" size={32} color="#FFFFFF" />
-            </View>
-          </TouchableOpacity>
-
-          <NavBarItem
-            icon="people"
-            iconOutline="people-outline"
-            label="Painel"
-            active={false}
-            fontFamily={questrial}
-            onPress={() => router.replace("/community_panel" as any)}
-          />
-
-          <NavBarItem
-            icon="person"
-            iconOutline="person-outline"
-            label="Perfil"
-            active={false}
-            fontFamily={questrial}
-            onPress={() => router.replace("/profile" as any)}
-          />
-        </View>
-      </SafeAreaView>
+      {/* Nenhuma tab ativa — Alertas é acessado via sino no topo, não é item da navbar */}
+      <CollaboratorBottomNav fontFamily={questrial} />
     </View>
-  );
-}
-
-function NavBarItem({
-  icon,
-  iconOutline,
-  label,
-  active,
-  fontFamily,
-  onPress,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  iconOutline: keyof typeof Ionicons.glyphMap;
-  label: string;
-  active: boolean;
-  fontFamily?: string;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity style={styles.navItem} onPress={onPress} activeOpacity={0.7}>
-      <Ionicons
-        name={active ? icon : iconOutline}
-        size={24}
-        color={active ? PRIMARY : "#b0c4c2"}
-      />
-      <Text
-        style={[
-          styles.navLabel,
-          {
-            fontFamily,
-            color: active ? PRIMARY : "#b0c4c2",
-          },
-        ]}
-      >
-        {label}
-      </Text>
-    </TouchableOpacity>
   );
 }
 
@@ -632,63 +550,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#555",
     lineHeight: 20,
-  },
-
-  navBarWrapper: {
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.07,
-    shadowRadius: 10,
-    elevation: 12,
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-  },
-
-  navBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-around",
-    paddingTop: 10,
-    paddingBottom: Platform.OS === "ios" ? 4 : 10,
-    paddingHorizontal: 8,
-  },
-
-  navItem: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 4,
-  },
-
-  navLabel: {
-    fontSize: 10,
-    marginTop: 3,
-    letterSpacing: 0.1,
-  },
-
-  fabButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    marginBottom: 16,
-    shadowColor: PRIMARY,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 8,
-  },
-
-  fabInner: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: PRIMARY,
-    alignItems: "center",
-    justifyContent: "center",
   },
 });
