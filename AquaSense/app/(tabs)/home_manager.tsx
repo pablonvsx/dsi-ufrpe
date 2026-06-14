@@ -450,29 +450,144 @@ export default function HomeManager() {
                 </LinearGradient>
 
                 {/* ══ CONTEÚDO ══ */}
-                <ScrollView
-                    style={styles.body}
-                    showsVerticalScrollIndicator={false}
-                    contentContainerStyle={{ paddingBottom: 24 }}
-                >
-                    {loadingMain ? (
-                        <ActivityIndicator size="large" color={PRIMARY} style={{ marginTop: 40 }} />
-                    ) : (
-                        <>
-                            {/* ── Cards rápidos 2×2 ─────────────────────────────────── */}
-                            <View style={styles.cardsGrid}>
-                                {/* Linha 1 */}
-                                <View style={styles.cardsRow}>
-                                    <TouchableOpacity
-                                        style={[styles.quickCard, { borderBottomColor: "#FFA726" }]}
-                                        onPress={() => router.push("/(tabs)/manage_water_bodies" as any)}
-                                        activeOpacity={0.75}
-                                    >
-                                        <View style={styles.quickCardTop}>
-                                            <View style={[styles.quickCardIcon, { backgroundColor: "#FFF3E0" }]}>
-                                                <Ionicons name="checkmark-circle-outline" size={20} color="#F57C00" />
-                                            </View>
-                                            <Ionicons name="chevron-forward" size={14} color="#9ca3a3" />
+                <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
+                    {/* Cards Grid - 4 opções de gestão */}
+                    <View style={styles.cardsContainer}>
+                        
+                        {/* Card 1: Alertas */}
+                        <TouchableOpacity 
+                            style={[styles.quickCard, styles.alertCard]}
+                            onPress={() => router.push("/(tabs)/alerts_manager" as any)}
+                            activeOpacity={0.7}
+                        >
+                            <View style={[styles.quickCardIcon, { backgroundColor: "#FFE8E8" }]}>
+                                <Ionicons name="alert-circle" size={22} color="#EF4444" />
+                            </View>
+                            <Text style={styles.quickCardNumber}>—</Text>
+                            <Text style={styles.quickCardTitle}>Alertas</Text>
+                            <Ionicons name="chevron-forward" size={14} color="#9ca3a3" style={styles.quickCardArrow} />
+                        </TouchableOpacity>
+
+                        {/* Card 2: Equipes Técnicas */}
+                        <TouchableOpacity 
+                            style={[styles.quickCard, styles.techniciansCard]}
+                            onPress={() => router.push("/(tabs)/manage_technicians" as any)}
+                            activeOpacity={0.7}
+                        >
+                            <View style={[styles.quickCardIcon, { backgroundColor: "#E0F7E6" }]}>
+                                <Ionicons name="build" size={22} color="#22C55E" />
+                            </View>
+                            <Text style={styles.quickCardNumber}>{techniciansCount}</Text>
+                            <Text style={styles.quickCardTitle}>Técnicos</Text>
+                            <Ionicons name="chevron-forward" size={14} color="#9ca3a3" style={styles.quickCardArrow} />
+                        </TouchableOpacity>
+
+                        {/* Card 3: Gestão de Colaboradores */}
+                        <TouchableOpacity 
+                            style={[styles.quickCard, styles.collaboratorsCard]}
+                            onPress={() => router.push("/(tabs)/manage_collaborators" as any)}
+                            activeOpacity={0.7}
+                        >
+                            <View style={[styles.quickCardIcon, { backgroundColor: "#E8E8F8" }]}>
+                                <Ionicons name="people" size={22} color="#7C3AED" />
+                            </View>
+                            <Text style={styles.quickCardNumber}>{collaboratorsCount}</Text>
+                            <Text style={styles.quickCardTitle}>Colab.</Text>
+                            <Ionicons name="chevron-forward" size={14} color="#9ca3a3" style={styles.quickCardArrow} />
+                        </TouchableOpacity>
+
+                        {/* Card 4: Gerenciar Corpos Hídricos */}
+                        <TouchableOpacity 
+                            style={[styles.quickCard, styles.waterBodiesCard]}
+                            onPress={() => router.push("/(tabs)/validacoes_manager" as any)}
+                            activeOpacity={0.7}
+                        >
+                            <View style={[styles.quickCardIcon, { backgroundColor: "#E0E8FF" }]}>
+                                <Ionicons name="water" size={22} color="#3B82F6" />
+                            </View>
+                            <Text style={styles.quickCardNumber}>{unvalidatedCount}</Text>
+                            <Text style={styles.quickCardTitle}>Registros</Text>
+                            <Ionicons name="chevron-forward" size={14} color="#9ca3a3" style={styles.quickCardArrow} />
+                        </TouchableOpacity>
+
+                    </View>
+
+                    {/* ══ PANORAMA GERAL ══ */}
+                    <View style={styles.panoramaSection}>
+                        <Text style={[styles.panoramaTitle, { fontFamily: questrial }]}>Panorama Geral</Text>
+                        
+                        {/* Filtro de Tempo */}
+                        <View style={styles.timeFilterContainer}>
+                            {[30, 60, 90].map((dias) => (
+                                <TouchableOpacity
+                                    key={dias}
+                                    style={[styles.filterButton, timeFilter === dias && styles.filterButtonActive]}
+                                    onPress={() => setTimeFilter(dias)}
+                                >
+                                    <Text style={[styles.filterButtonText, timeFilter === dias && styles.filterButtonTextActive]}>
+                                        {dias}d
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+
+                        {loadingStats ? (
+                            <ActivityIndicator size="large" color="#004d48" style={{ marginVertical: 40 }} />
+                        ) : (
+                            <>
+                                {/* Gráfico: Qualidade da Água */}
+                                <View style={styles.chartCard}>
+                                    <Text style={[styles.chartTitle, { fontFamily: questrial }]}>Qualidade da Água</Text>
+                                    <View style={styles.horizontalBar}>
+                                        {qualidadeAgua.total > 0 && (
+                                            <>
+                                                {qualidadeAgua.boa > 0 && (
+                                                    <View 
+                                                        style={[
+                                                            styles.barSegment, 
+                                                            { backgroundColor: "#22C55E", width: `${(qualidadeAgua.boa / qualidadeAgua.total) * 100}%` }
+                                                        ]} 
+                                                    />
+                                                )}
+                                                {qualidadeAgua.normal > 0 && (
+                                                    <View 
+                                                        style={[
+                                                            styles.barSegment, 
+                                                            { backgroundColor: "#F59E0B", width: `${(qualidadeAgua.normal / qualidadeAgua.total) * 100}%` }
+                                                        ]} 
+                                                    />
+                                                )}
+                                                {qualidadeAgua.atencao > 0 && (
+                                                    <View 
+                                                        style={[
+                                                            styles.barSegment, 
+                                                            { backgroundColor: "#F97316", width: `${(qualidadeAgua.atencao / qualidadeAgua.total) * 100}%` }
+                                                        ]} 
+                                                    />
+                                                )}
+                                                {qualidadeAgua.critico > 0 && (
+                                                    <View 
+                                                        style={[
+                                                            styles.barSegment, 
+                                                            { backgroundColor: "#EF4444", width: `${(qualidadeAgua.critico / qualidadeAgua.total) * 100}%` }
+                                                        ]} 
+                                                    />
+                                                )}
+                                            </>
+                                        )}
+                                    </View>
+                                    <View style={styles.chartLegend}>
+                                        <View style={styles.legendItem}>
+                                            <View style={[styles.legendColor, { backgroundColor: "#22C55E" }]} />
+                                            <Text style={styles.legendText}>Boa</Text>
+                                        </View>
+                                        <View style={styles.legendItem}>
+                                            <View style={[styles.legendColor, { backgroundColor: "#F59E0B" }]} />
+                                            <Text style={styles.legendText}>Normal</Text>
+                                        </View>
+                                        <View style={styles.legendItem}>
+                                            <View style={[styles.legendColor, { backgroundColor: "#F97316" }]} />
+                                            <Text style={styles.legendText}>Atenção</Text>
                                         </View>
                                         <Text style={[styles.quickCardNumber, { fontFamily: questrial }]}>
                                             {validacoesPendentes}
