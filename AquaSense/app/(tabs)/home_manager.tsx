@@ -19,7 +19,6 @@ import { Stack, useRouter } from "expo-router";
 import * as Location from "expo-location";
 import { useAuth } from "@/contexts/auth-context";
 import { getUnvalidatedWaterBodies } from "@/services/firestore/water_bodies";
-import { getCollaborators, getTechnicians } from "@/services/firestore/users";
 import { listarEquipesTecnicas } from "@/services/firestore/technical_teams";
 import { buscarAlertasDoUsuario, Alerta } from "@/services/firestore/alerts";
 import {
@@ -105,7 +104,6 @@ interface QualidadeAgua {
 
 function WaterQualityRing({ data }: { data: QualidadeAgua }) {
     const size = 82;
-    const total = data.total || 1;
     const dominantColor =
         data.critico > 0 ? "#EF4444" : data.atencao > 0 ? "#F97316" : "#22C55E";
 
@@ -129,7 +127,6 @@ function WaterQualityRing({ data }: { data: QualidadeAgua }) {
                     {"análises\nno período"}
                 </Text>
             </View>
-            {/* Barra de proporção segmentada */}
             <View
                 style={{
                     flexDirection: "row",
@@ -242,7 +239,7 @@ export default function HomeManager() {
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(18)).current;
 
-    // ── Dados iniciais (independentes do filtro de tempo) ──────────────────
+    // ── Dados iniciais ─────────────────────────────────────────────────────
     useEffect(() => {
         Animated.parallel([
             Animated.timing(fadeAnim, { toValue: 1, duration: 550, useNativeDriver: true }),
@@ -299,7 +296,9 @@ export default function HomeManager() {
                 if (place) {
                     const city = place.city ?? place.subregion ?? "";
                     const state = place.region ?? "";
-                    setLocationText(city && state ? `${city} - ${state}` : city || state || "Região Metropolitana do Recife");
+                    setLocationText(
+                        city && state ? `${city} - ${state}` : city || state || "Região Metropolitana do Recife"
+                    );
                 }
             } catch {
                 // mantém o default
@@ -307,22 +306,30 @@ export default function HomeManager() {
         })();
     }, [userProfile?.uid]);
 
-    // ── Dados do panorama (dependem do filtro de tempo) ─────────────────────
+    // ── Dados do panorama ──────────────────────────────────────────────────
     useEffect(() => {
         const fetchPanorama = async () => {
             try {
                 setLoadingStats(true);
-                const [qualidade, analises, prevAnalises, dailyAnal, dailyQual, denuncias, prevDenuncias, dailyDen] =
-                    await Promise.all([
-                        getColetasSimplesPorNivel(timeFilter),
-                        getColetasCompletas(timeFilter),
-                        getPreviousPeriodColetasCompletas(timeFilter),
-                        getDailyColetasCompletas(timeFilter),
-                        getDailyQualityLevels(timeFilter),
-                        getComplaintsCountByPeriod(timeFilter),
-                        getPreviousPeriodComplaintsCount(timeFilter),
-                        getDailyComplaintsCount(timeFilter),
-                    ]);
+                const [
+                    qualidade,
+                    analises,
+                    prevAnalises,
+                    dailyAnal,
+                    dailyQual,
+                    denuncias,
+                    prevDenuncias,
+                    dailyDen,
+                ] = await Promise.all([
+                    getColetasSimplesPorNivel(timeFilter),
+                    getColetasCompletas(timeFilter),
+                    getPreviousPeriodColetasCompletas(timeFilter),
+                    getDailyColetasCompletas(timeFilter),
+                    getDailyQualityLevels(timeFilter),
+                    getComplaintsCountByPeriod(timeFilter),
+                    getPreviousPeriodComplaintsCount(timeFilter),
+                    getDailyComplaintsCount(timeFilter),
+                ]);
 
                 setQualidadeAgua(qualidade);
                 setAnalisesCount(analises);
@@ -342,7 +349,7 @@ export default function HomeManager() {
         fetchPanorama();
     }, [timeFilter]);
 
-    // ── Dados derivados ─────────────────────────────────────────────────────
+    // ── Dados derivados ────────────────────────────────────────────────────
     const corposCriticos = qualidadeAgua.critico;
     const dailyCriticoValues = prepareSparkline(
         dailyQuality.map((d) => ({ date: d.date, count: d.critico })),
@@ -364,7 +371,7 @@ export default function HomeManager() {
     const userName =
         userProfile?.nome?.split(" ").slice(0, 2).join(" ") ?? "Gestor";
 
-    // ── Render ───────────────────────────────────────────────────────────────
+    // ── Render ─────────────────────────────────────────────────────────────
     return (
         <>
             <Stack.Screen options={{ headerShown: false }} />
@@ -382,7 +389,7 @@ export default function HomeManager() {
                         <Animated.View
                             style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}
                         >
-                            {/* Linha superior: logo + badge + ações */}
+                            {/* Linha superior */}
                             <View style={styles.headerTopRow}>
                                 <View style={styles.brandRow}>
                                     <Image
@@ -418,7 +425,7 @@ export default function HomeManager() {
                                 </View>
                             </View>
 
-                            {/* Linha inferior: saudação + chip atualizado */}
+                            {/* Linha inferior */}
                             <View style={styles.welcomeRow}>
                                 <View style={styles.welcomeLeft}>
                                     <Text style={[styles.welcomeName, { fontFamily: questrial }]}>
@@ -451,11 +458,10 @@ export default function HomeManager() {
 
                 {/* ══ CONTEÚDO ══ */}
                 <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
-                    {/* Cards Grid - 4 opções de gestão */}
+
+                    {/* ── Cards de acesso rápido (2×2) ── */}
                     <View style={styles.cardsContainer}>
-                        
-                        {/* Card 1: Alertas */}
-                        <TouchableOpacity 
+                        <TouchableOpacity
                             style={[styles.quickCard, styles.alertCard]}
                             onPress={() => router.push("/(tabs)/alerts_manager" as any)}
                             activeOpacity={0.7}
@@ -463,13 +469,12 @@ export default function HomeManager() {
                             <View style={[styles.quickCardIcon, { backgroundColor: "#FFE8E8" }]}>
                                 <Ionicons name="alert-circle" size={22} color="#EF4444" />
                             </View>
-                            <Text style={styles.quickCardNumber}>—</Text>
+                            <Text style={styles.quickCardNumber}>{alertasCriticos}</Text>
                             <Text style={styles.quickCardTitle}>Alertas</Text>
                             <Ionicons name="chevron-forward" size={14} color="#9ca3a3" style={styles.quickCardArrow} />
                         </TouchableOpacity>
 
-                        {/* Card 2: Equipes Técnicas */}
-                        <TouchableOpacity 
+                        <TouchableOpacity
                             style={[styles.quickCard, styles.techniciansCard]}
                             onPress={() => router.push("/(tabs)/manage_technicians" as any)}
                             activeOpacity={0.7}
@@ -477,13 +482,12 @@ export default function HomeManager() {
                             <View style={[styles.quickCardIcon, { backgroundColor: "#E0F7E6" }]}>
                                 <Ionicons name="build" size={22} color="#22C55E" />
                             </View>
-                            <Text style={styles.quickCardNumber}>{techniciansCount}</Text>
+                            <Text style={styles.quickCardNumber}>{equipesAtivas}</Text>
                             <Text style={styles.quickCardTitle}>Técnicos</Text>
                             <Ionicons name="chevron-forward" size={14} color="#9ca3a3" style={styles.quickCardArrow} />
                         </TouchableOpacity>
 
-                        {/* Card 3: Gestão de Colaboradores */}
-                        <TouchableOpacity 
+                        <TouchableOpacity
                             style={[styles.quickCard, styles.collaboratorsCard]}
                             onPress={() => router.push("/(tabs)/manage_collaborators" as any)}
                             activeOpacity={0.7}
@@ -491,13 +495,12 @@ export default function HomeManager() {
                             <View style={[styles.quickCardIcon, { backgroundColor: "#E8E8F8" }]}>
                                 <Ionicons name="people" size={22} color="#7C3AED" />
                             </View>
-                            <Text style={styles.quickCardNumber}>{collaboratorsCount}</Text>
+                            <Text style={styles.quickCardNumber}>{0}</Text>
                             <Text style={styles.quickCardTitle}>Colab.</Text>
                             <Ionicons name="chevron-forward" size={14} color="#9ca3a3" style={styles.quickCardArrow} />
                         </TouchableOpacity>
 
-                        {/* Card 4: Gerenciar Corpos Hídricos */}
-                        <TouchableOpacity 
+                        <TouchableOpacity
                             style={[styles.quickCard, styles.waterBodiesCard]}
                             onPress={() => router.push("/(tabs)/validacoes_manager" as any)}
                             activeOpacity={0.7}
@@ -505,382 +508,239 @@ export default function HomeManager() {
                             <View style={[styles.quickCardIcon, { backgroundColor: "#E0E8FF" }]}>
                                 <Ionicons name="water" size={22} color="#3B82F6" />
                             </View>
-                            <Text style={styles.quickCardNumber}>{unvalidatedCount}</Text>
+                            <Text style={styles.quickCardNumber}>{validacoesPendentes}</Text>
                             <Text style={styles.quickCardTitle}>Registros</Text>
                             <Ionicons name="chevron-forward" size={14} color="#9ca3a3" style={styles.quickCardArrow} />
                         </TouchableOpacity>
-
                     </View>
 
-                    {/* ══ PANORAMA GERAL ══ */}
+                    {/* ── Panorama da região ── */}
                     <View style={styles.panoramaSection}>
-                        <Text style={[styles.panoramaTitle, { fontFamily: questrial }]}>Panorama Geral</Text>
-                        
-                        {/* Filtro de Tempo */}
-                        <View style={styles.timeFilterContainer}>
-                            {[30, 60, 90].map((dias) => (
-                                <TouchableOpacity
-                                    key={dias}
-                                    style={[styles.filterButton, timeFilter === dias && styles.filterButtonActive]}
-                                    onPress={() => setTimeFilter(dias)}
-                                >
-                                    <Text style={[styles.filterButtonText, timeFilter === dias && styles.filterButtonTextActive]}>
-                                        {dias}d
-                                    </Text>
-                                </TouchableOpacity>
-                            ))}
+                        <View style={styles.panoramaHeader}>
+                            <View>
+                                <Text style={[styles.sectionTitle, { fontFamily: questrial }]}>
+                                    Panorama da região
+                                </Text>
+                                <Text style={styles.sectionSubtitle}>
+                                    Resumo geral dos principais indicadores
+                                </Text>
+                            </View>
+                        </View>
+
+                        {/* Filtro de tempo */}
+                        <View style={styles.filterRow}>
+                            <View style={styles.filterChips}>
+                                {([7, 14, 30] as const).map((d) => (
+                                    <TouchableOpacity
+                                        key={d}
+                                        style={[
+                                            styles.filterChip,
+                                            timeFilter === d && styles.filterChipActive,
+                                        ]}
+                                        onPress={() => setTimeFilter(d)}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Text
+                                            style={[
+                                                styles.filterChipText,
+                                                timeFilter === d && styles.filterChipTextActive,
+                                            ]}
+                                        >
+                                            Últimos {d} dias
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
                         </View>
 
                         {loadingStats ? (
-                            <ActivityIndicator size="large" color="#004d48" style={{ marginVertical: 40 }} />
+                            <ActivityIndicator
+                                size="large"
+                                color={PRIMARY}
+                                style={{ marginVertical: 30 }}
+                            />
                         ) : (
                             <>
-                                {/* Gráfico: Qualidade da Água */}
-                                <View style={styles.chartCard}>
-                                    <Text style={[styles.chartTitle, { fontFamily: questrial }]}>Qualidade da Água</Text>
-                                    <View style={styles.horizontalBar}>
-                                        {qualidadeAgua.total > 0 && (
-                                            <>
-                                                {qualidadeAgua.boa > 0 && (
-                                                    <View 
-                                                        style={[
-                                                            styles.barSegment, 
-                                                            { backgroundColor: "#22C55E", width: `${(qualidadeAgua.boa / qualidadeAgua.total) * 100}%` }
-                                                        ]} 
-                                                    />
-                                                )}
-                                                {qualidadeAgua.normal > 0 && (
-                                                    <View 
-                                                        style={[
-                                                            styles.barSegment, 
-                                                            { backgroundColor: "#F59E0B", width: `${(qualidadeAgua.normal / qualidadeAgua.total) * 100}%` }
-                                                        ]} 
-                                                    />
-                                                )}
-                                                {qualidadeAgua.atencao > 0 && (
-                                                    <View 
-                                                        style={[
-                                                            styles.barSegment, 
-                                                            { backgroundColor: "#F97316", width: `${(qualidadeAgua.atencao / qualidadeAgua.total) * 100}%` }
-                                                        ]} 
-                                                    />
-                                                )}
-                                                {qualidadeAgua.critico > 0 && (
-                                                    <View 
-                                                        style={[
-                                                            styles.barSegment, 
-                                                            { backgroundColor: "#EF4444", width: `${(qualidadeAgua.critico / qualidadeAgua.total) * 100}%` }
-                                                        ]} 
-                                                    />
-                                                )}
-                                            </>
-                                        )}
+                                {/* Grid 2×2 de indicadores */}
+                                <View style={styles.indicatorGrid}>
+                                    {/* Qualidade da água */}
+                                    <View style={[styles.indicatorCard, styles.indicatorCardTall]}>
+                                        <Text style={[styles.indicatorTitle, { fontFamily: questrial }]}>
+                                            Qualidade da água
+                                        </Text>
+                                        <View style={{ alignItems: "center", marginTop: 8 }}>
+                                            <WaterQualityRing data={qualidadeAgua} />
+                                        </View>
+                                        <View style={styles.qualidadeLegend}>
+                                            <LegendItem color="#EF4444" label="Crítico" value={qualidadeAgua.critico} total={qualidadeAgua.total} />
+                                            <LegendItem color="#F97316" label="Atenção" value={qualidadeAgua.atencao} total={qualidadeAgua.total} />
+                                            <LegendItem color="#F59E0B" label="Normal" value={qualidadeAgua.normal} total={qualidadeAgua.total} />
+                                            <LegendItem color="#22C55E" label="Boa" value={qualidadeAgua.boa} total={qualidadeAgua.total} />
+                                        </View>
                                     </View>
-                                    <View style={styles.chartLegend}>
-                                        <View style={styles.legendItem}>
-                                            <View style={[styles.legendColor, { backgroundColor: "#22C55E" }]} />
-                                            <Text style={styles.legendText}>Boa</Text>
-                                        </View>
-                                        <View style={styles.legendItem}>
-                                            <View style={[styles.legendColor, { backgroundColor: "#F59E0B" }]} />
-                                            <Text style={styles.legendText}>Normal</Text>
-                                        </View>
-                                        <View style={styles.legendItem}>
-                                            <View style={[styles.legendColor, { backgroundColor: "#F97316" }]} />
-                                            <Text style={styles.legendText}>Atenção</Text>
-                                        </View>
-                                        <Text style={[styles.quickCardNumber, { fontFamily: questrial }]}>
-                                            {validacoesPendentes}
-                                        </Text>
-                                        <Text style={styles.quickCardTitle}>Validações pendentes</Text>
-                                        <Text style={styles.quickCardDesc}>Aguardando sua análise</Text>
-                                    </TouchableOpacity>
 
-                                    <TouchableOpacity
-                                        style={[styles.quickCard, { borderBottomColor: "#EF4444" }]}
-                                        onPress={() => {}}
-                                        activeOpacity={0.75}
-                                    >
-                                        <View style={styles.quickCardTop}>
-                                            <View style={[styles.quickCardIcon, { backgroundColor: "#FEE2E2" }]}>
-                                                <Ionicons name="alert-circle" size={20} color="#DC2626" />
-                                            </View>
-                                            <Ionicons name="chevron-forward" size={14} color="#9ca3a3" />
-                                        </View>
-                                        <Text style={[styles.quickCardNumber, { fontFamily: questrial }]}>
-                                            {alertasCriticos}
-                                        </Text>
-                                        <Text style={styles.quickCardTitle}>Alertas críticos</Text>
-                                        <Text style={styles.quickCardDesc}>Requerem atenção imediata</Text>
-                                    </TouchableOpacity>
-                                </View>
-
-                                {/* Linha 2 */}
-                                <View style={styles.cardsRow}>
-                                    <TouchableOpacity
-                                        style={[styles.quickCard, { borderBottomColor: "#4CAF50" }]}
-                                        onPress={() => router.push("/(tabs)/manage_technicians" as any)}
-                                        activeOpacity={0.75}
-                                    >
-                                        <View style={styles.quickCardTop}>
-                                            <View style={[styles.quickCardIcon, { backgroundColor: "#E8F5E9" }]}>
-                                                <Ionicons name="people" size={20} color="#2E7D32" />
-                                            </View>
-                                            <Ionicons name="chevron-forward" size={14} color="#9ca3a3" />
-                                        </View>
-                                        <Text style={[styles.quickCardNumber, { fontFamily: questrial }]}>
-                                            {equipesAtivas}
-                                        </Text>
-                                        <Text style={styles.quickCardTitle}>Equipes técnicas ativas</Text>
-                                        <Text style={styles.quickCardDesc}>Monitorando o território</Text>
-                                    </TouchableOpacity>
-
-                                    <TouchableOpacity
-                                        style={[styles.quickCard, { borderBottomColor: "#2196F3" }]}
-                                        onPress={() => router.push("/(tabs)/manage_water_bodies" as any)}
-                                        activeOpacity={0.75}
-                                    >
-                                        <View style={styles.quickCardTop}>
-                                            <View style={[styles.quickCardIcon, { backgroundColor: "#E3F2FD" }]}>
-                                                <Ionicons name="add-circle-outline" size={20} color="#1565C0" />
-                                            </View>
-                                            <Ionicons name="chevron-forward" size={14} color="#9ca3a3" />
-                                        </View>
-                                        <Text style={[styles.quickCardNumber, { fontFamily: questrial }]}>
-                                            {validacoesPendentes}
-                                        </Text>
-                                        <Text style={styles.quickCardTitle}>Novos registros</Text>
-                                        <Text style={styles.quickCardDesc}>
-                                            Corpos hídricos aguardando validação
-                                        </Text>
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-
-                            {/* ── Panorama da região ────────────────────────────────── */}
-                            <View style={styles.panoramaSection}>
-                                <View style={styles.panoramaHeader}>
-                                    <View>
-                                        <Text style={[styles.sectionTitle, { fontFamily: questrial }]}>
-                                            Panorama da região
-                                        </Text>
-                                        <Text style={styles.sectionSubtitle}>
-                                            Resumo geral dos principais indicadores
-                                        </Text>
-                                    </View>
-                                </View>
-
-                                {/* Filtro de tempo + botão filtrar */}
-                                <View style={styles.filterRow}>
-                                    <View style={styles.filterChips}>
-                                        {([7, 14, 30] as const).map((d) => (
-                                            <TouchableOpacity
-                                                key={d}
-                                                style={[
-                                                    styles.filterChip,
-                                                    timeFilter === d && styles.filterChipActive,
-                                                ]}
-                                                onPress={() => setTimeFilter(d)}
-                                                activeOpacity={0.7}
-                                            >
-                                                <Text
-                                                    style={[
-                                                        styles.filterChipText,
-                                                        timeFilter === d && styles.filterChipTextActive,
-                                                    ]}
-                                                >
-                                                    Últimos {d} dias
-                                                </Text>
-                                            </TouchableOpacity>
-                                        ))}
-                                    </View>
-                                </View>
-
-                                {loadingStats ? (
-                                    <ActivityIndicator
-                                        size="large"
-                                        color={PRIMARY}
-                                        style={{ marginVertical: 30 }}
+                                    {/* Denúncias registradas */}
+                                    <IndicatorSparkCard
+                                        title="Denúncias registradas"
+                                        value={denunciasCount}
+                                        subtitle="No período"
+                                        sparkValues={dailyDenunciasValues}
+                                        sparkColor="#3B82F6"
+                                        change={changeDenuncias}
+                                        timeFilter={timeFilter}
+                                        questrial={questrial}
                                     />
-                                ) : (
-                                    <>
-                                        {/* 2×2 grid de mini-cards indicadores */}
-                                        <View style={styles.indicatorGrid}>
-                                            {/* Qualidade da água */}
-                                            <View style={[styles.indicatorCard, styles.indicatorCardTall]}>
-                                                <Text style={[styles.indicatorTitle, { fontFamily: questrial }]}>
-                                                    Qualidade da água
-                                                </Text>
-                                                <View style={{ alignItems: "center", marginTop: 8 }}>
-                                                    <WaterQualityRing data={qualidadeAgua} />
-                                                </View>
-                                                <View style={styles.qualidadeLegend}>
-                                                    <LegendItem color="#EF4444" label="Crítico" value={qualidadeAgua.critico} total={qualidadeAgua.total} />
-                                                    <LegendItem color="#F97316" label="Atenção" value={qualidadeAgua.atencao} total={qualidadeAgua.total} />
-                                                    <LegendItem color="#F59E0B" label="Normal" value={qualidadeAgua.normal} total={qualidadeAgua.total} />
-                                                    <LegendItem color="#22C55E" label="Boa" value={qualidadeAgua.boa} total={qualidadeAgua.total} />
-                                                </View>
-                                            </View>
 
-                                            {/* Denúncias registradas */}
-                                            <IndicatorSparkCard
-                                                title="Denúncias registradas"
-                                                value={denunciasCount}
-                                                subtitle="No período"
-                                                sparkValues={dailyDenunciasValues}
-                                                sparkColor="#3B82F6"
-                                                change={changeDenuncias}
-                                                timeFilter={timeFilter}
-                                                questrial={questrial}
-                                            />
+                                    {/* Análises técnicas */}
+                                    <IndicatorSparkCard
+                                        title="Análises técnicas"
+                                        value={analisesCount}
+                                        subtitle="Concluídas"
+                                        sparkValues={dailyAnalisesValues}
+                                        sparkColor="#22C55E"
+                                        change={changeAnalises}
+                                        timeFilter={timeFilter}
+                                        questrial={questrial}
+                                    />
 
-                                            {/* Análises técnicas */}
-                                            <IndicatorSparkCard
-                                                title="Análises técnicas"
-                                                value={analisesCount}
-                                                subtitle="Concluídas"
-                                                sparkValues={dailyAnalisesValues}
-                                                sparkColor="#22C55E"
-                                                change={changeAnalises}
-                                                timeFilter={timeFilter}
-                                                questrial={questrial}
-                                            />
-
-                                            {/* Corpos críticos */}
-                                            <IndicatorSparkCard
-                                                title="Corpos críticos"
-                                                value={corposCriticos}
-                                                subtitle="Em estado crítico"
-                                                sparkValues={dailyCriticoValues}
-                                                sparkColor="#EF4444"
-                                                change={changeCritico}
-                                                timeFilter={timeFilter}
-                                                questrial={questrial}
-                                            />
-                                        </View>
-
-                                        {/* Banner informativo */}
-                                        {corposCriticos > 0 && (
-                                            <TouchableOpacity style={styles.infoBanner} activeOpacity={0.8}>
-                                                <Ionicons
-                                                    name="information-circle-outline"
-                                                    size={16}
-                                                    color="#374151"
-                                                />
-                                                <Text style={[styles.infoBannerText, { fontFamily: questrial }]}>
-                                                    {corposCriticos} {corposCriticos === 1 ? "corpo hídrico apresentou" : "corpos hídricos apresentaram"} aumento de criticidade no período.
-                                                </Text>
-                                                <Text style={styles.infoBannerLink}>Ver detalhes</Text>
-                                                <Ionicons name="chevron-forward" size={13} color={PRIMARY} />
-                                            </TouchableOpacity>
-                                        )}
-                                    </>
-                                )}
-                            </View>
-
-                            {/* ── Alertas prioritários ──────────────────────────────── */}
-                            <View style={styles.listSection}>
-                                <View style={styles.listSectionHeader}>
-                                    <Text style={[styles.sectionTitle, { fontFamily: questrial }]}>
-                                        Alertas prioritários
-                                    </Text>
-                                    <TouchableOpacity onPress={() => {}}>
-                                        <Text style={styles.verTodosLink}>Ver todos</Text>
-                                    </TouchableOpacity>
+                                    {/* Corpos críticos */}
+                                    <IndicatorSparkCard
+                                        title="Corpos críticos"
+                                        value={corposCriticos}
+                                        subtitle="Em estado crítico"
+                                        sparkValues={dailyCriticoValues}
+                                        sparkColor="#EF4444"
+                                        change={changeCritico}
+                                        timeFilter={timeFilter}
+                                        questrial={questrial}
+                                    />
                                 </View>
 
-                                {alertas.length === 0 ? (
-                                    <View style={styles.emptyState}>
-                                        <Ionicons name="checkmark-circle-outline" size={28} color="#22C55E" />
-                                        <Text style={[styles.emptyStateText, { fontFamily: questrial }]}>
-                                            Nenhum alerta no momento
+                                {/* Banner informativo */}
+                                {corposCriticos > 0 && (
+                                    <TouchableOpacity style={styles.infoBanner} activeOpacity={0.8}>
+                                        <Ionicons
+                                            name="information-circle-outline"
+                                            size={16}
+                                            color="#374151"
+                                        />
+                                        <Text style={[styles.infoBannerText, { fontFamily: questrial }]}>
+                                            {corposCriticos}{" "}
+                                            {corposCriticos === 1
+                                                ? "corpo hídrico apresentou"
+                                                : "corpos hídricos apresentaram"}{" "}
+                                            aumento de criticidade no período.
                                         </Text>
-                                    </View>
-                                ) : (
-                                    alertas.map((alerta) => {
-                                        const cfg = alertLevelConfig(alerta.nivel);
-                                        return (
-                                            <TouchableOpacity
-                                                key={alerta.id}
-                                                style={styles.alertaItem}
-                                                activeOpacity={0.75}
-                                            >
-                                                <View style={[styles.alertaIconBox, { backgroundColor: cfg.bgColor }]}>
-                                                    <Ionicons name={cfg.icon} size={22} color={cfg.iconColor} />
-                                                </View>
-                                                <View style={styles.alertaContent}>
-                                                    <Text style={[styles.alertaTitle, { fontFamily: questrial }]}>
-                                                        {alerta.titulo}
-                                                    </Text>
-                                                    <Text style={styles.alertaDesc} numberOfLines={1}>
-                                                        {alerta.mensagem}
-                                                    </Text>
-                                                    <Text style={[styles.alertaLabel, { color: cfg.labelColor }]}>
-                                                        {cfg.labelText}
-                                                    </Text>
-                                                </View>
-                                                <Ionicons name="chevron-forward" size={16} color="#D1D5DB" />
-                                            </TouchableOpacity>
-                                        );
-                                    })
-                                )}
-                            </View>
-
-                            {/* ── Atividade da gestão ───────────────────────────────── */}
-                            <View style={[styles.listSection, { marginBottom: 8 }]}>
-                                <View style={styles.listSectionHeader}>
-                                    <Text style={[styles.sectionTitle, { fontFamily: questrial }]}>
-                                        Atividade da gestão
-                                    </Text>
-                                    <TouchableOpacity onPress={() => {}}>
-                                        <Text style={styles.verTodosLink}>Ver todas</Text>
+                                        <Text style={styles.infoBannerLink}>Ver detalhes</Text>
+                                        <Ionicons name="chevron-forward" size={13} color={PRIMARY} />
                                     </TouchableOpacity>
-                                </View>
+                                )}
+                            </>
+                        )}
+                    </View>
 
-                                <AtividadeItem
-                                    icon="stats-chart"
-                                    iconBg="#E8F5E9"
-                                    iconColor="#2E7D32"
-                                    value={analisesConcluidas}
-                                    title="Análises concluídas hoje"
-                                    subtitle="Enviadas pelas equipes técnicas"
-                                    onPress={() => {}}
-                                    questrial={questrial}
-                                />
-                                <AtividadeItem
-                                    icon="clipboard-outline"
-                                    iconBg="#FFF3E0"
-                                    iconColor="#F57C00"
-                                    value={validacoesPendentes}
-                                    title="Aguardando validação"
-                                    subtitle="Pendências de decisão"
-                                    onPress={() => router.push("/(tabs)/manage_water_bodies" as any)}
-                                    questrial={questrial}
-                                />
-                                <AtividadeItem
-                                    icon="people-outline"
-                                    iconBg="#EDE9FE"
-                                    iconColor="#7C3AED"
-                                    value={equipesAtivas}
-                                    title="Revisões solicitadas"
-                                    subtitle="Aguardando retorno das equipes"
-                                    onPress={() => router.push("/(tabs)/manage_technicians" as any)}
-                                    questrial={questrial}
-                                />
-                                <AtividadeItem
-                                    icon="time-outline"
-                                    iconBg="#E0F2FE"
-                                    iconColor="#0369A1"
-                                    value={denunciasAndamento}
-                                    title="Denúncias em andamento"
-                                    subtitle="Em avaliação técnica"
-                                    onPress={() => {}}
-                                    questrial={questrial}
-                                    noBorder
-                                />
+                    {/* ── Alertas prioritários ── */}
+                    <View style={styles.listSection}>
+                        <View style={styles.listSectionHeader}>
+                            <Text style={[styles.sectionTitle, { fontFamily: questrial }]}>
+                                Alertas prioritários
+                            </Text>
+                            <TouchableOpacity onPress={() => router.push("/(tabs)/alerts_manager" as any)}>
+                                <Text style={styles.verTodosLink}>Ver todos</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        {alertas.length === 0 ? (
+                            <View style={styles.emptyState}>
+                                <Ionicons name="checkmark-circle-outline" size={28} color="#22C55E" />
+                                <Text style={[styles.emptyStateText, { fontFamily: questrial }]}>
+                                    Nenhum alerta no momento
+                                </Text>
                             </View>
-                        </>
-                    )}
+                        ) : (
+                            alertas.map((alerta) => {
+                                const cfg = alertLevelConfig(alerta.nivel);
+                                return (
+                                    <TouchableOpacity
+                                        key={alerta.id}
+                                        style={styles.alertaItem}
+                                        activeOpacity={0.75}
+                                    >
+                                        <View style={[styles.alertaIconBox, { backgroundColor: cfg.bgColor }]}>
+                                            <Ionicons name={cfg.icon} size={22} color={cfg.iconColor} />
+                                        </View>
+                                        <View style={styles.alertaContent}>
+                                            <Text style={[styles.alertaTitle, { fontFamily: questrial }]}>
+                                                {alerta.titulo}
+                                            </Text>
+                                            <Text style={styles.alertaDesc} numberOfLines={1}>
+                                                {alerta.mensagem}
+                                            </Text>
+                                            <Text style={[styles.alertaLabel, { color: cfg.labelColor }]}>
+                                                {cfg.labelText}
+                                            </Text>
+                                        </View>
+                                        <Ionicons name="chevron-forward" size={16} color="#D1D5DB" />
+                                    </TouchableOpacity>
+                                );
+                            })
+                        )}
+                    </View>
+
+                    {/* ── Atividade da gestão ── */}
+                    <View style={[styles.listSection, { marginBottom: 8 }]}>
+                        <View style={styles.listSectionHeader}>
+                            <Text style={[styles.sectionTitle, { fontFamily: questrial }]}>
+                                Atividade da gestão
+                            </Text>
+                            <TouchableOpacity onPress={() => {}}>
+                                <Text style={styles.verTodosLink}>Ver todas</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        <AtividadeItem
+                            icon="stats-chart"
+                            iconBg="#E8F5E9"
+                            iconColor="#2E7D32"
+                            value={analisesConcluidas}
+                            title="Análises concluídas hoje"
+                            subtitle="Enviadas pelas equipes técnicas"
+                            onPress={() => {}}
+                            questrial={questrial}
+                        />
+                        <AtividadeItem
+                            icon="clipboard-outline"
+                            iconBg="#FFF3E0"
+                            iconColor="#F57C00"
+                            value={validacoesPendentes}
+                            title="Aguardando validação"
+                            subtitle="Pendências de decisão"
+                            onPress={() => router.push("/(tabs)/validacoes_manager" as any)}
+                            questrial={questrial}
+                        />
+                        <AtividadeItem
+                            icon="people-outline"
+                            iconBg="#EDE9FE"
+                            iconColor="#7C3AED"
+                            value={equipesAtivas}
+                            title="Revisões solicitadas"
+                            subtitle="Aguardando retorno das equipes"
+                            onPress={() => router.push("/(tabs)/manage_technicians" as any)}
+                            questrial={questrial}
+                        />
+                        <AtividadeItem
+                            icon="time-outline"
+                            iconBg="#E0F2FE"
+                            iconColor="#0369A1"
+                            value={denunciasAndamento}
+                            title="Denúncias em andamento"
+                            subtitle="Em avaliação técnica"
+                            onPress={() => {}}
+                            questrial={questrial}
+                            noBorder
+                        />
+                    </View>
+
                 </ScrollView>
 
                 {/* ══ NAVBAR ══ */}
@@ -890,7 +750,7 @@ export default function HomeManager() {
     );
 }
 
-// ─── Componentes auxiliares extraídos ────────────────────────────────────────
+// ─── Componentes auxiliares ───────────────────────────────────────────────────
 
 function LegendItem({
     color,
@@ -997,7 +857,7 @@ function AtividadeItem({
     );
 }
 
-// ─── Estilos ─────────────────────────────────────────────────────────────────
+// ─── Estilos ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
     root: {
@@ -1132,16 +992,14 @@ const styles = StyleSheet.create({
     },
 
     // Cards 2×2
-    cardsGrid: {
+    cardsContainer: {
+        flexDirection: "row",
+        flexWrap: "wrap",
         gap: 8,
         marginBottom: 20,
     },
-    cardsRow: {
-        flexDirection: "row",
-        gap: 8,
-    },
     quickCard: {
-        flex: 1,
+        width: (SCREEN_WIDTH - 40) / 2,
         backgroundColor: "#FFFFFF",
         borderRadius: 12,
         padding: 12,
@@ -1152,18 +1010,17 @@ const styles = StyleSheet.create({
         shadowRadius: 3,
         elevation: 2,
     },
-    quickCardTop: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "flex-start",
-        marginBottom: 8,
-    },
+    alertCard: { borderBottomColor: "#EF4444" },
+    techniciansCard: { borderBottomColor: "#22C55E" },
+    collaboratorsCard: { borderBottomColor: "#7C3AED" },
+    waterBodiesCard: { borderBottomColor: "#3B82F6" },
     quickCardIcon: {
         width: 38,
         height: 38,
         borderRadius: 10,
         alignItems: "center",
         justifyContent: "center",
+        marginBottom: 8,
     },
     quickCardNumber: {
         fontSize: 24,
@@ -1177,9 +1034,8 @@ const styles = StyleSheet.create({
         color: "#374151",
         marginBottom: 2,
     },
-    quickCardDesc: {
-        fontSize: 10,
-        color: "#9CA3AF",
+    quickCardArrow: {
+        marginTop: 4,
     },
 
     // Panorama
