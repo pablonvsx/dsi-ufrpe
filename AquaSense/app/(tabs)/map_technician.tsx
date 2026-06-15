@@ -20,7 +20,7 @@ import {
   calcularResumoObservacoes,
   ResumoObservacoes,
 } from '@/services/firestore/observations';
-import { getCollaboratorMeasurementsByWaterBody } from '@/services/firestore/measurements';
+import { getMeasurementsCountByWaterBody } from '@/services/firestore/measurements';
 import { useAuth } from '@/contexts/auth-context';
 import TechnicalBottomNav from '@/components/technicalbottomnavbar';
 
@@ -304,6 +304,8 @@ function BottomSheet({
   resumo,
   totalMedicoes,
   totalAnaliseTecnica,
+  totalDenuncias,
+  ultimaAnalise,
   loadingResumo,
   sheetHeight,
   isExpanded,
@@ -317,6 +319,8 @@ function BottomSheet({
   resumo: ResumoObservacoes | null;
   totalMedicoes: number;
   totalAnaliseTecnica: number;
+  totalDenuncias: number;
+  ultimaAnalise: { status?: string; data?: string; risco?: string } | null;
   loadingResumo: boolean;
   sheetHeight: Animated.Value;
   isExpanded: boolean;
@@ -331,7 +335,7 @@ function BottomSheet({
 
   const obs       = resumo?.totalObservacoes ?? 0;
   const medicoes  = totalMedicoes;
-  const denuncias = (corpo as any).denunciasRecentes ?? 0;
+  const denuncias = totalDenuncias;
 
   const situacaoAtual   = (corpo as any).situacaoAtual   ?? null;
   const indicadores     = (corpo as any).indicadores     ?? null;
@@ -550,6 +554,33 @@ function BottomSheet({
         </View>
 
         {/* ── Análise técnica ──────────────────────────────────────────── */}
+        <Text style={[styles.bsSectionTitle, { fontFamily }]}>Análise técnica</Text>
+        {ultimaAnalise ? (
+          <View style={styles.estadoTecnicoBox}>
+            <View style={styles.estadoRow}>
+              <Text style={[styles.estadoLabel, { fontFamily }]}>Status</Text>
+              <Text style={[styles.estadoValor, { fontFamily }]}>{ultimaAnalise.status ?? '—'}</Text>
+            </View>
+            <View style={styles.estadoDivider} />
+            <View style={styles.estadoRow}>
+              <Text style={[styles.estadoLabel, { fontFamily }]}>Risco identificado</Text>
+              <Text style={[styles.estadoValor, { fontFamily }]}>{ultimaAnalise.risco ?? '—'}</Text>
+            </View>
+            <View style={styles.estadoDivider} />
+            <View style={styles.estadoRow}>
+              <Text style={[styles.estadoLabel, { fontFamily }]}>Data da coleta</Text>
+              <Text style={[styles.estadoValor, { fontFamily }]}>{ultimaAnalise.data ?? '—'}</Text>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.bsSituacaoBox}>
+            <Text style={[styles.bsSituacaoText, { fontFamily, textAlign: 'center', color: TEXT_MUTED }]}>
+              Nenhuma análise técnica realizada
+            </Text>
+          </View>
+        )}
+
+        {/* ── Botão Nova análise técnica ────────────────────────────────── */}
         <TouchableOpacity style={styles.bsBtnPrimary} onPress={onNovaAnalise} activeOpacity={0.85}>
           <Ionicons name="flask-outline" size={14} color="#fff" />
           <Text style={[styles.bsBtnPrimaryText, { fontFamily }]}>Nova análise técnica</Text>
@@ -602,6 +633,8 @@ export default function MapaTecnico() {
   const [resumo,               setResumo]               = useState<ResumoObservacoes | null>(null);
   const [totalMedicoes,        setTotalMedicoes]        = useState(0);
   const [totalAnaliseTecnica,  setTotalAnaliseTecnica]  = useState(0);
+  const [totalDenuncias,       setTotalDenuncias]       = useState(0);
+  const [ultimaAnalise,        setUltimaAnalise]        = useState<{ status?: string; data?: string; risco?: string } | null>(null);
   const [loadingResumo,        setLoadingResumo]        = useState(false);
   const [detalheVisible,       setDetalheVisible]       = useState(false);
 
@@ -746,6 +779,8 @@ export default function MapaTecnico() {
     setResumo(null);
     setTotalMedicoes(0);
     setTotalAnaliseTecnica(0);
+    setTotalDenuncias(0);
+    setUltimaAnalise(null);
     sheetHeight.setValue(SHEET_COLLAPSED);
     isExpandedRef.current = false;
     setSheetIsExpanded(false);
@@ -755,24 +790,46 @@ export default function MapaTecnico() {
       setLastWaterBody(corpo.id);
       setLoadingResumo(true);
       try {
-        // Busca observações, medições simples e análises técnicas em paralelo
-        const [obs, medicoes, analisesSnap] = await Promise.all([
+        // Busca observações, medições (medicoesColaborador + coletaSimples),
+        // análises técnicas e denúncias em paralelo, todas filtradas pelo corpo
+        const [obs, totalMed, analisesSnap, denunciasSnap] = await Promise.all([
           buscarObservacoesPorCorpo(corpo.id),
-          // getCollaboratorMeasurementsByWaterBody busca na coleção correta de medições
-          getCollaboratorMeasurementsByWaterBody(corpo.id),
-          // Busca análises técnicas na coleção 'analisesTecnicas' filtrada pelo corpo
+          getMeasurementsCountByWaterBody(corpo.id),
           getDocs(query(
             collection(db, 'analisesTecnicas'),
             where('corpoHidricoId', '==', corpo.id)
           )),
+          getDocs(query(
+            collection(db, 'denuncias'),
+            where('corpoHidricoId', '==', corpo.id)
+          )),
         ]);
+
         setResumo(calcularResumoObservacoes(obs));
-        setTotalMedicoes(medicoes.length);
+        setTotalMedicoes(totalMed);
         setTotalAnaliseTecnica(analisesSnap.size);
-      } catch {
+        setTotalDenuncias(denunciasSnap.size);
+
+        if (!analisesSnap.empty) {
+          const docsOrdenados = analisesSnap.docs
+            .map((d) => d.data() as any)
+            .sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0));
+          const ultima = docsOrdenados[0];
+          setUltimaAnalise({
+            status: ultima?.status,
+            data: ultima?.dataColeta,
+            risco: ultima?.riscoAmbiental,
+          });
+        } else {
+          setUltimaAnalise(null);
+        }
+      } catch (e) {
+        console.log('[MapaTecnico] Erro ao carregar resumo:', e);
         setResumo(calcularResumoObservacoes([]));
         setTotalMedicoes(0);
         setTotalAnaliseTecnica(0);
+        setTotalDenuncias(0);
+        setUltimaAnalise(null);
       } finally {
         setLoadingResumo(false);
       }
@@ -1055,6 +1112,8 @@ export default function MapaTecnico() {
             resumo={resumo}
             totalMedicoes={totalMedicoes}
             totalAnaliseTecnica={totalAnaliseTecnica}
+            totalDenuncias={totalDenuncias}
+            ultimaAnalise={ultimaAnalise}
             loadingResumo={loadingResumo}
             sheetHeight={sheetHeight}
             isExpanded={sheetIsExpanded}

@@ -40,16 +40,16 @@ import {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const PRIMARY   = '#1B4A42';
-const TEAL_MID  = '#2A7A6A';
-const SURFACE   = '#F5F9F8';
-const BORDER    = '#E2E8E6';
+const PRIMARY    = '#1B4A42';
+const TEAL_MID   = '#2A7A6A';
+const SURFACE    = '#F5F9F8';
+const BORDER     = '#E2E8E6';
 const TEXT_MUTED = '#6B8C87';
 const TEXT_MAIN  = '#1A2E2B';
 const { width: SW } = Dimensions.get('window');
 
-const MAX_FOTOS    = 5;
-const MAX_OBS      = 500;
+const MAX_FOTOS     = 5;
+const MAX_OBS       = 500;
 const RECIFE_REGION = {
   latitude: -8.0476, longitude: -34.877,
   latitudeDelta: 0.08, longitudeDelta: 0.08,
@@ -102,24 +102,24 @@ interface ParamField {
 }
 
 const PARAM_FIELDS: ParamField[] = [
-  { key: 'ph',               label: 'pH',                 unit: 'pH',   placeholder: '6,8'  },
+  { key: 'ph',                label: 'pH',                  unit: 'pH',   placeholder: '6,8'  },
   { key: 'oxigenioDissolvido', label: 'Oxigênio dissolvido', unit: 'mg/L', placeholder: '5,2'  },
-  { key: 'dbo',              label: 'DBO',                unit: 'mg/L', placeholder: '8,6'  },
-  { key: 'nitrato',          label: 'Nitrato',            unit: 'mg/L', placeholder: '1,25' },
-  { key: 'amonio',           label: 'Amônio',             unit: 'mg/L', placeholder: '0,18' },
-  { key: 'nitrogenioTotal',  label: 'Nitrogênio total',   unit: 'mg/L', placeholder: '1,80' },
-  { key: 'ortofosfato',      label: 'Ortofosfato',        unit: 'mg/L', placeholder: '0,32' },
-  { key: 'temperatura',      label: 'Temperatura',        unit: '°C',   placeholder: '26,4' },
+  { key: 'dbo',               label: 'DBO',                 unit: 'mg/L', placeholder: '8,6'  },
+  { key: 'nitrato',           label: 'Nitrato',             unit: 'mg/L', placeholder: '1,25' },
+  { key: 'amonio',            label: 'Amônio',              unit: 'mg/L', placeholder: '0,18' },
+  { key: 'nitrogenioTotal',   label: 'Nitrogênio total',    unit: 'mg/L', placeholder: '1,80' },
+  { key: 'ortofosfato',       label: 'Ortofosfato',         unit: 'mg/L', placeholder: '0,32' },
+  { key: 'temperatura',       label: 'Temperatura',         unit: '°C',   placeholder: '26,4' },
 ];
 
 const TIPOS_CORPO = [
-  { id: 'rio',      label: 'Rio',                   icon: 'water-outline' },
-  { id: 'lago',     label: 'Lago / Lagoa',           icon: 'ellipse-outline' },
-  { id: 'canal',    label: 'Canal / Drenagem urbana', icon: 'git-branch-outline' },
-  { id: 'acude',    label: 'Açude / Reservatório',   icon: 'archive-outline' },
-  { id: 'riacho',   label: 'Riacho / Córrego',       icon: 'swap-horizontal-outline' },
-  { id: 'estuario', label: 'Estuário',               icon: 'globe-outline' },
-  { id: 'outro',    label: 'Outro',                  icon: 'ellipsis-horizontal-outline' },
+  { id: 'rio',      label: 'Rio',                    icon: 'water-outline'               },
+  { id: 'lago',     label: 'Lago / Lagoa',            icon: 'ellipse-outline'             },
+  { id: 'canal',    label: 'Canal / Drenagem urbana', icon: 'git-branch-outline'          },
+  { id: 'acude',    label: 'Açude / Reservatório',    icon: 'archive-outline'             },
+  { id: 'riacho',   label: 'Riacho / Córrego',        icon: 'swap-horizontal-outline'     },
+  { id: 'estuario', label: 'Estuário',                icon: 'globe-outline'               },
+  { id: 'outro',    label: 'Outro',                   icon: 'ellipsis-horizontal-outline' },
 ];
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
@@ -134,38 +134,38 @@ export default function NovaAnaliseTecnica() {
   const [horarioColeta] = useState(agora());
   const [coletaId]      = useState(gerarColetaId());
   const [tecnicoNome, setTecnicoNome] = useState('Técnico responsável');
-  const [tecnicoId, setTecnicoId]     = useState<string | null>(null);
+  const [tecnicoId,   setTecnicoId]   = useState<string | null>(null);
 
   // ── Corpos hídricos ──
-  const [corposHidricos, setCorposHidricos] = useState<CorpoHidrico[]>([]);
-  const [corpoSelecionado, setCorpoSelecionado] = useState<CorpoHidrico | null>(null);
-  const [buscaCorpo, setBuscaCorpo] = useState('');
+  const [corposHidricos,    setCorposHidricos]    = useState<CorpoHidrico[]>([]);
+  const [corpoSelecionado,  setCorpoSelecionado]  = useState<CorpoHidrico | null>(null);
+  const [buscaCorpo,        setBuscaCorpo]        = useState('');
   const [corpoModalVisible, setCorpoModalVisible] = useState(false);
-  const [loadingCorpos, setLoadingCorpos] = useState(false);
+  const [loadingCorpos,     setLoadingCorpos]     = useState(false);
 
   // ── Localização ──
-  const [localizando, setLocalizando]   = useState(false);
-  const [localColeta, setLocalColeta]   = useState<LocalColeta | null>(null);
-  const [mapModalVisible, setMapModalVisible] = useState(false);
-  const [mapCoords, setMapCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [localizando,      setLocalizando]      = useState(false);
+  const [localColeta,      setLocalColeta]      = useState<LocalColeta | null>(null);
+  const [mapModalVisible,  setMapModalVisible]  = useState(false);
+  const [mapCoords,        setMapCoords]        = useState<{ latitude: number; longitude: number } | null>(null);
   const mapRef = useRef<MapView>(null);
 
   // ── Parâmetros ──
-  const [paramValues, setParamValues] = useState<Record<string, string>>({});
-  const [tipoCorpo, setTipoCorpo]     = useState('');
+  const [paramValues,      setParamValues]      = useState<Record<string, string>>({});
+  const [tipoCorpo,        setTipoCorpo]        = useState('');
   const [tipoModalVisible, setTipoModalVisible] = useState(false);
 
   // ── Observações ──
   const [observacoes, setObservacoes] = useState('');
 
   // ── Fotos ──
-  const [fotos, setFotos]                     = useState<string[]>([]);
+  const [fotos,            setFotos]            = useState<string[]>([]);
   const [fotoModalVisible, setFotoModalVisible] = useState(false);
 
   // ── Save state ──
-  const [saving, setSaving]           = useState(false);
+  const [saving,         setSaving]         = useState(false);
   const [successVisible, setSuccessVisible] = useState(false);
-  const [errorMsg, setErrorMsg]       = useState('');
+  const [errorMsg,       setErrorMsg]       = useState('');
 
   // ── Load técnico logado ──
   useEffect(() => {
@@ -200,11 +200,11 @@ export default function NovaAnaliseTecnica() {
         );
         setCorposHidricos(
           snap.docs.map((d) => ({
-            id: d.id,
-            nome: d.data().nome ?? '',
-            cidade: d.data().cidade ?? '',
-            estado: d.data().estado ?? '',
-            tipo: d.data().tipo ?? '',
+            id:          d.id,
+            nome:        d.data().nome        ?? '',
+            cidade:      d.data().cidade      ?? '',
+            estado:      d.data().estado      ?? '',
+            tipo:        d.data().tipo        ?? '',
             localizacao: d.data().localizacao ?? d.data().areaChave ?? '',
           })),
         );
@@ -308,10 +308,10 @@ export default function NovaAnaliseTecnica() {
   // ─── Validação ───────────────────────────────────────────────────────────
 
   function validar(): string | null {
-    if (!corpoSelecionado) return 'Selecione o corpo hídrico.';
-    if (!localColeta)      return 'Informe a localização da coleta.';
-    if (!paramValues['ph']?.trim())               return 'O campo pH é obrigatório.';
-    if (!paramValues['temperatura']?.trim())      return 'O campo Temperatura é obrigatório.';
+    if (!corpoSelecionado)                          return 'Selecione o corpo hídrico.';
+    if (!localColeta)                               return 'Informe a localização da coleta.';
+    if (!paramValues['ph']?.trim())                 return 'O campo pH é obrigatório.';
+    if (!paramValues['temperatura']?.trim())        return 'O campo Temperatura é obrigatório.';
     if (!paramValues['oxigenioDissolvido']?.trim()) return 'O campo Oxigênio dissolvido é obrigatório.';
     return null;
   }
@@ -326,14 +326,14 @@ export default function NovaAnaliseTecnica() {
 
     try {
       const parametros: ParametrosAgua = {
-        ph:               parseNum(paramValues['ph'] ?? ''),
+        ph:                 parseNum(paramValues['ph']                 ?? ''),
         oxigenioDissolvido: parseNum(paramValues['oxigenioDissolvido'] ?? ''),
-        dbo:              parseNum(paramValues['dbo'] ?? ''),
-        nitrato:          parseNum(paramValues['nitrato'] ?? ''),
-        amonio:           parseNum(paramValues['amonio'] ?? ''),
-        nitrogenioTotal:  parseNum(paramValues['nitrogenioTotal'] ?? ''),
-        ortofosfato:      parseNum(paramValues['ortofosfato'] ?? ''),
-        temperatura:      parseNum(paramValues['temperatura'] ?? ''),
+        dbo:                parseNum(paramValues['dbo']                ?? ''),
+        nitrato:            parseNum(paramValues['nitrato']            ?? ''),
+        amonio:             parseNum(paramValues['amonio']             ?? ''),
+        nitrogenioTotal:    parseNum(paramValues['nitrogenioTotal']    ?? ''),
+        ortofosfato:        parseNum(paramValues['ortofosfato']        ?? ''),
+        temperatura:        parseNum(paramValues['temperatura']        ?? ''),
       };
 
       const tipoLabel =
@@ -342,20 +342,20 @@ export default function NovaAnaliseTecnica() {
       await createTechnicalAnalysis(
         {
           coletaId,
-          corpoHidricoId:         corpoSelecionado!.id,
-          nomeCorpoHidrico:       corpoSelecionado!.nome,
-          tipoCorpoHidrico:       tipoLabel,
+          corpoHidricoId:          corpoSelecionado!.id,
+          nomeCorpoHidrico:        corpoSelecionado!.nome,
+          tipoCorpoHidrico:        tipoLabel,
           localizacaoCorpoHidrico: [corpoSelecionado!.cidade, corpoSelecionado!.estado]
             .filter(Boolean)
             .join(' - '),
-          tecnicoId:   tecnicoId ?? '',
+          tecnicoId:    tecnicoId ?? '',
           tecnicoNome,
           dataColeta,
           horarioColeta,
           localColeta:  localColeta!,
           parametros,
           observacoes:  observacoes.trim(),
-          status:       'pendente_validacao',
+          status: 'analisado',
         },
         fotos,
       );
@@ -435,39 +435,13 @@ export default function NovaAnaliseTecnica() {
           <View style={s.card}>
             <Text style={[s.cardTitle, { fontFamily: Q }]}>Informações da coleta</Text>
 
-            {/* Linha: data, horário, responsável, ID */}
             <View style={s.infoGrid}>
-              <InfoField
-                icon="calendar-outline"
-                label="Data da coleta"
-                value={dataColeta}
-                fontFamily={Q}
-                flex={1}
-              />
-              <InfoField
-                icon="time-outline"
-                label="Horário da coleta"
-                value={horarioColeta}
-                fontFamily={Q}
-                flex={1}
-              />
+              <InfoField icon="calendar-outline" label="Data da coleta"    value={dataColeta}    fontFamily={Q} flex={1} />
+              <InfoField icon="time-outline"     label="Horário da coleta" value={horarioColeta} fontFamily={Q} flex={1} />
             </View>
             <View style={[s.infoGrid, { marginTop: 10 }]}>
-              <InfoField
-                icon="person-outline"
-                label="Responsável (técnico)"
-                value={tecnicoNome}
-                fontFamily={Q}
-                flex={1}
-              />
-              <InfoField
-                icon="pricetag-outline"
-                label="Registro / ID da coleta"
-                value={coletaId}
-                fontFamily={Q}
-                flex={1}
-                small
-              />
+              <InfoField icon="person-outline"   label="Responsável (técnico)"   value={tecnicoNome} fontFamily={Q} flex={1} />
+              <InfoField icon="pricetag-outline" label="Registro / ID da coleta" value={coletaId}    fontFamily={Q} flex={1} small />
             </View>
 
             {/* Corpo hídrico */}
@@ -487,10 +461,7 @@ export default function NovaAnaliseTecnica() {
                     ) : null}
                   </View>
                 </View>
-                <TouchableOpacity
-                  style={s.corpoAlterar}
-                  onPress={() => setCorpoSelecionado(null)}
-                >
+                <TouchableOpacity style={s.corpoAlterar} onPress={() => setCorpoSelecionado(null)}>
                   <Ionicons name="chevron-down" size={20} color={TEXT_MUTED} />
                 </TouchableOpacity>
               </View>
@@ -509,7 +480,6 @@ export default function NovaAnaliseTecnica() {
             {/* Local da coleta */}
             <Text style={[s.fieldLabel, { fontFamily: Q, marginTop: 16 }]}>Local da coleta</Text>
 
-            {/* ── CORREÇÃO: locRow agora empilha verticalmente para caber o texto ── */}
             <View style={s.locRow}>
               <TouchableOpacity
                 style={[s.locBtn, localColeta?.origem === 'atual' && s.locBtnActive]}
@@ -552,13 +522,12 @@ export default function NovaAnaliseTecnica() {
               </TouchableOpacity>
             </View>
 
-            {/* Card localização capturada */}
             {localColeta && (
               <View style={s.locCard}>
                 <View style={s.locCardLeft}>
                   <Ionicons name="location-outline" size={18} color={TEAL_MID} style={{ marginRight: 8 }} />
                   <View>
-                    <Text style={[s.locCardTitle, { fontFamily: Q }]}>Localização atual</Text>
+                    <Text style={[s.locCardTitle, { fontFamily: Q }]}>Localização capturada</Text>
                     <Text style={[s.locCardCoords, { fontFamily: Q }]}>
                       Lat: {localColeta.latitude.toFixed(4)}, Long: {localColeta.longitude.toFixed(4)}
                     </Text>
@@ -580,7 +549,6 @@ export default function NovaAnaliseTecnica() {
           <View style={[s.card, { marginTop: 12 }]}>
             <Text style={[s.cardTitle, { fontFamily: Q }]}>Parâmetros da água</Text>
 
-            {/* Grid 4 colunas (2 linhas de 4) */}
             <View style={s.paramGrid}>
               {PARAM_FIELDS.map((f) => (
                 <View key={f.key} style={s.paramCell}>
@@ -594,9 +562,7 @@ export default function NovaAnaliseTecnica() {
                       placeholder={f.placeholder}
                       placeholderTextColor={TEXT_MUTED}
                       value={paramValues[f.key] ?? ''}
-                      onChangeText={(v) =>
-                        setParamValues((prev) => ({ ...prev, [f.key]: v }))
-                      }
+                      onChangeText={(v) => setParamValues((prev) => ({ ...prev, [f.key]: v }))}
                       keyboardType="decimal-pad"
                       editable={!saving}
                     />
@@ -606,7 +572,6 @@ export default function NovaAnaliseTecnica() {
               ))}
             </View>
 
-            {/* Tipo de corpo hídrico */}
             <Text style={[s.fieldLabel, { fontFamily: Q, marginTop: 16 }]}>Tipo de corpo hídrico</Text>
             <TouchableOpacity
               style={s.tipoSelect}
@@ -655,7 +620,6 @@ export default function NovaAnaliseTecnica() {
             </View>
 
             <View style={s.fotoGrid}>
-              {/* Botão adicionar */}
               <TouchableOpacity
                 style={s.fotoAdd}
                 onPress={() => {
@@ -672,17 +636,18 @@ export default function NovaAnaliseTecnica() {
                 <Text style={[s.fotoAddSub, { fontFamily: Q }]}>Máx. {MAX_FOTOS} imagens</Text>
               </TouchableOpacity>
 
-              {/* Thumbs */}
               {fotos.map((uri) => (
                 <View key={uri} style={s.fotoThumb}>
                   <Image source={{ uri }} style={s.fotoImg} />
-                  <TouchableOpacity style={s.fotoRemove} onPress={() => setFotos((p) => p.filter((f) => f !== uri))}>
+                  <TouchableOpacity
+                    style={s.fotoRemove}
+                    onPress={() => setFotos((p) => p.filter((f) => f !== uri))}
+                  >
                     <Ionicons name="close-circle" size={22} color="#fff" />
                   </TouchableOpacity>
                 </View>
               ))}
 
-              {/* Slots vazios restantes */}
               {Array.from({ length: Math.max(0, MAX_FOTOS - fotos.length - 1) }).map((_, i) => (
                 <View key={`slot-${i}`} style={s.fotoSlot}>
                   <Ionicons name="image-outline" size={22} color="#D0DCDA" />
@@ -815,7 +780,11 @@ export default function NovaAnaliseTecnica() {
                 <View style={s.tipoItemIcon}>
                   <Ionicons name={t.icon as any} size={16} color={TEAL_MID} />
                 </View>
-                <Text style={[s.tipoItemLabel, { fontFamily: Q }, tipoCorpo === t.id && { color: PRIMARY, fontWeight: '700' }]}>
+                <Text style={[
+                  s.tipoItemLabel,
+                  { fontFamily: Q },
+                  tipoCorpo === t.id && { color: PRIMARY, fontWeight: '700' },
+                ]}>
                   {t.label}
                 </Text>
                 {tipoCorpo === t.id && (
@@ -918,11 +887,15 @@ export default function NovaAnaliseTecnica() {
             <Text style={[s.successTitle, { fontFamily: Q }]}>Análise registrada!</Text>
             <View style={s.successDivider} />
             <Text style={[s.successBody, { fontFamily: Q }]}>
-              A análise técnica foi salva com sucesso e está pendente de validação.
+              A análise técnica foi salva com sucesso e já está disponível no Histórico.
             </Text>
+            {/* ✅ CORRIGIDO: fecha o modal antes de navegar para evitar overlay preso */}
             <TouchableOpacity
               style={s.successBtn}
-              onPress={() => router.replace('/(tabs)' as any)}
+              onPress={() => {
+                setSuccessVisible(false);
+                setTimeout(() => router.replace('/(tabs)' as any), 300);
+              }}
               activeOpacity={0.85}
             >
               <Text style={[s.successBtnText, { fontFamily: Q }]}>Voltar para a Home</Text>
@@ -971,152 +944,126 @@ const infoS = StyleSheet.create({
 const FOTO_SIZE = (SW - 32 - 32 - 40) / 5;
 
 const s = StyleSheet.create({
-  root:              { flex: 1, backgroundColor: SURFACE },
+  root: { flex: 1, backgroundColor: SURFACE },
 
   // Header
-  header:            { paddingBottom: 16 },
-  headerContent:     { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 16, paddingTop: 10, gap: 12 },
-  backBtn:           { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', marginTop: 2 },
-  headerText:        { flex: 1 },
-  headerTitle:       { fontSize: 20, color: '#fff', fontWeight: '700' },
-  headerSubtitle:    { fontSize: 12, color: 'rgba(255,255,255,0.8)', marginTop: 4, lineHeight: 18 },
-  logoCircle:        { width: 50, height: 50, alignItems: 'center', justifyContent: 'center' },
-  logoImg:           { width: 44, height: 44 },
+  header:         { paddingBottom: 16 },
+  headerContent:  { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 16, paddingTop: 10, gap: 12 },
+  backBtn:        { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', marginTop: 2 },
+  headerText:     { flex: 1 },
+  headerTitle:    { fontSize: 20, color: '#fff', fontWeight: '700' },
+  headerSubtitle: { fontSize: 12, color: 'rgba(255,255,255,0.8)', marginTop: 4, lineHeight: 18 },
+  logoCircle:     { width: 50, height: 50, alignItems: 'center', justifyContent: 'center' },
+  logoImg:        { width: 44, height: 44 },
 
   // Scroll
-  scroll:            { flex: 1 },
-  scrollContent:     { padding: 16 },
+  scroll:        { flex: 1 },
+  scrollContent: { padding: 16 },
 
   // Error
-  errorBanner:       { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffebee', borderRadius: 12, padding: 12, marginBottom: 14 },
-  errorText:         { flex: 1, color: '#c62828', fontSize: 13 },
+  errorBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffebee', borderRadius: 12, padding: 12, marginBottom: 14 },
+  errorText:   { flex: 1, color: '#c62828', fontSize: 13 },
 
   // Card
-  card:              { backgroundColor: '#fff', borderRadius: 16, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
-  cardTitle:         { fontSize: 16, fontWeight: '700', color: TEXT_MAIN, marginBottom: 14 },
-  fieldLabel:        { fontSize: 12, color: TEXT_MUTED, marginBottom: 8 },
-  optional:          { fontSize: 13, fontWeight: '400', color: TEXT_MUTED },
+  card:       { backgroundColor: '#fff', borderRadius: 16, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
+  cardTitle:  { fontSize: 16, fontWeight: '700', color: TEXT_MAIN, marginBottom: 14 },
+  fieldLabel: { fontSize: 12, color: TEXT_MUTED, marginBottom: 8 },
+  optional:   { fontSize: 13, fontWeight: '400', color: TEXT_MUTED },
 
   // Info grid
-  infoGrid:          { flexDirection: 'row', gap: 10 },
+  infoGrid: { flexDirection: 'row', gap: 10 },
 
   // Corpo hídrico
-  corpoSelect:       { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: BORDER, borderRadius: 10, padding: 14 },
-  corpoSelectText:   { fontSize: 14, color: TEXT_MUTED },
-  corpoBox:          { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#C8E6C9', backgroundColor: '#E8F5E9', borderRadius: 10, padding: 12 },
-  corpoBoxLeft:      { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 },
-  corpoIconCircle:   { width: 34, height: 34, borderRadius: 17, backgroundColor: '#E0F4EE', alignItems: 'center', justifyContent: 'center' },
-  corpoNome:         { fontSize: 14, fontWeight: '700', color: TEXT_MAIN },
-  corpoLoc:          { fontSize: 12, color: TEXT_MUTED, marginTop: 2 },
-  corpoAlterar:      { padding: 4 },
+  corpoSelect:     { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: BORDER, borderRadius: 10, padding: 14 },
+  corpoSelectText: { fontSize: 14, color: TEXT_MUTED },
+  corpoBox:        { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#C8E6C9', backgroundColor: '#E8F5E9', borderRadius: 10, padding: 12 },
+  corpoBoxLeft:    { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 },
+  corpoIconCircle: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#E0F4EE', alignItems: 'center', justifyContent: 'center' },
+  corpoNome:       { fontSize: 14, fontWeight: '700', color: TEXT_MAIN },
+  corpoLoc:        { fontSize: 12, color: TEXT_MUTED, marginTop: 2 },
+  corpoAlterar:    { padding: 4 },
 
-  // ── Localização — CORREÇÃO ────────────────────────────────────────────────
-  // locRow: mantém side-by-side mas permite que os filhos quebrem internamente
-  locRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  // locBtn: cada botão ocupa metade da largura disponível e empilha ícone + texto
+  // Localização
+  locRow: { flexDirection: 'row', gap: 10 },
   locBtn: {
-    flex: 1,
-    flexDirection: 'column',      // empilha ícone acima do texto
-    alignItems: 'center',
-    gap: 8,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 10,
+    flex: 1, flexDirection: 'column', alignItems: 'center', gap: 8,
+    borderWidth: 1, borderColor: BORDER, borderRadius: 12,
+    paddingVertical: 14, paddingHorizontal: 10,
   },
   locBtnActive:        { borderColor: TEAL_MID, backgroundColor: '#E8F5F2' },
   locIconCircle:       { width: 40, height: 40, borderRadius: 20, backgroundColor: '#E0F4EE', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   locIconCircleActive: { backgroundColor: TEAL_MID },
-  // wrapper do texto — garante que quebre linha em vez de vazar
-  locBtnTextWrap: {
-    alignItems: 'center',
-  },
-  locBtnLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: TEXT_MAIN,
-    textAlign: 'center',
-  },
-  locBtnLabelActive: { color: PRIMARY },
-  locBtnSub: {
-    fontSize: 10,
-    color: TEXT_MUTED,
-    marginTop: 2,
-    textAlign: 'center',
-  },
-  locBtnSubActive: { color: TEAL_MID },
-  // ─────────────────────────────────────────────────────────────────────────
-
-  locCard:           { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: BORDER, borderRadius: 10, padding: 12, marginTop: 10 },
-  locCardLeft:       { flexDirection: 'row', alignItems: 'center' },
-  locCardTitle:      { fontSize: 12, fontWeight: '700', color: TEXT_MAIN },
-  locCardCoords:     { fontSize: 11, color: TEXT_MUTED, marginTop: 2 },
-  locPrecisaoBox:    { flexDirection: 'row', alignItems: 'center' },
-  locPrecisaoText:   { fontSize: 11, color: TEAL_MID },
+  locBtnTextWrap:      { alignItems: 'center' },
+  locBtnLabel:         { fontSize: 12, fontWeight: '700', color: TEXT_MAIN, textAlign: 'center' },
+  locBtnLabelActive:   { color: PRIMARY },
+  locBtnSub:           { fontSize: 10, color: TEXT_MUTED, marginTop: 2, textAlign: 'center' },
+  locBtnSubActive:     { color: TEAL_MID },
+  locCard:             { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: BORDER, borderRadius: 10, padding: 12, marginTop: 10 },
+  locCardLeft:         { flexDirection: 'row', alignItems: 'center' },
+  locCardTitle:        { fontSize: 12, fontWeight: '700', color: TEXT_MAIN },
+  locCardCoords:       { fontSize: 11, color: TEXT_MUTED, marginTop: 2 },
+  locPrecisaoBox:      { flexDirection: 'row', alignItems: 'center' },
+  locPrecisaoText:     { fontSize: 11, color: TEAL_MID },
 
   // Parâmetros
-  paramGrid:         { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  paramCell:         { width: (SW - 32 - 32 - 10) / 2, minWidth: 140 },
-  paramLabelRow:     { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-  paramLabel:        { fontSize: 12, color: TEXT_MUTED },
-  paramInputWrap:    { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: BORDER, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 },
-  paramInput:        { flex: 1, fontSize: 14, color: TEXT_MAIN },
-  paramUnit:         { fontSize: 12, color: TEXT_MUTED, marginLeft: 4 },
-  tipoSelect:        { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: BORDER, borderRadius: 10, padding: 12 },
-  tipoSelectText:    { fontSize: 14, color: TEXT_MUTED },
+  paramGrid:     { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  paramCell:     { width: (SW - 32 - 32 - 10) / 2, minWidth: 140 },
+  paramLabelRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  paramLabel:    { fontSize: 12, color: TEXT_MUTED },
+  paramInputWrap:{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: BORDER, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 },
+  paramInput:    { flex: 1, fontSize: 14, color: TEXT_MAIN },
+  paramUnit:     { fontSize: 12, color: TEXT_MUTED, marginLeft: 4 },
+  tipoSelect:    { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: BORDER, borderRadius: 10, padding: 12 },
+  tipoSelectText:{ fontSize: 14, color: TEXT_MUTED },
 
   // Observações
-  obsInput:          { borderWidth: 1, borderColor: BORDER, borderRadius: 10, padding: 12, fontSize: 13, color: TEXT_MAIN, minHeight: 100 },
-  obsCounter:        { textAlign: 'right', fontSize: 11, color: TEXT_MUTED, marginTop: 6 },
+  obsInput:   { borderWidth: 1, borderColor: BORDER, borderRadius: 10, padding: 12, fontSize: 13, color: TEXT_MAIN, minHeight: 100 },
+  obsCounter: { textAlign: 'right', fontSize: 11, color: TEXT_MUTED, marginTop: 6 },
 
   // Fotos
-  fotoHeader:        { flexDirection: 'row', alignItems: 'baseline', gap: 6, marginBottom: 14 },
-  fotoGrid:          { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  fotoAdd:           { width: FOTO_SIZE + 20, height: FOTO_SIZE + 20, borderRadius: 10, borderWidth: 1.5, borderColor: BORDER, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', gap: 4 },
-  fotoAddLabel:      { fontSize: 11, color: TEXT_MUTED, textAlign: 'center' },
-  fotoAddSub:        { fontSize: 9, color: '#B0C8C4', textAlign: 'center' },
-  fotoThumb:         { width: FOTO_SIZE + 20, height: FOTO_SIZE + 20, borderRadius: 10, overflow: 'visible' },
-  fotoImg:           { width: FOTO_SIZE + 20, height: FOTO_SIZE + 20, borderRadius: 10 },
-  fotoRemove:        { position: 'absolute', top: -6, right: -6, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 12 },
-  fotoSlot:          { width: FOTO_SIZE + 20, height: FOTO_SIZE + 20, borderRadius: 10, borderWidth: 1, borderColor: BORDER, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FAFAFA' },
+  fotoHeader:  { flexDirection: 'row', alignItems: 'baseline', gap: 6, marginBottom: 14 },
+  fotoGrid:    { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  fotoAdd:     { width: FOTO_SIZE + 20, height: FOTO_SIZE + 20, borderRadius: 10, borderWidth: 1.5, borderColor: BORDER, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  fotoAddLabel:{ fontSize: 11, color: TEXT_MUTED, textAlign: 'center' },
+  fotoAddSub:  { fontSize: 9, color: '#B0C8C4', textAlign: 'center' },
+  fotoThumb:   { width: FOTO_SIZE + 20, height: FOTO_SIZE + 20, borderRadius: 10, overflow: 'visible' },
+  fotoImg:     { width: FOTO_SIZE + 20, height: FOTO_SIZE + 20, borderRadius: 10 },
+  fotoRemove:  { position: 'absolute', top: -6, right: -6, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 12 },
+  fotoSlot:    { width: FOTO_SIZE + 20, height: FOTO_SIZE + 20, borderRadius: 10, borderWidth: 1, borderColor: BORDER, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FAFAFA' },
 
   // Footer
-  footer:            { flexDirection: 'row', padding: 16, gap: 12, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: BORDER },
-  btnCancelar:       { flex: 1, borderWidth: 1.5, borderColor: BORDER, borderRadius: 12, paddingVertical: 15, alignItems: 'center', justifyContent: 'center' },
-  btnCancelarText:   { fontSize: 15, fontWeight: '600', color: TEXT_MAIN },
-  btnSalvar:         { flex: 1, backgroundColor: PRIMARY, borderRadius: 12, paddingVertical: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-  btnSalvarText:     { fontSize: 15, fontWeight: '700', color: '#fff' },
+  footer:         { flexDirection: 'row', padding: 16, gap: 12, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: BORDER },
+  btnCancelar:    { flex: 1, borderWidth: 1.5, borderColor: BORDER, borderRadius: 12, paddingVertical: 15, alignItems: 'center', justifyContent: 'center' },
+  btnCancelarText:{ fontSize: 15, fontWeight: '600', color: TEXT_MAIN },
+  btnSalvar:      { flex: 1, backgroundColor: PRIMARY, borderRadius: 12, paddingVertical: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  btnSalvarText:  { fontSize: 15, fontWeight: '700', color: '#fff' },
 
   // Modais
-  modalOverlay:      { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  bottomSheet:       { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 36 },
-  sheetHandle:       { width: 40, height: 4, borderRadius: 2, backgroundColor: '#DDD', alignSelf: 'center', marginBottom: 16 },
-  sheetHeader:       { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
-  sheetTitle:        { flex: 1, fontSize: 18, fontWeight: '700', color: PRIMARY },
-  sheetClose:        { padding: 4 },
-  buscaRow:          { flexDirection: 'row', alignItems: 'center', backgroundColor: SURFACE, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: BORDER, marginBottom: 12 },
-  buscaInput:        { flex: 1, fontSize: 14, color: TEXT_MAIN },
-  corpoItem:         { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 4, gap: 10 },
-  corpoItemIcon:     { width: 32, height: 32, borderRadius: 16, backgroundColor: '#E0F4EE', alignItems: 'center', justifyContent: 'center' },
-  corpoItemNome:     { fontSize: 14, fontWeight: '600', color: TEXT_MAIN },
-  corpoItemLoc:      { fontSize: 12, color: TEXT_MUTED, marginTop: 2 },
-  tipoItem:          { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: BORDER, gap: 12 },
-  tipoItemIcon:      { width: 34, height: 34, borderRadius: 17, backgroundColor: '#E0F4EE', alignItems: 'center', justifyContent: 'center' },
-  tipoItemLabel:     { fontSize: 14, color: TEXT_MAIN },
-  fotoSheetBtn:      { borderRadius: 50, overflow: 'hidden', marginBottom: 10 },
-  fotoSheetGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 15 },
-  fotoSheetBtnText:  { fontSize: 16, color: '#fff', fontWeight: '700' },
-  fotoSheetCancelar: { alignItems: 'center', paddingVertical: 14 },
+  modalOverlay:  { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  bottomSheet:   { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 36 },
+  sheetHandle:   { width: 40, height: 4, borderRadius: 2, backgroundColor: '#DDD', alignSelf: 'center', marginBottom: 16 },
+  sheetHeader:   { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
+  sheetTitle:    { flex: 1, fontSize: 18, fontWeight: '700', color: PRIMARY },
+  sheetClose:    { padding: 4 },
+  buscaRow:      { flexDirection: 'row', alignItems: 'center', backgroundColor: SURFACE, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: BORDER, marginBottom: 12 },
+  buscaInput:    { flex: 1, fontSize: 14, color: TEXT_MAIN },
+  corpoItem:     { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 4, gap: 10 },
+  corpoItemIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#E0F4EE', alignItems: 'center', justifyContent: 'center' },
+  corpoItemNome: { fontSize: 14, fontWeight: '600', color: TEXT_MAIN },
+  corpoItemLoc:  { fontSize: 12, color: TEXT_MUTED, marginTop: 2 },
+  tipoItem:      { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: BORDER, gap: 12 },
+  tipoItemIcon:  { width: 34, height: 34, borderRadius: 17, backgroundColor: '#E0F4EE', alignItems: 'center', justifyContent: 'center' },
+  tipoItemLabel: { fontSize: 14, color: TEXT_MAIN },
+  fotoSheetBtn:       { borderRadius: 50, overflow: 'hidden', marginBottom: 10 },
+  fotoSheetGradient:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 15 },
+  fotoSheetBtnText:   { fontSize: 16, color: '#fff', fontWeight: '700' },
+  fotoSheetCancelar:  { alignItems: 'center', paddingVertical: 14 },
   fotoSheetCancelarText: { fontSize: 15, color: TEXT_MUTED },
 
   // Mapa
   mapFooter:         { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, backgroundColor: '#fff' },
   mapConfirmBtn:     { borderRadius: 50, overflow: 'hidden' },
-  mapConfirmGradient: { paddingVertical: 14, alignItems: 'center' },
+  mapConfirmGradient:{ paddingVertical: 14, alignItems: 'center' },
   mapConfirmText:    { fontSize: 16, color: '#fff', fontWeight: '700' },
 
   // Sucesso

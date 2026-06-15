@@ -200,3 +200,35 @@ export async function getRecentCollaboratorMeasurements(
         return [];
     }
 }
+
+/**
+ * Conta medições simples de um corpo hídrico somando duas fontes possíveis:
+ * a coleção "medicoesColaborador" (fluxo antigo) e a coleção "coletaSimples"
+ * com tipo "medicao"/"measurement" (fluxo atual de coleta simples).
+ */
+export async function getMeasurementsCountByWaterBody(
+    corpoHidricoId: string
+): Promise<number> {
+    try {
+        const [medSnap, coletaSnap] = await Promise.all([
+            getDocs(query(
+                collection(db, COLECAO),
+                where("corpoHidricoId", "==", corpoHidricoId)
+            )),
+            getDocs(query(
+                collection(db, "coletaSimples"),
+                where("corpoHidricoId", "==", corpoHidricoId)
+            )),
+        ]);
+
+        const coletaMedicoes = coletaSnap.docs.filter((d) => {
+            const tipo = d.data().tipo;
+            return tipo === "medicao" || tipo === "measurement";
+        });
+
+        return medSnap.size + coletaMedicoes.length;
+    } catch (err) {
+        console.warn("[measurements] getMeasurementsCountByWaterBody:", err);
+        return 0;
+    }
+}

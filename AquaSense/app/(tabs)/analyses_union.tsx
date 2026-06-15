@@ -25,7 +25,6 @@ import {
     getDoneAnalyses,
 } from '@/services/firestore/technicalAnalyses';
 
-// CORREÇÃO 4+5: navbar reutilizável
 import TechnicalBottomNav from '@/components/technicalbottomnavbar';
 
 // ─── Paleta ───────────────────────────────────────────────────────────────────
@@ -44,8 +43,9 @@ const SURFACE      = '#F5F9F8';
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 type TabKey    = 'pendentes' | 'criticas' | 'historico';
 type StatusType = 'CRÍTICO' | 'ATENÇÃO' | 'PENDENTE';
+type HistoricoStatusBadge = 'ENCAMINHADO' | 'MONITORAMENTO' | 'ANALISADO' | 'CONCLUÍDO' | 'NÃO ENCAMINHADO';
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 function minutosAtras(date: Date) {
     const min = Math.max(0, Math.floor((Date.now() - date.getTime()) / 60000));
     if (min < 1)  return 'Agora';
@@ -79,7 +79,6 @@ function resolveStatusType(item: TechnicalAnalysisItem): StatusType {
     return 'PENDENTE';
 }
 
-/** Valida se o valor recebido via params é uma TabKey válida. */
 function toTabKey(value: unknown): TabKey {
     if (value === 'pendentes' || value === 'criticas' || value === 'historico') {
         return value;
@@ -87,7 +86,26 @@ function toTabKey(value: unknown): TabKey {
     return 'pendentes';
 }
 
-// ─── Badge de status ──────────────────────────────────────────────────────────
+function resolveHistoricoStatus(item: TechnicalAnalysisItem): HistoricoStatusBadge {
+    const s = ((item as any).statusAnalise ?? (item as any).status ?? '').toLowerCase();
+    if (s.includes('encaminhado') || (item as any).encaminhadoAoGestor) return 'ENCAMINHADO';
+    if (s.includes('monitoramento')) return 'MONITORAMENTO';
+    if (s.includes('concluido') || s.includes('concluído')) return 'CONCLUÍDO';
+    if (s.includes('nao_encaminhado') || s.includes('não encaminhado')) return 'NÃO ENCAMINHADO';
+    return 'ANALISADO';
+}
+
+const HISTORICO_BADGE_CONFIG: Record<HistoricoStatusBadge, {
+    bg: string; color: string; border: string; icon: keyof typeof Ionicons.glyphMap
+}> = {
+    'ENCAMINHADO':     { bg: '#E8F5E9', color: '#2E7D32', border: '#A5D6A7', icon: 'paper-plane-outline' },
+    'MONITORAMENTO':   { bg: '#E3F2FD', color: '#1565C0', border: '#90CAF9', icon: 'eye-outline' },
+    'ANALISADO':       { bg: '#F0F4F3', color: PRIMARY_MID, border: '#C8E6E0', icon: 'checkmark-circle-outline' },
+    'CONCLUÍDO':       { bg: '#EDE7F6', color: '#4527A0', border: '#B39DDB', icon: 'checkmark-done-outline' },
+    'NÃO ENCAMINHADO': { bg: '#FFF8E1', color: '#F57F17', border: '#FFE082', icon: 'remove-circle-outline' },
+};
+
+// ─── Badge de status (pendentes/críticas) ─────────────────────────────────────
 const StatusBadge: React.FC<{ status: StatusType }> = ({ status }) => {
     const config = {
         'CRÍTICO': { bg: '#FFF0E6', color: ORANGE,      border: '#F9C89E' },
@@ -101,7 +119,27 @@ const StatusBadge: React.FC<{ status: StatusType }> = ({ status }) => {
     );
 };
 
-// ─── Card pendente / histórico ────────────────────────────────────────────────
+// ─── Badge de status (histórico) ──────────────────────────────────────────────
+const HistoricoStatusBadgeComp: React.FC<{ status: HistoricoStatusBadge }> = ({ status }) => {
+    const cfg = HISTORICO_BADGE_CONFIG[status];
+    return (
+        <View style={[
+            styles.badge,
+            {
+                backgroundColor: cfg.bg,
+                borderColor: cfg.border,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 4,
+            },
+        ]}>
+            <Ionicons name={cfg.icon} size={11} color={cfg.color} />
+            <Text style={[styles.badgeText, { color: cfg.color }]}>{status}</Text>
+        </View>
+    );
+};
+
+// ─── Card pendente ────────────────────────────────────────────────────────────
 const PendingCard: React.FC<{
     item: TechnicalAnalysisItem;
     onAnalyze: (id: string) => void;
@@ -320,17 +358,135 @@ const CriticalCard: React.FC<{ item: CriticalAnalysis; onAnalyze: (id: string) =
     );
 };
 
+// ─── Card histórico ───────────────────────────────────────────────────────────
+const HistoryCard: React.FC<{
+    item: TechnicalAnalysisItem;
+    onView: (id: string) => void;
+}> = ({ item, onView }) => {
+    const historicoStatus = resolveHistoricoStatus(item);
+    const cfg = HISTORICO_BADGE_CONFIG[historicoStatus];
+
+    const iconName: keyof typeof Ionicons.glyphMap =
+        item.origem === 'observacao' ? 'document-text-outline' :
+        item.origem === 'denuncia'   ? 'alert-circle-outline'  : 'flask-outline';
+
+    const dataAnalise = (item as any).dataAnalise
+        ? new Date((item as any).dataAnalise)
+        : (item as any).analisadoEm
+            ? new Date((item as any).analisadoEm)
+            : item.dataCriacao;
+
+    const tecnicoNome =
+        (item as any).tecnicoNome ??
+        (item as any).responsavelTecnicoNome ??
+        'Técnico';
+
+    const classificacao =
+        item.classificacao ?? item.nivelRisco ?? item.statusQualidade;
+
+    return (
+        <View style={[styles.card, styles.historyCard, { borderLeftColor: cfg.color + '55' }]}>
+
+            {/* Topo: ícone + nome + badge de status */}
+            <View style={styles.cardTop}>
+                <View style={[styles.iconCircle, { backgroundColor: cfg.color + '18' }]}>
+                    <Ionicons name={iconName} size={20} color={cfg.color} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={styles.cardName} numberOfLines={1}>{item.corpoHidricoNome}</Text>
+                    <Text style={styles.cardMeta}>
+                        {origemLabel(item.origem)}
+                        {' · '}
+                        <Text style={{ color: PRIMARY_MID, fontWeight: '600' }}>
+                            {item.colaboradorNome}
+                        </Text>
+                    </Text>
+                </View>
+                <HistoricoStatusBadgeComp status={historicoStatus} />
+            </View>
+
+            {/* Bloco de detalhes da análise */}
+            <View style={styles.historyDetails}>
+                <View style={styles.historyDetailRow}>
+                    <Ionicons name="person-circle-outline" size={14} color={PRIMARY_MID} />
+                    <Text style={styles.historyDetailLabel}>Técnico:</Text>
+                    <Text style={styles.historyDetailValue}>{tecnicoNome}</Text>
+                </View>
+
+                <View style={styles.historyDetailRow}>
+                    <Ionicons name="calendar-outline" size={14} color={PRIMARY_MID} />
+                    <Text style={styles.historyDetailLabel}>Analisado em:</Text>
+                    <Text style={styles.historyDetailValue}>{formatarDataCurta(dataAnalise)}</Text>
+                </View>
+
+                {classificacao ? (
+                    <View style={styles.historyDetailRow}>
+                        <Ionicons name="analytics-outline" size={14} color={PRIMARY_MID} />
+                        <Text style={styles.historyDetailLabel}>Classificação:</Text>
+                        <Text style={[styles.historyDetailValue, { textTransform: 'capitalize' }]}>
+                            {classificacao}
+                        </Text>
+                    </View>
+                ) : null}
+
+                {(item.cidade || item.estado) ? (
+                    <View style={styles.historyDetailRow}>
+                        <Ionicons name="location-outline" size={14} color={PRIMARY_MID} />
+                        <Text style={styles.historyDetailLabel}>Local:</Text>
+                        <Text style={styles.historyDetailValue}>
+                            {[item.cidade, item.estado].filter(Boolean).join(' - ')}
+                        </Text>
+                    </View>
+                ) : null}
+            </View>
+
+            {/* Chips de encaminhamento / monitoramento */}
+            {((item as any).encaminhadoAoGestor || (item as any).monitoramentoContinuo || (item as any).emMonitoramento) ? (
+                <View style={styles.historyChipsRow}>
+                    {(item as any).encaminhadoAoGestor ? (
+                        <View style={[styles.historyChip, { backgroundColor: '#E8F5E9', borderColor: '#A5D6A7' }]}>
+                            <Ionicons name="paper-plane-outline" size={12} color="#2E7D32" />
+                            <Text style={[styles.historyChipText, { color: '#2E7D32' }]}>Encaminhado ao gestor</Text>
+                        </View>
+                    ) : null}
+                    {((item as any).monitoramentoContinuo || (item as any).emMonitoramento) ? (
+                        <View style={[styles.historyChip, { backgroundColor: '#E3F2FD', borderColor: '#90CAF9' }]}>
+                            <Ionicons name="eye-outline" size={12} color="#1565C0" />
+                            <Text style={[styles.historyChipText, { color: '#1565C0' }]}>Em monitoramento</Text>
+                        </View>
+                    ) : null}
+                </View>
+            ) : null}
+
+            {/* Rodapé */}
+            <View style={styles.cardFooter}>
+                <View style={styles.footerMeta}>
+                    <View style={styles.footerItem}>
+                        <Ionicons name="time-outline" size={12} color={TEXT_MUTED} />
+                        <Text style={styles.footerText}>
+                            Enviado: {formatarDataCurta(item.dataCriacao)}
+                        </Text>
+                    </View>
+                </View>
+                <TouchableOpacity
+                    style={styles.viewBtn}
+                    onPress={() => onView(item.id)}
+                    activeOpacity={0.8}
+                >
+                    <Text style={styles.viewBtnText}>Ver detalhes</Text>
+                    <Ionicons name="chevron-forward" size={13} color={PRIMARY_MID} />
+                </TouchableOpacity>
+            </View>
+        </View>
+    );
+};
+
 // ─── Tela principal ───────────────────────────────────────────────────────────
 export default function AnalysesScreen() {
     const router   = useRouter();
     const { user } = useAuth();
 
-    /**
-     * CORREÇÃO 2+3: lê o parâmetro "tab" enviado pela Home.
-     * Se a Home navegar com { tab: 'criticas' }, a aba Críticas abre diretamente.
-     * Fallback para 'pendentes' quando o parâmetro estiver ausente ou inválido.
-     */
-    const params    = useLocalSearchParams<{ tab?: string }>();
+    const params = useLocalSearchParams<{ tab?: string }>();
 
     const [activeTab,   setActiveTab]   = useState<TabKey>(toTabKey(params.tab));
     const [searchQuery, setSearchQuery] = useState('');
@@ -367,7 +523,7 @@ export default function AnalysesScreen() {
         })();
     }, [user]);
 
-    // Carrega histórico ao mudar para aba histórico (lazy)
+    // Carrega histórico ao mudar para a aba (lazy)
     useEffect(() => {
         if (activeTab !== 'historico' || historyData.length > 0) return;
         (async () => {
@@ -411,9 +567,9 @@ export default function AnalysesScreen() {
         const q = searchQuery.trim().toLowerCase();
         if (!q) return pendingData;
         return pendingData.filter(i =>
-            i.corpoHidricoNome.toLowerCase().includes(q)  ||
-            i.colaboradorNome.toLowerCase().includes(q)   ||
-            origemLabel(i.origem).toLowerCase().includes(q) ||
+            i.corpoHidricoNome.toLowerCase().includes(q)     ||
+            i.colaboradorNome.toLowerCase().includes(q)      ||
+            origemLabel(i.origem).toLowerCase().includes(q)  ||
             (i.cidade ?? '').toLowerCase().includes(q)
         );
     }, [pendingData, searchQuery]);
@@ -422,9 +578,9 @@ export default function AnalysesScreen() {
         const q = searchQuery.trim().toLowerCase();
         if (!q) return historyData;
         return historyData.filter(i =>
-            i.corpoHidricoNome.toLowerCase().includes(q)  ||
-            i.colaboradorNome.toLowerCase().includes(q)   ||
-            origemLabel(i.origem).toLowerCase().includes(q) ||
+            i.corpoHidricoNome.toLowerCase().includes(q)     ||
+            i.colaboradorNome.toLowerCase().includes(q)      ||
+            origemLabel(i.origem).toLowerCase().includes(q)  ||
             (i.cidade ?? '').toLowerCase().includes(q)
         );
     }, [historyData, searchQuery]);
@@ -441,18 +597,11 @@ export default function AnalysesScreen() {
     }, [criticalData, searchQuery]);
 
     // ── Navegação ─────────────────────────────────────────────────────────────
-
-    /**
-     * MUDANÇA: ao clicar em "Analisar", navega para new_analyses passando
-     * os dados do corpo hídrico e o tipo (pendente | critica).
-     */
     const handleAnalyze = useCallback((id: string) => {
-        // Localiza o item em qualquer uma das listas para extrair o corpo hídrico
-        const itemPendente = pendingData.find(i => i.id === id);
-        const itemHistorico = historyData.find(i => i.id === id);
-        const itemCritico   = criticalData.find(i => i.id === id);
-
-        const item = itemPendente ?? itemHistorico ?? itemCritico;
+        const item =
+            pendingData.find(i => i.id === id) ??
+            historyData.find(i => i.id === id) ??
+            criticalData.find(i => i.id === id);
 
         const tipo: 'pendente' | 'critica' =
             activeTab === 'criticas' ? 'critica' : 'pendente';
@@ -468,6 +617,20 @@ export default function AnalysesScreen() {
         } as any);
     }, [router, activeTab, pendingData, historyData, criticalData]);
 
+    const handleViewHistory = useCallback((id: string) => {
+        const item = historyData.find(i => i.id === id);
+        router.push({
+            pathname: '/(tabs)/new_analyses',
+            params: {
+                origem:           'historico',
+                tipo:             'historico',
+                corpoHidricoId:   (item as any)?.corpoHidricoId   ?? '',
+                nomeCorpoHidrico: (item as any)?.corpoHidricoNome ?? '',
+                modoVisualizacao: 'true',
+            },
+        } as any);
+    }, [router, historyData]);
+
     // ── Lista ─────────────────────────────────────────────────────────────────
     const isLoading =
         activeTab === 'criticas'  ? criticalLoading  :
@@ -481,16 +644,28 @@ export default function AnalysesScreen() {
         if (activeTab === 'criticas') {
             return <CriticalCard item={item as CriticalAnalysis} onAnalyze={handleAnalyze} />;
         }
+        if (activeTab === 'historico') {
+            return <HistoryCard item={item as TechnicalAnalysisItem} onView={handleViewHistory} />;
+        }
         return <PendingCard item={item as TechnicalAnalysisItem} onAnalyze={handleAnalyze} />;
-    }, [activeTab, handleAnalyze]);
+    }, [activeTab, handleAnalyze, handleViewHistory]);
+
+    const emptyTitle =
+        activeTab === 'historico'
+            ? 'Nenhuma análise no histórico'
+            : 'Nenhuma análise encontrada';
 
     const emptyDesc = searchQuery
         ? 'Tente outros termos de busca.'
         : activeTab === 'criticas'
             ? 'Nenhuma análise crítica no momento.'
             : activeTab === 'historico'
-                ? 'Nenhuma análise concluída ainda.'
+                ? 'As análises realizadas pelos técnicos aparecerão aqui.'
                 : 'Nenhuma contribuição pendente de avaliação.';
+
+    const emptyIcon: keyof typeof Ionicons.glyphMap =
+        activeTab === 'historico' ? 'time-outline' :
+        activeTab === 'criticas'  ? 'alert-circle-outline' : 'checkmark-circle-outline';
 
     return (
         <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
@@ -532,6 +707,11 @@ export default function AnalysesScreen() {
                         value={searchQuery}
                         onChangeText={setSearchQuery}
                     />
+                    {searchQuery.length > 0 && (
+                        <TouchableOpacity onPress={() => setSearchQuery('')} activeOpacity={0.7}>
+                            <Ionicons name="close-circle" size={16} color={TEXT_MUTED} />
+                        </TouchableOpacity>
+                    )}
                 </View>
             </View>
 
@@ -582,6 +762,9 @@ export default function AnalysesScreen() {
             {isLoading ? (
                 <View style={styles.loadingState}>
                     <ActivityIndicator size="large" color={PRIMARY} />
+                    <Text style={styles.loadingText}>
+                        {activeTab === 'historico' ? 'Carregando histórico...' : 'Carregando análises...'}
+                    </Text>
                 </View>
             ) : (
                 <FlatList
@@ -592,15 +775,16 @@ export default function AnalysesScreen() {
                     showsVerticalScrollIndicator={false}
                     ListEmptyComponent={
                         <View style={styles.emptyState}>
-                            <Ionicons name="checkmark-circle-outline" size={48} color={PRIMARY_MID} />
-                            <Text style={styles.emptyTitle}>Nenhuma análise encontrada</Text>
+                            <View style={styles.emptyIconWrapper}>
+                                <Ionicons name={emptyIcon} size={40} color={PRIMARY_MID} />
+                            </View>
+                            <Text style={styles.emptyTitle}>{emptyTitle}</Text>
                             <Text style={styles.emptyDesc}>{emptyDesc}</Text>
                         </View>
                     }
                 />
             )}
 
-            {/* CORREÇÃO 4+5: navbar reutilizável com aba "analises" ativa */}
             <TechnicalBottomNav active="analises" />
         </SafeAreaView>
     );
@@ -636,10 +820,7 @@ const styles = StyleSheet.create({
         marginTop: 1,
         fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
     },
-    headerLogo: {
-        width: 36,
-        height: 36,
-    },
+    headerLogo: { width: 36, height: 36 },
 
     // ── Search bar ──
     searchBar: {
@@ -689,34 +870,31 @@ const styles = StyleSheet.create({
         borderWidth: 1.5,
         borderColor: BORDER_LIGHT,
     },
-    tabPillActive: {
-        backgroundColor: PRIMARY,
-        borderColor: PRIMARY,
-    },
+    tabPillActive:     { backgroundColor: PRIMARY, borderColor: PRIMARY },
     tabPillText: {
-        fontSize: 13,
-        fontWeight: '600',
-        color: '#888',
+        fontSize: 13, fontWeight: '600', color: '#888',
         fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
     },
     tabPillTextActive: { color: '#fff' },
     tabBadge: {
-        borderRadius: 12,
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-        minWidth: 22,
-        alignItems: 'center',
+        borderRadius: 12, paddingHorizontal: 6, paddingVertical: 2,
+        minWidth: 22, alignItems: 'center',
     },
     tabBadgeText: {
-        fontSize: 11,
-        fontWeight: '700',
+        fontSize: 11, fontWeight: '700',
         fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
     },
 
-    loadingState: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-    listContent:  { padding: 16, paddingBottom: 90, gap: 12 },
+    // ── Loading ──
+    loadingState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+    loadingText: {
+        fontSize: 13, color: TEXT_MUTED,
+        fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
+    },
 
-    // ── Card pendente/histórico ──
+    listContent: { padding: 16, paddingBottom: 90, gap: 12 },
+
+    // ── Card base (pendente) ──
     card: {
         backgroundColor: CARD, borderRadius: 16, padding: 14,
         borderLeftWidth: 3, borderLeftColor: 'transparent',
@@ -736,7 +914,11 @@ const styles = StyleSheet.create({
     originRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
     dotSep:    { color: TEXT_MUTED, fontSize: 12 },
 
-    badge:     { borderRadius: 20, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 4, alignSelf: 'flex-start' },
+    badge: {
+        borderRadius: 20, borderWidth: 1,
+        paddingHorizontal: 10, paddingVertical: 4,
+        alignSelf: 'flex-start',
+    },
     badgeText: {
         fontSize: 11, fontWeight: '700',
         fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
@@ -754,7 +936,10 @@ const styles = StyleSheet.create({
         fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
     },
 
-    obsBox:  { flexDirection: 'row', backgroundColor: SURFACE, borderRadius: 10, padding: 10, gap: 8, marginBottom: 10, alignItems: 'flex-start' },
+    obsBox: {
+        flexDirection: 'row', backgroundColor: SURFACE, borderRadius: 10,
+        padding: 10, gap: 8, marginBottom: 10, alignItems: 'flex-start',
+    },
     obsText: {
         flex: 1, fontSize: 13, color: '#444', lineHeight: 19,
         fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
@@ -820,14 +1005,86 @@ const styles = StyleSheet.create({
         fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
     },
 
+    // ── Card histórico ──
+    historyCard: {
+        borderLeftWidth: 3,
+    },
+    historyDetails: {
+        backgroundColor: SURFACE,
+        borderRadius: 10,
+        padding: 10,
+        marginBottom: 10,
+        gap: 7,
+    },
+    historyDetailRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    historyDetailLabel: {
+        fontSize: 12,
+        color: TEXT_MUTED,
+        minWidth: 90,
+        fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
+    },
+    historyDetailValue: {
+        fontSize: 12,
+        color: '#1a1a1a',
+        fontWeight: '600',
+        flex: 1,
+        fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
+    },
+    historyChipsRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 6,
+        marginBottom: 10,
+    },
+    historyChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        borderRadius: 16,
+        borderWidth: 1,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+    },
+    historyChipText: {
+        fontSize: 11,
+        fontWeight: '600',
+        fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
+    },
+    viewBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        borderWidth: 1.5,
+        borderColor: PRIMARY_MID,
+        borderRadius: 10,
+        paddingHorizontal: 12,
+        paddingVertical: 7,
+    },
+    viewBtnText: {
+        fontSize: 13,
+        color: PRIMARY_MID,
+        fontWeight: '700',
+        fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
+    },
+
     // ── Empty state ──
-    emptyState: { alignItems: 'center', paddingTop: 60, gap: 10 },
+    emptyState: { alignItems: 'center', paddingTop: 60, gap: 12 },
+    emptyIconWrapper: {
+        width: 80, height: 80, borderRadius: 40,
+        backgroundColor: '#EAF4F1',
+        alignItems: 'center', justifyContent: 'center',
+    },
     emptyTitle: {
         fontSize: 16, fontWeight: '700', color: '#1a1a1a',
         fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
     },
     emptyDesc: {
         fontSize: 13, color: TEXT_MUTED, textAlign: 'center',
+        paddingHorizontal: 32,
         fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
     },
 });
