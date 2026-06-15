@@ -77,6 +77,7 @@ export default function PerfilGestorScreen() {
   const [modalDeactivateVisible,   setModalDeactivateVisible]   = useState(false);
   const [modalDeleteVisible,       setModalDeleteVisible]       = useState(false);
   const [modalPasswordSentVisible, setModalPasswordSentVisible] = useState(false);
+  const [modalSignOutVisible,      setModalSignOutVisible]      = useState(false);
 
   const [newEmail,         setNewEmail]         = useState('');
   const [currentPassword,  setCurrentPassword]  = useState('');
@@ -168,6 +169,16 @@ export default function PerfilGestorScreen() {
       Alert.alert('Erro', msg);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    const auth = getAuth();
+    try {
+      await signOut(auth);
+      router.replace('/login');
+    } catch {
+      Alert.alert('Erro', 'Não foi possível sair da conta. Tente novamente.');
     }
   };
 
@@ -349,6 +360,17 @@ export default function PerfilGestorScreen() {
                 </View>
               </View>
 
+              {/* Sair da conta */}
+              <TouchableOpacity
+                style={styles.signOutBtn}
+                onPress={() => setModalSignOutVisible(true)}
+                activeOpacity={0.82}
+              >
+                <Ionicons name="log-out-outline" size={18} color="#c0392b" />
+                <Text style={[styles.signOutText, { fontFamily: questrial }]}>Sair da conta</Text>
+                <Ionicons name="chevron-forward" size={16} color="#c0392b" style={{ marginLeft: 'auto' }} />
+              </TouchableOpacity>
+
               {/* Ações da conta */}
               <Text style={[styles.sectionTitle, { fontFamily: questrial }]}>Ações da conta</Text>
               <View style={styles.card}>
@@ -411,6 +433,30 @@ export default function PerfilGestorScreen() {
         </ScrollView>
 
         <ManagerBottomNav activeTab="perfil" fontFamily={questrial} />
+
+        {/* ── Modal: Sair da conta ── */}
+        <Modal visible={modalSignOutVisible} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Ionicons name="log-out-outline" size={40} color={PRIMARY} style={{ alignSelf: 'center', marginBottom: 12 }} />
+              <Text style={[styles.modalTitle, { fontFamily: questrial, color: PRIMARY }]}>Sair da conta</Text>
+              <Text style={[styles.modalDesc, { fontFamily: questrial }]}>
+                Tem certeza que deseja sair? Você precisará fazer login novamente para acessar o aplicativo.
+              </Text>
+              <View style={styles.modalBtns}>
+                <TouchableOpacity onPress={() => setModalSignOutVisible(false)} style={styles.modalBtnCancel}>
+                  <Text style={{ color: TEXT_MUTED, fontFamily: questrial }}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.modalBtnConfirm}
+                  onPress={() => { setModalSignOutVisible(false); handleSignOut(); }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '700', fontFamily: questrial }}>Sair</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         {/* ── Modal: Editar E-mail ── */}
         <Modal visible={modalEmailVisible} transparent animationType="fade">
@@ -662,6 +708,15 @@ const styles = StyleSheet.create({
   },
   actionLabel: { fontSize: 14, fontWeight: '700' },
   actionDesc: { fontSize: 12, color: TEXT_MUTED, marginTop: 2 },
+
+  signOutBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#fff', borderRadius: 14, padding: 16,
+    marginHorizontal: 16, marginBottom: 12,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06, shadowRadius: 6, elevation: 3,
+  },
+  signOutText: { fontSize: 14, color: '#c0392b', fontWeight: '700' },
 
   securityFooter: {
     flexDirection: 'row', justifyContent: 'space-around',
