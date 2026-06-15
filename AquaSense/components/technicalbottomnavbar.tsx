@@ -36,7 +36,7 @@ const LEFT_TABS: {
 
 const RIGHT_TABS: typeof LEFT_TABS = [
     { key: 'alertas', icon: 'notifications-outline', label: 'Alertas', route: '/alerts'          },
-    { key: 'profile', icon: 'person-outline',        label: 'Perfil',  route: '/(tabs)/profile'  },
+    { key: 'profile', icon: 'person-outline',        label: 'Perfil',  route: '/(tabs)/profile_technician'  },
 ];
 
 // ─── Componente ───────────────────────────────────────────────────────────────
