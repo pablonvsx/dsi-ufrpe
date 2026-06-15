@@ -415,7 +415,7 @@ export default function HomeManager() {
                                     </TouchableOpacity>
                                     <TouchableOpacity
                                         style={styles.profileButton}
-                                        onPress={() => router.push("/(tabs)/profile" as any)}
+                                        onPress={() => router.push("/(tabs)/profile_manager" as any)}
                                         activeOpacity={0.7}
                                     >
                                         <View style={styles.profileCircle}>
