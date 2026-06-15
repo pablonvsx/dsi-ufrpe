@@ -104,7 +104,7 @@ export default function ManageWaterBodies() {
             return;
         }
 
-        setProcessingId(selectedBody.id);
+        setProcessingId(selectedBody.id ?? null);        
         try {
             await rejectWaterBody(selectedBody.id!, userProfile.uid, rejectReason);
             setWaterBodies(prev => prev.filter(b => b.id !== selectedBody.id));

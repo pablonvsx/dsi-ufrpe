@@ -8,16 +8,25 @@ import {
     Platform,
     FlatList,
     ActivityIndicator,
+    Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/contexts/auth-context';
 import {
     CriticalAnalysis,
     getCriticalAnalyses,
 } from '@/services/firestore/critical_analyses';
+import {
+    TechnicalAnalysisItem,
+    getPendingAnalyses,
+    getDoneAnalyses,
+} from '@/services/firestore/technicalAnalyses';
+
+// CORREÇÃO 4+5: navbar reutilizável
+import TechnicalBottomNav from '@/components/technicalbottomnavbar';
 
 // ─── Paleta ───────────────────────────────────────────────────────────────────
 const PRIMARY      = '#004d48';
@@ -34,31 +43,7 @@ const SURFACE      = '#F5F9F8';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 type TabKey    = 'pendentes' | 'criticas' | 'historico';
-type NavTabKey = 'home' | 'analises' | 'mapa' | 'profile';
-type StatusType   = 'CRÍTICO' | 'ATENÇÃO' | 'PENDENTE';
-type AnalysisType = 'medicao' | 'observacao';
-
-export interface MetricData {
-    label: string;
-    value: string;
-    icon: keyof typeof Ionicons.glyphMap;
-    highlight?: boolean;
-    highlightColor?: string;
-}
-
-export interface AnalysisItem {
-    id: string;
-    bodyName: string;
-    type: AnalysisType;
-    collaborator: string;
-    status: StatusType;
-    tab: TabKey;
-    date: string;
-    time: string;
-    location: string;
-    metrics?: MetricData[];
-    observation?: string;
-}
+type StatusType = 'CRÍTICO' | 'ATENÇÃO' | 'PENDENTE';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function minutosAtras(date: Date) {
@@ -81,13 +66,28 @@ function formatarDataCurta(date: Date) {
         : `${date.toLocaleDateString('pt-BR')} · ${hora}`;
 }
 
-function origemLabel(origem: CriticalAnalysis['origem']) {
+function origemLabel(origem: TechnicalAnalysisItem['origem'] | CriticalAnalysis['origem']) {
     if (origem === 'medicao')    return 'Medição simples';
     if (origem === 'observacao') return 'Observação';
     return 'Denúncia';
 }
 
-// ─── Badge de status (pendentes/histórico) ────────────────────────────────────
+function resolveStatusType(item: TechnicalAnalysisItem): StatusType {
+    const c = item.classificacao ?? item.nivelRisco ?? item.statusQualidade ?? '';
+    if (c === 'critica' || c === 'critico') return 'CRÍTICO';
+    if (c === 'atencao' || c === 'alto')    return 'ATENÇÃO';
+    return 'PENDENTE';
+}
+
+/** Valida se o valor recebido via params é uma TabKey válida. */
+function toTabKey(value: unknown): TabKey {
+    if (value === 'pendentes' || value === 'criticas' || value === 'historico') {
+        return value;
+    }
+    return 'pendentes';
+}
+
+// ─── Badge de status ──────────────────────────────────────────────────────────
 const StatusBadge: React.FC<{ status: StatusType }> = ({ status }) => {
     const config = {
         'CRÍTICO': { bg: '#FFF0E6', color: ORANGE,      border: '#F9C89E' },
@@ -102,18 +102,27 @@ const StatusBadge: React.FC<{ status: StatusType }> = ({ status }) => {
 };
 
 // ─── Card pendente / histórico ────────────────────────────────────────────────
-const PendingCard: React.FC<{ item: AnalysisItem; onAnalyze: (id: string) => void }> = ({ item, onAnalyze }) => {
+const PendingCard: React.FC<{
+    item: TechnicalAnalysisItem;
+    onAnalyze: (id: string) => void;
+}> = ({ item, onAnalyze }) => {
+    const statusType = resolveStatusType(item);
+
     const leftBorderColor =
-        item.status === 'CRÍTICO' ? ORANGE :
-        item.status === 'ATENÇÃO' ? AMBER  : 'transparent';
+        statusType === 'CRÍTICO' ? ORANGE :
+        statusType === 'ATENÇÃO' ? AMBER  : 'transparent';
+
     const iconName: keyof typeof Ionicons.glyphMap =
-        item.type === 'observacao' ? 'document-text-outline' : 'flask-outline';
+        item.origem === 'observacao' ? 'document-text-outline' :
+        item.origem === 'denuncia'   ? 'alert-circle-outline'  : 'flask-outline';
+
     const iconBg =
-        item.status === 'CRÍTICO' ? '#FFF0E6' :
-        item.status === 'ATENÇÃO' ? '#FFFCE6' : '#EAF4F1';
+        statusType === 'CRÍTICO' ? '#FFF0E6' :
+        statusType === 'ATENÇÃO' ? '#FFFCE6' : '#EAF4F1';
+
     const iconColor =
-        item.status === 'CRÍTICO' ? ORANGE :
-        item.status === 'ATENÇÃO' ? AMBER  : PRIMARY_MID;
+        statusType === 'CRÍTICO' ? ORANGE :
+        statusType === 'ATENÇÃO' ? AMBER  : PRIMARY_MID;
 
     return (
         <View style={[styles.card, { borderLeftColor: leftBorderColor }]}>
@@ -122,36 +131,43 @@ const PendingCard: React.FC<{ item: AnalysisItem; onAnalyze: (id: string) => voi
                     <Ionicons name={iconName} size={20} color={iconColor} />
                 </View>
                 <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={styles.cardName}>{item.bodyName}</Text>
+                    <Text style={styles.cardName}>{item.corpoHidricoNome}</Text>
                     <Text style={styles.cardMeta}>
-                        {item.type === 'medicao' ? 'Medição simples' : 'Observação'}
+                        {origemLabel(item.origem)}
                         {' · '}
-                        <Text style={{ color: PRIMARY_MID, fontWeight: '600' }}>{item.collaborator}</Text>
+                        <Text style={{ color: PRIMARY_MID, fontWeight: '600' }}>{item.colaboradorNome}</Text>
                     </Text>
                 </View>
-                <StatusBadge status={item.status} />
+                <StatusBadge status={statusType} />
             </View>
 
-            {item.type === 'medicao' && item.metrics && (
+            {item.origem === 'medicao' && item.parametros && item.parametros.length > 0 && (
                 <View style={styles.metricsRow}>
-                    {item.metrics.map((m, idx) => (
+                    {item.parametros.slice(0, 4).map((p, idx) => (
                         <View key={idx} style={styles.metric}>
                             <View style={styles.metricLabel}>
-                                <Ionicons name={m.icon} size={11} color={m.highlight ? m.highlightColor : PRIMARY_MID} />
-                                <Text style={styles.metricLabelText}>{m.label}</Text>
+                                <Ionicons
+                                    name={(p.icon as keyof typeof Ionicons.glyphMap) ?? 'analytics-outline'}
+                                    size={11}
+                                    color={p.severity === 'critico' ? RED : PRIMARY_MID}
+                                />
+                                <Text style={styles.metricLabelText}>{p.label}</Text>
                             </View>
-                            <Text style={[styles.metricValue, m.highlight && { color: m.highlightColor }]}>
-                                {m.value}
+                            <Text style={[
+                                styles.metricValue,
+                                p.severity === 'critico' && { color: RED },
+                            ]}>
+                                {p.value}
                             </Text>
                         </View>
                     ))}
                 </View>
             )}
 
-            {item.type === 'observacao' && item.observation && (
+            {item.descricao && item.origem !== 'medicao' && (
                 <View style={styles.obsBox}>
                     <Ionicons name="chatbubble-outline" size={14} color={PRIMARY_MID} style={{ marginTop: 1 }} />
-                    <Text style={styles.obsText}>{item.observation}</Text>
+                    <Text style={styles.obsText}>{item.descricao}</Text>
                 </View>
             )}
 
@@ -159,18 +175,26 @@ const PendingCard: React.FC<{ item: AnalysisItem; onAnalyze: (id: string) => voi
                 <View style={styles.footerMeta}>
                     <View style={styles.footerItem}>
                         <Ionicons name="calendar-outline" size={12} color={TEXT_MUTED} />
-                        <Text style={styles.footerText}>{item.date}, {item.time}</Text>
+                        <Text style={styles.footerText}>{formatarDataCurta(item.dataCriacao)}</Text>
                     </View>
                     <View style={styles.footerItem}>
                         <Ionicons name="person-outline" size={12} color={TEXT_MUTED} />
-                        <Text style={styles.footerText}>{item.collaborator}</Text>
+                        <Text style={styles.footerText}>{item.colaboradorNome}</Text>
                     </View>
-                    <View style={styles.footerItem}>
-                        <Ionicons name="location-outline" size={12} color={TEXT_MUTED} />
-                        <Text style={styles.footerText}>{item.location}</Text>
-                    </View>
+                    {(item.cidade || item.estado) && (
+                        <View style={styles.footerItem}>
+                            <Ionicons name="location-outline" size={12} color={TEXT_MUTED} />
+                            <Text style={styles.footerText}>
+                                {[item.cidade, item.estado].filter(Boolean).join(' - ')}
+                            </Text>
+                        </View>
+                    )}
                 </View>
-                <TouchableOpacity style={styles.analyzeBtn} onPress={() => onAnalyze(item.id)} activeOpacity={0.8}>
+                <TouchableOpacity
+                    style={styles.analyzeBtn}
+                    onPress={() => onAnalyze(item.id)}
+                    activeOpacity={0.8}
+                >
                     <Text style={styles.analyzeBtnText}>Analisar</Text>
                     <Ionicons name="arrow-forward" size={13} color="#fff" />
                 </TouchableOpacity>
@@ -180,19 +204,25 @@ const PendingCard: React.FC<{ item: AnalysisItem; onAnalyze: (id: string) => voi
 };
 
 // ─── Card crítico ─────────────────────────────────────────────────────────────
-const CriticalCard: React.FC<{ item: CriticalAnalysis }> = ({ item }) => {
-    const isCritical = item.status === 'critico';
-    const accent     = isCritical ? RED : ORANGE;
+const CriticalCard: React.FC<{ item: CriticalAnalysis; onAnalyze: (id: string) => void }> = ({ item, onAnalyze }) => {
+    const isCritical  = item.status === 'critico';
+    const accent      = isCritical ? RED : ORANGE;
     const statusLabel = isCritical ? 'CRÍTICO' : 'ATENÇÃO ALTA';
+
+    const iconName: keyof typeof Ionicons.glyphMap =
+        item.origem === 'observacao' ? 'document-text-outline' :
+        item.origem === 'denuncia'   ? 'alert-circle-outline'  : 'flask-outline';
 
     return (
         <View style={styles.criticalCardWrapper}>
             <View style={[styles.criticalAccent, { backgroundColor: accent }]} />
             <View style={styles.criticalCard}>
-                {/* Header */}
                 <View style={styles.cardTop}>
-                    <View style={[styles.iconCircle, { backgroundColor: isCritical ? '#fdecea' : '#fff3df', width: 48, height: 48, borderRadius: 24 }]}>
-                        <Ionicons name="flask-outline" size={24} color={accent} />
+                    <View style={[styles.iconCircle, {
+                        backgroundColor: isCritical ? '#fdecea' : '#fff3df',
+                        width: 48, height: 48, borderRadius: 24,
+                    }]}>
+                        <Ionicons name={iconName} size={24} color={accent} />
                     </View>
                     <View style={{ flex: 1, marginLeft: 12 }}>
                         <Text style={styles.cardName} numberOfLines={1}>{item.corpoHidricoNome}</Text>
@@ -204,17 +234,23 @@ const CriticalCard: React.FC<{ item: CriticalAnalysis }> = ({ item }) => {
                             </Text>
                         </View>
                     </View>
-                    <View style={[styles.badge, { backgroundColor: isCritical ? '#fdecea' : '#fff3df', borderColor: isCritical ? '#f9c8c0' : '#F9C89E' }]}>
+                    <View style={[styles.badge, {
+                        backgroundColor: isCritical ? '#fdecea' : '#fff3df',
+                        borderColor: isCritical ? '#f9c8c0' : '#F9C89E',
+                    }]}>
                         <Text style={[styles.badgeText, { color: accent }]}>{statusLabel}</Text>
                     </View>
                 </View>
 
-                {/* Parâmetros */}
                 {item.parametros.length > 0 && (
                     <View style={styles.paramsGrid}>
                         {item.parametros.slice(0, 4).map((p, i) => (
                             <View key={i} style={styles.paramBox}>
-                                <Ionicons name={p.icon as any} size={22} color={p.severity === 'critico' ? RED : TEAL} />
+                                <Ionicons
+                                    name={(p.icon as keyof typeof Ionicons.glyphMap) ?? 'analytics-outline'}
+                                    size={22}
+                                    color={p.severity === 'critico' ? RED : TEAL}
+                                />
                                 <View style={{ flex: 1 }}>
                                     <Text style={styles.paramLabel}>{p.label}</Text>
                                     <Text style={[styles.paramValue, { color: p.severity === 'critico' ? RED : PRIMARY }]}>
@@ -231,7 +267,6 @@ const CriticalCard: React.FC<{ item: CriticalAnalysis }> = ({ item }) => {
                     </View>
                 )}
 
-                {/* Descrição */}
                 {item.descricao && item.origem !== 'medicao' && (
                     <View style={styles.obsBox}>
                         <Ionicons name="chatbubble-ellipses-outline" size={14} color={PRIMARY_MID} style={{ marginTop: 1 }} />
@@ -239,7 +274,6 @@ const CriticalCard: React.FC<{ item: CriticalAnalysis }> = ({ item }) => {
                     </View>
                 )}
 
-                {/* Chips de alerta */}
                 {item.alertas.length > 0 && (
                     <View style={styles.alertChipsRow}>
                         {item.alertas.slice(0, 2).map((alerta, i) => (
@@ -251,7 +285,6 @@ const CriticalCard: React.FC<{ item: CriticalAnalysis }> = ({ item }) => {
                     </View>
                 )}
 
-                {/* Footer */}
                 <View style={styles.cardFooter}>
                     <View style={styles.footerMeta}>
                         <View style={styles.footerItem}>
@@ -273,7 +306,11 @@ const CriticalCard: React.FC<{ item: CriticalAnalysis }> = ({ item }) => {
                             <Text style={styles.footerText}>{minutosAtras(item.dataCriacao)}</Text>
                         </View>
                     </View>
-                    <TouchableOpacity style={[styles.analyzeBtn, { backgroundColor: accent }]} activeOpacity={0.85}>
+                    <TouchableOpacity
+                        style={[styles.analyzeBtn, { backgroundColor: accent }]}
+                        onPress={() => onAnalyze(item.id)}
+                        activeOpacity={0.85}
+                    >
                         <Text style={styles.analyzeBtnText}>Analisar</Text>
                         <Ionicons name="arrow-forward" size={13} color="#fff" />
                     </TouchableOpacity>
@@ -288,36 +325,65 @@ export default function AnalysesScreen() {
     const router   = useRouter();
     const { user } = useAuth();
 
-    const [activeTab,    setActiveTab]    = useState<TabKey>('pendentes');
-    const [activeNavTab, setActiveNavTab] = useState<NavTabKey>('analises');
-    const [searchQuery,  setSearchQuery]  = useState('');
+    /**
+     * CORREÇÃO 2+3: lê o parâmetro "tab" enviado pela Home.
+     * Se a Home navegar com { tab: 'criticas' }, a aba Críticas abre diretamente.
+     * Fallback para 'pendentes' quando o parâmetro estiver ausente ou inválido.
+     */
+    const params    = useLocalSearchParams<{ tab?: string }>();
 
-    // dados pendentes/histórico
+    const [activeTab,   setActiveTab]   = useState<TabKey>(toTabKey(params.tab));
+    const [searchQuery, setSearchQuery] = useState('');
+
+    useEffect(() => {
+        setActiveTab(toTabKey(params.tab));
+    }, [params.tab]);
+
+    // ── Pendentes ─────────────────────────────────────────────────────────────
     const [pendingLoading, setPendingLoading] = useState(true);
-    const [pendingData,    setPendingData]    = useState<AnalysisItem[]>([]);
+    const [pendingData,    setPendingData]    = useState<TechnicalAnalysisItem[]>([]);
 
-    // dados críticos
+    // ── Histórico ─────────────────────────────────────────────────────────────
+    const [historyLoading, setHistoryLoading] = useState(false);
+    const [historyData,    setHistoryData]    = useState<TechnicalAnalysisItem[]>([]);
+
+    // ── Críticas ──────────────────────────────────────────────────────────────
     const [criticalLoading, setCriticalLoading] = useState(true);
     const [criticalData,    setCriticalData]    = useState<CriticalAnalysis[]>([]);
 
-    // ── Carrega pendentes ─────────────────────────────────────────────────────
+    // Carrega pendentes ao montar
     useEffect(() => {
         if (!user) return;
         (async () => {
             try {
                 setPendingLoading(true);
-                // TODO: const result = await getAnalyses(user.uid);
-                // setPendingData(result);
-                setPendingData([]);
+                const data = await getPendingAnalyses(50);
+                setPendingData(data);
             } catch (err) {
-                console.error('Erro ao buscar análises:', err);
+                console.error('[AnalysesScreen] Erro ao buscar pendentes:', err);
             } finally {
                 setPendingLoading(false);
             }
         })();
     }, [user]);
 
-    // ── Carrega críticas ──────────────────────────────────────────────────────
+    // Carrega histórico ao mudar para aba histórico (lazy)
+    useEffect(() => {
+        if (activeTab !== 'historico' || historyData.length > 0) return;
+        (async () => {
+            try {
+                setHistoryLoading(true);
+                const data = await getDoneAnalyses(50);
+                setHistoryData(data);
+            } catch (err) {
+                console.error('[AnalysesScreen] Erro ao buscar histórico:', err);
+            } finally {
+                setHistoryLoading(false);
+            }
+        })();
+    }, [activeTab]);
+
+    // Carrega críticas ao montar
     useEffect(() => {
         (async () => {
             try {
@@ -325,7 +391,7 @@ export default function AnalysesScreen() {
                 const dados = await getCriticalAnalyses(50);
                 setCriticalData(dados);
             } catch (err) {
-                console.error('Erro ao buscar análises críticas:', err);
+                console.error('[AnalysesScreen] Erro ao buscar críticas:', err);
                 setCriticalData([]);
             } finally {
                 setCriticalLoading(false);
@@ -333,76 +399,98 @@ export default function AnalysesScreen() {
         })();
     }, []);
 
-    // ── Contagens para badges ─────────────────────────────────────────────────
-    const countPendentes = pendingData.filter(i => i.tab === 'pendentes').length;
-    const countHistorico = pendingData.filter(i => i.tab === 'historico').length;
-    const countCriticas  = criticalData.length;
-
+    // ── Contadores ────────────────────────────────────────────────────────────
     const tabCounts: Record<TabKey, number> = {
-        pendentes: countPendentes,
-        criticas:  countCriticas,
-        historico: countHistorico,
+        pendentes: pendingData.length,
+        criticas:  criticalData.length,
+        historico: historyData.length,
     };
 
-    // ── Filtros ───────────────────────────────────────────────────────────────
+    // ── Filtros de busca ──────────────────────────────────────────────────────
     const filteredPending = useMemo(() => {
-        const items = pendingData.filter(i =>
-            activeTab === 'pendentes' ? i.tab === 'pendentes' : i.tab === 'historico'
-        );
         const q = searchQuery.trim().toLowerCase();
-        if (!q) return items;
-        return items.filter(i =>
-            i.bodyName.toLowerCase().includes(q)     ||
-            i.collaborator.toLowerCase().includes(q) ||
-            i.location.toLowerCase().includes(q)
-        );
-    }, [pendingData, activeTab, searchQuery]);
-
-    const filteredCritical = useMemo(() => {
-        const q = searchQuery.trim().toLowerCase();
-        if (!q) return criticalData;
-        return criticalData.filter(i =>
+        if (!q) return pendingData;
+        return pendingData.filter(i =>
             i.corpoHidricoNome.toLowerCase().includes(q)  ||
             i.colaboradorNome.toLowerCase().includes(q)   ||
             origemLabel(i.origem).toLowerCase().includes(q) ||
             (i.cidade ?? '').toLowerCase().includes(q)
         );
+    }, [pendingData, searchQuery]);
+
+    const filteredHistory = useMemo(() => {
+        const q = searchQuery.trim().toLowerCase();
+        if (!q) return historyData;
+        return historyData.filter(i =>
+            i.corpoHidricoNome.toLowerCase().includes(q)  ||
+            i.colaboradorNome.toLowerCase().includes(q)   ||
+            origemLabel(i.origem).toLowerCase().includes(q) ||
+            (i.cidade ?? '').toLowerCase().includes(q)
+        );
+    }, [historyData, searchQuery]);
+
+    const filteredCritical = useMemo(() => {
+        const q = searchQuery.trim().toLowerCase();
+        if (!q) return criticalData;
+        return criticalData.filter(i =>
+            i.corpoHidricoNome.toLowerCase().includes(q)     ||
+            i.colaboradorNome.toLowerCase().includes(q)      ||
+            origemLabel(i.origem).toLowerCase().includes(q)  ||
+            (i.cidade ?? '').toLowerCase().includes(q)
+        );
     }, [criticalData, searchQuery]);
 
     // ── Navegação ─────────────────────────────────────────────────────────────
+
+    /**
+     * MUDANÇA: ao clicar em "Analisar", navega para new_analyses passando
+     * os dados do corpo hídrico e o tipo (pendente | critica).
+     */
     const handleAnalyze = useCallback((id: string) => {
-        router.push({ pathname: '/(tabs)/analysis_detail', params: { id } } as any);
-    }, [router]);
+        // Localiza o item em qualquer uma das listas para extrair o corpo hídrico
+        const itemPendente = pendingData.find(i => i.id === id);
+        const itemHistorico = historyData.find(i => i.id === id);
+        const itemCritico   = criticalData.find(i => i.id === id);
 
-    const handleNavTab = useCallback((tab: NavTabKey) => {
-        setActiveNavTab(tab);
-        if (tab === 'home') {
-            router.replace('/(tabs)/home_technician' as any);
-        } else if (tab === 'mapa') {
-            router.push('/(tabs)/map' as any);
-        } else if (tab === 'profile') {
-            router.replace('/(tabs)/profile' as any);
-        }
-    }, [router]);
+        const item = itemPendente ?? itemHistorico ?? itemCritico;
 
-    // ── Conteúdo da lista ─────────────────────────────────────────────────────
-    const isLoading = activeTab === 'criticas' ? criticalLoading : pendingLoading;
+        const tipo: 'pendente' | 'critica' =
+            activeTab === 'criticas' ? 'critica' : 'pendente';
 
-    const renderItem = useCallback(({ item }: { item: AnalysisItem | CriticalAnalysis }) => {
+        router.push({
+            pathname: '/(tabs)/new_analyses',
+            params: {
+                origem:           'analises',
+                tipo,
+                corpoHidricoId:   (item as any)?.corpoHidricoId   ?? '',
+                nomeCorpoHidrico: (item as any)?.corpoHidricoNome  ?? '',
+            },
+        } as any);
+    }, [router, activeTab, pendingData, historyData, criticalData]);
+
+    // ── Lista ─────────────────────────────────────────────────────────────────
+    const isLoading =
+        activeTab === 'criticas'  ? criticalLoading  :
+        activeTab === 'historico' ? historyLoading   : pendingLoading;
+
+    const listData: (TechnicalAnalysisItem | CriticalAnalysis)[] =
+        activeTab === 'criticas'  ? filteredCritical :
+        activeTab === 'historico' ? filteredHistory  : filteredPending;
+
+    const renderItem = useCallback(({ item }: { item: TechnicalAnalysisItem | CriticalAnalysis }) => {
         if (activeTab === 'criticas') {
-            return <CriticalCard item={item as CriticalAnalysis} />;
+            return <CriticalCard item={item as CriticalAnalysis} onAnalyze={handleAnalyze} />;
         }
-        return <PendingCard item={item as AnalysisItem} onAnalyze={handleAnalyze} />;
+        return <PendingCard item={item as TechnicalAnalysisItem} onAnalyze={handleAnalyze} />;
     }, [activeTab, handleAnalyze]);
-
-    const listData: (AnalysisItem | CriticalAnalysis)[] =
-        activeTab === 'criticas' ? filteredCritical : filteredPending;
 
     const emptyDesc = searchQuery
         ? 'Tente outros termos de busca.'
         : activeTab === 'criticas'
             ? 'Nenhuma análise crítica no momento.'
-            : 'Não há registros nesta categoria.';
+            : activeTab === 'historico'
+                ? 'Nenhuma análise concluída ainda.'
+                : 'Nenhuma contribuição pendente de avaliação.';
 
     return (
         <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
@@ -426,9 +514,11 @@ export default function AnalysesScreen() {
                     <Text style={styles.headerTitle}>Análises Técnicas</Text>
                     <Text style={styles.headerSub}>Registros aguardando avaliação técnica</Text>
                 </View>
-                <View style={styles.headerLogoCircle}>
-                    <Ionicons name="leaf-outline" size={20} color="#fff" />
-                </View>
+                <Image
+                    source={require('@/assets/images/aquasense.png')}
+                    style={styles.headerLogo}
+                    resizeMode="contain"
+                />
             </LinearGradient>
 
             {/* ── Barra de busca ── */}
@@ -443,37 +533,39 @@ export default function AnalysesScreen() {
                         onChangeText={setSearchQuery}
                     />
                 </View>
-                <TouchableOpacity style={styles.filterBtn} activeOpacity={0.7}>
-                    <Ionicons name="options-outline" size={15} color={PRIMARY_MID} />
-                    <Text style={styles.filterBtnText}>Filtros</Text>
-                </TouchableOpacity>
             </View>
 
             {/* ── Abas ── */}
-            <View style={styles.tabsRow}>
+            <View style={styles.tabsContainer}>
                 {([
                     { key: 'pendentes', label: 'Pendentes' },
                     { key: 'criticas',  label: 'Críticas'  },
                     { key: 'historico', label: 'Histórico' },
                 ] as { key: TabKey; label: string }[]).map(tab => {
                     const isActive = activeTab === tab.key;
+
                     const badgeBg =
-                        tab.key === 'criticas'  ? (isActive ? '#ff6b1a' : '#FFF0E6') :
-                        tab.key === 'historico' ? '#F0F0F0' :
-                        isActive ? PRIMARY : '#e8f5e9';
+                        tab.key === 'criticas'
+                            ? (isActive ? ORANGE : '#FFF0E6')
+                            : tab.key === 'historico'
+                                ? (isActive ? 'rgba(255,255,255,0.25)' : '#E8EEEC')
+                                : (isActive ? 'rgba(255,255,255,0.25)' : '#E2F0ED');
+
                     const badgeColor =
-                        tab.key === 'criticas'  ? (isActive ? '#fff' : ORANGE) :
-                        tab.key === 'historico' ? '#666' :
-                        isActive ? '#fff' : PRIMARY_MID;
+                        tab.key === 'criticas'
+                            ? (isActive ? '#fff' : ORANGE)
+                            : tab.key === 'historico'
+                                ? (isActive ? '#fff' : '#888')
+                                : (isActive ? '#fff' : PRIMARY_MID);
 
                     return (
                         <TouchableOpacity
                             key={tab.key}
-                            style={[styles.tab, isActive && styles.tabActive]}
+                            style={[styles.tabPill, isActive && styles.tabPillActive]}
                             onPress={() => setActiveTab(tab.key)}
-                            activeOpacity={0.7}
+                            activeOpacity={0.75}
                         >
-                            <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
+                            <Text style={[styles.tabPillText, isActive && styles.tabPillTextActive]}>
                                 {tab.label}
                             </Text>
                             <View style={[styles.tabBadge, { backgroundColor: badgeBg }]}>
@@ -493,9 +585,9 @@ export default function AnalysesScreen() {
                 </View>
             ) : (
                 <FlatList
-                    data={listData}
-                    keyExtractor={item => ('id' in item ? item.id : '') ?? Math.random().toString()}
-                    renderItem={renderItem}
+                    data={listData as any[]}
+                    keyExtractor={item => (item as any).id ?? Math.random().toString()}
+                    renderItem={renderItem as any}
                     contentContainerStyle={styles.listContent}
                     showsVerticalScrollIndicator={false}
                     ListEmptyComponent={
@@ -508,50 +600,8 @@ export default function AnalysesScreen() {
                 />
             )}
 
-            {/* ── Tab bar ── */}
-            <View style={styles.tabBar}>
-                {([
-                    { key: 'home',     icon: 'home-outline',          label: 'Home'     },
-                    { key: 'analises', icon: 'document-text-outline', label: 'Análises' },
-                ] as { key: NavTabKey; icon: keyof typeof Ionicons.glyphMap; label: string }[]).map(t => {
-                    const isActive = activeNavTab === t.key;
-                    return (
-                        <TouchableOpacity key={t.key} style={styles.navTabItem} onPress={() => handleNavTab(t.key)} activeOpacity={0.7}>
-                            <Ionicons
-                                name={isActive ? t.icon.replace('-outline', '') as any : t.icon}
-                                size={23}
-                                color={isActive ? PRIMARY : '#aaa'}
-                            />
-                            <Text style={[styles.navTabLabel, isActive && styles.navTabLabelActive]}>{t.label}</Text>
-                        </TouchableOpacity>
-                    );
-                })}
-
-                <TouchableOpacity
-                    style={styles.tabAddBtn}
-                    onPress={() => router.push('/(tabs)/register_observation' as any)}
-                    activeOpacity={0.85}
-                >
-                    <Ionicons name="add" size={30} color="#fff" />
-                </TouchableOpacity>
-
-                {([
-                    { key: 'mapa',    icon: 'map-outline',    label: 'Mapa'   },
-                    { key: 'profile', icon: 'person-outline', label: 'Perfil' },
-                ] as { key: NavTabKey; icon: keyof typeof Ionicons.glyphMap; label: string }[]).map(t => {
-                    const isActive = activeNavTab === t.key;
-                    return (
-                        <TouchableOpacity key={t.key} style={styles.navTabItem} onPress={() => handleNavTab(t.key)} activeOpacity={0.7}>
-                            <Ionicons
-                                name={isActive ? t.icon.replace('-outline', '') as any : t.icon}
-                                size={23}
-                                color={isActive ? PRIMARY : '#aaa'}
-                            />
-                            <Text style={[styles.navTabLabel, isActive && styles.navTabLabelActive]}>{t.label}</Text>
-                        </TouchableOpacity>
-                    );
-                })}
-            </View>
+            {/* CORREÇÃO 4+5: navbar reutilizável com aba "analises" ativa */}
+            <TechnicalBottomNav active="analises" />
         </SafeAreaView>
     );
 }
@@ -560,6 +610,7 @@ export default function AnalysesScreen() {
 const styles = StyleSheet.create({
     screen: { flex: 1, backgroundColor: BG },
 
+    // ── Header ──
     header: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -572,43 +623,95 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(255,255,255,0.15)',
         alignItems: 'center', justifyContent: 'center',
     },
-    headerTitle: { color: '#fff', fontSize: 18, fontWeight: '700' },
-    headerSub:   { color: 'rgba(255,255,255,0.7)', fontSize: 12, marginTop: 1 },
-    headerLogoCircle: {
-        width: 38, height: 38, borderRadius: 19,
-        borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.35)',
-        alignItems: 'center', justifyContent: 'center',
+    headerTitle: {
+        color: '#fff',
+        fontSize: 17,
+        fontWeight: '400',
+        fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
+        letterSpacing: 0.1,
+    },
+    headerSub: {
+        color: 'rgba(255,255,255,0.7)',
+        fontSize: 12,
+        marginTop: 1,
+        fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
+    },
+    headerLogo: {
+        width: 36,
+        height: 36,
     },
 
+    // ── Search bar ──
     searchBar: {
-        backgroundColor: CARD, flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: 14, paddingVertical: 10, gap: 10,
-        borderBottomWidth: 1, borderBottomColor: BORDER_LIGHT,
+        backgroundColor: CARD,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: BORDER_LIGHT,
     },
     searchInputWrapper: {
-        flex: 1, flexDirection: 'row', alignItems: 'center',
-        backgroundColor: SURFACE, borderRadius: 10,
-        paddingHorizontal: 10, paddingVertical: Platform.OS === 'ios' ? 8 : 4,
-        borderWidth: 1, borderColor: BORDER_LIGHT,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: SURFACE,
+        borderRadius: 10,
+        paddingHorizontal: 10,
+        paddingVertical: Platform.OS === 'ios' ? 8 : 4,
+        borderWidth: 1,
+        borderColor: BORDER_LIGHT,
     },
-    searchInput:   { flex: 1, fontSize: 13, color: '#1a1a1a' },
-    filterBtn:     { flexDirection: 'row', alignItems: 'center', gap: 4 },
-    filterBtnText: { fontSize: 13, color: PRIMARY_MID, fontWeight: '600' },
+    searchInput: {
+        flex: 1,
+        fontSize: 13,
+        color: '#1a1a1a',
+        fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
+    },
 
-    tabsRow: {
-        flexDirection: 'row', backgroundColor: CARD,
-        paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: BORDER_LIGHT,
+    // ── Abas ──
+    tabsContainer: {
+        flexDirection: 'row',
+        backgroundColor: CARD,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        gap: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: BORDER_LIGHT,
     },
-    tab: {
-        flexDirection: 'row', alignItems: 'center',
-        paddingVertical: 12, marginRight: 16, gap: 6,
-        borderBottomWidth: 2, borderBottomColor: 'transparent',
+    tabPill: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 8,
+        paddingHorizontal: 6,
+        borderRadius: 22,
+        gap: 5,
+        backgroundColor: 'transparent',
+        borderWidth: 1.5,
+        borderColor: BORDER_LIGHT,
     },
-    tabActive:     { borderBottomColor: PRIMARY },
-    tabText:       { fontSize: 13, fontWeight: '600', color: '#888' },
-    tabTextActive: { color: PRIMARY },
-    tabBadge:      { borderRadius: 12, paddingHorizontal: 7, paddingVertical: 2 },
-    tabBadgeText:  { fontSize: 11, fontWeight: '700' },
+    tabPillActive: {
+        backgroundColor: PRIMARY,
+        borderColor: PRIMARY,
+    },
+    tabPillText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#888',
+        fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
+    },
+    tabPillTextActive: { color: '#fff' },
+    tabBadge: {
+        borderRadius: 12,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        minWidth: 22,
+        alignItems: 'center',
+    },
+    tabBadgeText: {
+        fontSize: 11,
+        fontWeight: '700',
+        fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
+    },
 
     loadingState: { flex: 1, alignItems: 'center', justifyContent: 'center' },
     listContent:  { padding: 16, paddingBottom: 90, gap: 12 },
@@ -620,24 +723,42 @@ const styles = StyleSheet.create({
         shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.07, shadowRadius: 8, elevation: 3,
     },
-    cardTop:  { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 },
+    cardTop:    { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 },
     iconCircle: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-    cardName: { fontSize: 16, fontWeight: '700', color: '#1a1a1a', marginBottom: 3 },
-    cardMeta: { fontSize: 12, color: TEXT_MUTED, lineHeight: 17 },
-    originRow:{ flexDirection: 'row', alignItems: 'center', gap: 4 },
-    dotSep:   { color: TEXT_MUTED, fontSize: 12 },
+    cardName: {
+        fontSize: 16, fontWeight: '700', color: '#1a1a1a', marginBottom: 3,
+        fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
+    },
+    cardMeta: {
+        fontSize: 12, color: TEXT_MUTED, lineHeight: 17,
+        fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
+    },
+    originRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    dotSep:    { color: TEXT_MUTED, fontSize: 12 },
 
     badge:     { borderRadius: 20, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 4, alignSelf: 'flex-start' },
-    badgeText: { fontSize: 11, fontWeight: '700' },
+    badgeText: {
+        fontSize: 11, fontWeight: '700',
+        fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
+    },
 
     metricsRow: { flexDirection: 'row', gap: 8, marginBottom: 10, flexWrap: 'wrap' },
     metric:     { flex: 1, minWidth: 64, backgroundColor: SURFACE, borderRadius: 8, padding: 8 },
     metricLabel:     { flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 3 },
-    metricLabelText: { fontSize: 10, color: TEXT_MUTED },
-    metricValue:     { fontSize: 15, fontWeight: '700', color: '#1a1a1a' },
+    metricLabelText: {
+        fontSize: 10, color: TEXT_MUTED,
+        fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
+    },
+    metricValue: {
+        fontSize: 15, fontWeight: '700', color: '#1a1a1a',
+        fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
+    },
 
     obsBox:  { flexDirection: 'row', backgroundColor: SURFACE, borderRadius: 10, padding: 10, gap: 8, marginBottom: 10, alignItems: 'flex-start' },
-    obsText: { flex: 1, fontSize: 13, color: '#444', lineHeight: 19 },
+    obsText: {
+        flex: 1, fontSize: 13, color: '#444', lineHeight: 19,
+        fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
+    },
 
     cardFooter: {
         flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -645,13 +766,19 @@ const styles = StyleSheet.create({
     },
     footerMeta: { flex: 1, gap: 3 },
     footerItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-    footerText: { fontSize: 11, color: TEXT_MUTED },
+    footerText: {
+        fontSize: 11, color: TEXT_MUTED,
+        fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
+    },
     analyzeBtn: {
         backgroundColor: PRIMARY, borderRadius: 10,
         paddingHorizontal: 14, paddingVertical: 8,
         flexDirection: 'row', alignItems: 'center', gap: 5,
     },
-    analyzeBtnText: { fontSize: 13, color: '#fff', fontWeight: '700' },
+    analyzeBtnText: {
+        fontSize: 13, color: '#fff', fontWeight: '700',
+        fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
+    },
 
     // ── Card crítico ──
     criticalCardWrapper: { position: 'relative', marginBottom: 2 },
@@ -670,40 +797,37 @@ const styles = StyleSheet.create({
         flexDirection: 'row', alignItems: 'center', gap: 10,
         borderWidth: 1, borderColor: BORDER_LIGHT,
     },
-    paramLabel: { fontSize: 11, color: TEXT_MUTED },
-    paramValue: { fontSize: 14, fontWeight: '700', marginTop: 1 },
-    paramHint:  { fontSize: 10, marginTop: 1 },
+    paramLabel: {
+        fontSize: 11, color: TEXT_MUTED,
+        fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
+    },
+    paramValue: {
+        fontSize: 14, fontWeight: '700', marginTop: 1,
+        fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
+    },
+    paramHint: {
+        fontSize: 10, marginTop: 1,
+        fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
+    },
     alertChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
     alertChip: {
         flexDirection: 'row', alignItems: 'center', gap: 4,
         backgroundColor: '#fff2f0', borderRadius: 16,
         paddingHorizontal: 8, paddingVertical: 5,
     },
-    alertChipText: { color: RED, fontSize: 11, fontWeight: '700' },
+    alertChipText: {
+        color: RED, fontSize: 11, fontWeight: '700',
+        fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
+    },
 
     // ── Empty state ──
     emptyState: { alignItems: 'center', paddingTop: 60, gap: 10 },
-    emptyTitle: { fontSize: 16, fontWeight: '700', color: '#1a1a1a' },
-    emptyDesc:  { fontSize: 13, color: TEXT_MUTED, textAlign: 'center' },
-
-    // ── Tab bar ──
-    tabBar: {
-        flexDirection: 'row', backgroundColor: '#fff',
-        paddingBottom: Platform.OS === 'ios' ? 0 : 10,
-        paddingTop: 10, paddingHorizontal: 6,
-        alignItems: 'center', justifyContent: 'space-around',
-        borderTopWidth: 1, borderTopColor: BORDER_LIGHT,
-        shadowColor: '#000', shadowOffset: { width: 0, height: -2 },
-        shadowOpacity: 0.05, shadowRadius: 8, elevation: 12,
+    emptyTitle: {
+        fontSize: 16, fontWeight: '700', color: '#1a1a1a',
+        fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
     },
-    navTabItem:        { alignItems: 'center', flex: 1, paddingVertical: 2 },
-    navTabLabel:       { fontSize: 11, color: '#aaa', marginTop: 3 },
-    navTabLabelActive: { color: PRIMARY, fontWeight: '600' },
-    tabAddBtn: {
-        width: 56, height: 56, borderRadius: 28,
-        backgroundColor: PRIMARY, alignItems: 'center', justifyContent: 'center',
-        marginBottom: 16, shadowColor: PRIMARY,
-        shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.45,
-        shadowRadius: 8, elevation: 8,
+    emptyDesc: {
+        fontSize: 13, color: TEXT_MUTED, textAlign: 'center',
+        fontFamily: Platform.OS === 'ios' ? 'Arial' : 'sans-serif',
     },
 });

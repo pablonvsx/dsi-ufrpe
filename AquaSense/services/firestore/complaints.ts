@@ -163,3 +163,77 @@ export async function updateComplaintStatus(
 export async function archiveComplaint(id: string): Promise<void> {
     await updateDoc(doc(db, COLECAO, id), { status: "arquivada" as StatusDenuncia });
 }
+
+export async function getComplaintsCountByPeriod(daysBack: number): Promise<number> {
+    try {
+        const dataInicio = new Date();
+        dataInicio.setDate(dataInicio.getDate() - daysBack);
+        const q = query(
+            collection(db, COLECAO),
+            where("dataCriacao", ">=", Timestamp.fromDate(dataInicio))
+        );
+        const snap = await getDocs(q);
+        return snap.size;
+    } catch (err) {
+        console.warn("[complaints] getComplaintsCountByPeriod:", err);
+        return 0;
+    }
+}
+
+export async function getDailyComplaintsCount(daysBack: number): Promise<{ date: string; count: number }[]> {
+    try {
+        const dataInicio = new Date();
+        dataInicio.setDate(dataInicio.getDate() - daysBack);
+        const q = query(
+            collection(db, COLECAO),
+            where("dataCriacao", ">=", Timestamp.fromDate(dataInicio))
+        );
+        const snap = await getDocs(q);
+        const countsByDate = new Map<string, number>();
+        snap.docs.forEach((d) => {
+            const ts = d.data().dataCriacao;
+            const date = ts instanceof Timestamp ? ts.toDate() : new Date();
+            const dateStr = date.toISOString().split("T")[0];
+            countsByDate.set(dateStr, (countsByDate.get(dateStr) ?? 0) + 1);
+        });
+        return Array.from(countsByDate.entries())
+            .map(([date, count]) => ({ date, count }))
+            .sort((a, b) => a.date.localeCompare(b.date));
+    } catch (err) {
+        console.warn("[complaints] getDailyComplaintsCount:", err);
+        return [];
+    }
+}
+
+export async function getPreviousPeriodComplaintsCount(daysBack: number): Promise<number> {
+    try {
+        const dataFim = new Date();
+        dataFim.setDate(dataFim.getDate() - daysBack);
+        const dataInicio = new Date(dataFim);
+        dataInicio.setDate(dataInicio.getDate() - daysBack);
+        const q = query(
+            collection(db, COLECAO),
+            where("dataCriacao", ">=", Timestamp.fromDate(dataInicio)),
+            where("dataCriacao", "<", Timestamp.fromDate(dataFim))
+        );
+        const snap = await getDocs(q);
+        return snap.size;
+    } catch (err) {
+        console.warn("[complaints] getPreviousPeriodComplaintsCount:", err);
+        return 0;
+    }
+}
+
+export async function getComplaintsInProgressCount(): Promise<number> {
+    try {
+        const q = query(
+            collection(db, COLECAO),
+            where("status", "in", ["em_analise", "encaminhada_equipe"])
+        );
+        const snap = await getDocs(q);
+        return snap.size;
+    } catch (err) {
+        console.warn("[complaints] getComplaintsInProgressCount:", err);
+        return 0;
+    }
+}

@@ -185,3 +185,87 @@ export async function reativarMembroDaEquipe(uid: string): Promise<void> {
     statusNaEquipe: "ativo",
   });
 }
+
+
+export interface MetricasDiariasEquipe {
+  enviadas: number;
+  concluidas: number;
+  alertas: number;
+  ultimaAtividade: Date | null;
+}
+
+export async function buscarMetricasDiariasEquipe(
+  uidsAtivos: string[]
+): Promise<MetricasDiariasEquipe> {
+  if (uidsAtivos.length === 0) {
+    return {
+      enviadas: 0,
+      concluidas: 0,
+      alertas: 0,
+      ultimaAtividade: null,
+    };
+  }
+
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+
+  try {
+    const q = query(
+      collection(db, "coletaSimples"),
+      where("usuarioId", "in", uidsAtivos.slice(0, 10)),
+      where("dataCriacao", ">=", Timestamp.fromDate(hoje)),
+      orderBy("dataCriacao", "desc")
+    );
+
+    const snap = await getDocs(q);
+
+    const concluidas = snap.docs.filter(
+      (d) => d.data().status === "validado"
+    ).length;
+
+    const ultimaRaw = snap.docs[0]?.data().dataCriacao;
+
+    return {
+      enviadas: snap.size,
+      concluidas,
+      alertas: 0,
+      ultimaAtividade: ultimaRaw ? toDate(ultimaRaw) : null,
+    };
+  } catch {
+    return {
+      enviadas: 0,
+      concluidas: 0,
+      alertas: 0,
+      ultimaAtividade: null,
+    };
+  }
+}
+
+export async function buscarMetricasGlobaisHoje(): Promise<{
+  analisesHoje: number;
+  concluidasHoje: number;
+}> {
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+
+  try {
+    const q = query(
+      collection(db, "coletaSimples"),
+      where("dataCriacao", ">=", Timestamp.fromDate(hoje))
+    );
+
+    const snap = await getDocs(q);
+
+    return {
+      analisesHoje: snap.size,
+      concluidasHoje: snap.docs.filter(
+        (d) => d.data().status === "validado"
+      ).length,
+    };
+  } catch {
+    return {
+      analisesHoje: 0,
+      concluidasHoje: 0,
+    };
+  }
+}
