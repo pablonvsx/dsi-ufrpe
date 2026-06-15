@@ -38,8 +38,8 @@ export default function ManagerBottomNav({ activeTab, fontFamily }: ManagerBotto
                 router.push("/(tabs)/alerts_manager" as any);
                 break;
             case "perfil":
-                router.push("/(tabs)/profile" as any);
-                break;
+            router.push("/(tabs)/profile_manager" as any);
+            break;
         }
     }
 
