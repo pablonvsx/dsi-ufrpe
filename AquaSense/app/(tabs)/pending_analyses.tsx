@@ -14,6 +14,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/auth-context';
+import {
+  getPendingAnalyses,
+  getDoneAnalyses,
+  TechnicalAnalysisItem,
+} from '@/services/firestore/technicalAnalyses';
 
 // ─── Paleta ───────────────────────────────────────────────────────────────────
 const PRIMARY      = '#004d48';
@@ -53,6 +58,45 @@ export interface AnalysisItem {
     location: string;
     metrics?: MetricData[];
     observation?: string;
+}
+
+// ─── Mapeamento Firestore → AnalysisItem ─────────────────────────────────────
+
+function mapStatus(item: TechnicalAnalysisItem): StatusType {
+  if (item.classificacao === 'critica' || item.nivelRisco === 'critico') return 'CRÍTICO';
+  if (item.classificacao === 'atencao' || item.nivelRisco === 'alto')    return 'ATENÇÃO';
+  return 'PENDENTE';
+}
+
+function mapTab(item: TechnicalAnalysisItem, isDone: boolean): TabKey {
+  if (isDone) return 'historico';
+  if (item.classificacao === 'critica' || item.nivelRisco === 'critico') return 'criticas';
+  return 'pendentes';
+}
+
+function toAnalysisItem(item: TechnicalAnalysisItem, isDone: boolean): AnalysisItem {
+  const d = item.dataCriacao;
+  return {
+    id:           item.id,
+    bodyName:     item.corpoHidricoNome,
+    type:         item.origem === 'medicao' ? 'medicao' : 'observacao',
+    collaborator: item.colaboradorNome,
+    status:       isDone ? 'PENDENTE' : mapStatus(item),
+    tab:          mapTab(item, isDone),
+    date:         d.toLocaleDateString('pt-BR'),
+    time:         d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+    location:     item.cidade ?? item.municipio ?? 'Não informado',
+    metrics: item.origem === 'medicao' && item.parametros?.length
+      ? item.parametros.map(p => ({
+          label:          p.label,
+          value:          p.value,
+          icon:           p.icon as any,
+          highlight:      p.severity === 'critico' || p.severity === 'atencao',
+          highlightColor: p.severity === 'critico' ? '#E87D3E' : p.severity === 'atencao' ? '#C49A00' : undefined,
+        }))
+      : undefined,
+    observation: item.descricao,
+  };
 }
 
 // ─── Badge de status ──────────────────────────────────────────────────────────
@@ -189,19 +233,26 @@ export default function PendingAnalyses() {
         const fetchData = async () => {
             try {
                 setLoading(true);
-                // TODO: substitua pela sua chamada Firestore real, ex:
-                // const result = await getAnalyses(user.uid);
-                // setData(result);
-                setData([]); // lista vazia até integrar com Firestore
+                const [pendentes, historico] = await Promise.all([
+                    getPendingAnalyses(50),
+                    getDoneAnalyses(50),
+                ]);
+                const mapped = [
+                    ...pendentes.map(i => toAnalysisItem(i, false)),
+                    ...historico.map(i => toAnalysisItem(i, true)),
+                ];
+                // Deduplicar por id (um item pode aparecer em múltiplas queries)
+                const unique = Array.from(new Map(mapped.map(i => [i.id, i])).values());
+                setData(unique);
             } catch (err) {
-                console.error('Erro ao buscar análises:', err);
+                console.error('[AquaSense] pending_analyses fetch:', err);
                 setData([]);
             } finally {
                 setLoading(false);
             }
         };
         fetchData();
-    }, [user]);
+    }, [user?.uid]);
 
     // ── Filtrar por aba e busca ───────────────────────────────────────────────
     const filteredData = data.filter(item => {
