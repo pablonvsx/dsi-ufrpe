@@ -23,6 +23,7 @@ import {
     TechnicalAnalysisItem,
     getPendingAnalyses,
     getDoneAnalyses,
+    getTechnicianHistory,
 } from '@/services/firestore/technicalAnalyses';
 
 // CORREÇÃO 4+5: navbar reutilizável
@@ -346,12 +347,14 @@ export default function AnalysesScreen() {
     // ── Histórico ─────────────────────────────────────────────────────────────
     const [historyLoading, setHistoryLoading] = useState(false);
     const [historyData,    setHistoryData]    = useState<TechnicalAnalysisItem[]>([]);
+    // Contagem real de análises do técnico logado (badge do botão Histórico)
+    const [historyCount,   setHistoryCount]   = useState<number | null>(null);
 
     // ── Críticas ──────────────────────────────────────────────────────────────
     const [criticalLoading, setCriticalLoading] = useState(true);
     const [criticalData,    setCriticalData]    = useState<CriticalAnalysis[]>([]);
 
-    // Carrega pendentes ao montar
+    // Carrega pendentes ao montar + contagem real do histórico do técnico logado
     useEffect(() => {
         if (!user) return;
         (async () => {
@@ -365,6 +368,12 @@ export default function AnalysesScreen() {
                 setPendingLoading(false);
             }
         })();
+
+        // Busca o histórico do técnico logado apenas para obter a contagem do badge.
+        // Não bloqueia o carregamento principal (fire-and-forget).
+        getTechnicianHistory(user.uid, 100)
+            .then(items => setHistoryCount(items.length))
+            .catch(() => { /* silencioso — badge permanece como '?' */ });
     }, [user]);
 
     // Carrega histórico ao mudar para aba histórico (lazy)
@@ -400,10 +409,12 @@ export default function AnalysesScreen() {
     }, []);
 
     // ── Contadores ────────────────────────────────────────────────────────────
-    const tabCounts: Record<TabKey, number> = {
+    const tabCounts: Record<TabKey, number | null> = {
         pendentes: pendingData.length,
         criticas:  criticalData.length,
-        historico: historyData.length,
+        // historyCount vem de getTechnicianHistory — filtra pelo uid do técnico logado.
+        // null = ainda carregando (exibe '—' no badge até resolver).
+        historico: historyCount,
     };
 
     // ── Filtros de busca ──────────────────────────────────────────────────────
@@ -558,11 +569,22 @@ export default function AnalysesScreen() {
                                 ? (isActive ? '#fff' : '#888')
                                 : (isActive ? '#fff' : PRIMARY_MID);
 
+                    // "Histórico" navega para a tela dedicada; as demais alternam a aba.
+                    const handleTabPress =
+                        tab.key === 'historico'
+                            ? () => router.push('/(tabs)/history_technician' as any)
+                            : () => setActiveTab(tab.key);
+
+                    const badgeLabel =
+                        tab.key === 'historico' && historyCount === null
+                            ? '—'
+                            : String(tabCounts[tab.key] ?? 0);
+
                     return (
                         <TouchableOpacity
                             key={tab.key}
                             style={[styles.tabPill, isActive && styles.tabPillActive]}
-                            onPress={() => setActiveTab(tab.key)}
+                            onPress={handleTabPress}
                             activeOpacity={0.75}
                         >
                             <Text style={[styles.tabPillText, isActive && styles.tabPillTextActive]}>
@@ -570,7 +592,7 @@ export default function AnalysesScreen() {
                             </Text>
                             <View style={[styles.tabBadge, { backgroundColor: badgeBg }]}>
                                 <Text style={[styles.tabBadgeText, { color: badgeColor }]}>
-                                    {tabCounts[tab.key]}
+                                    {badgeLabel}
                                 </Text>
                             </View>
                         </TouchableOpacity>
