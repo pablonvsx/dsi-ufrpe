@@ -571,6 +571,37 @@ export async function getTechnicalAnalysesByTechnician(
 }
 
 /**
+ * Histórico Técnico — todas as análises/registros associados ao técnico,
+ * buscando em todas as coleções do projeto com os campos de uid conhecidos.
+ * Retorna itens únicos (deduplicados por id) ordenados por data decrescente.
+ */
+export async function getTechnicianHistory(
+  uid: string,
+  maxPerCollection = 30,
+): Promise<TechnicalAnalysisItem[]> {
+  const TECNICO_FIELDS = ['tecnicoId', 'analisadoPorId', 'responsavelId', 'usuarioId'];
+  const results: TechnicalAnalysisItem[] = [];
+
+  await Promise.allSettled(
+    COLLECTIONS.map(async col => {
+      const colRef = collection(db, col.name);
+      const subResults = await Promise.allSettled(
+        TECNICO_FIELDS.map(field => {
+          const q = query(colRef, where(field, '==', uid), limit(maxPerCollection));
+          return safeFetch(col, q);
+        }),
+      );
+      for (const r of subResults) {
+        if (r.status === 'fulfilled') results.push(...r.value);
+      }
+    }),
+  );
+
+  const unique = Array.from(new Map(results.map(i => [i.id, i])).values());
+  return sortByDateDesc(unique);
+}
+
+/**
  * Home Técnico — última contribuição/análise de um técnico em qualquer coleção.
  * Tenta campos alternativos sem gerar warnings repetidos.
  */
