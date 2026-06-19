@@ -8,15 +8,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, Questrial_400Regular } from '@expo-google-fonts/questrial';
 import { Stack, useRouter } from 'expo-router';
-import { db } from '@/config/firebase';
 import {
-  doc, getDoc, collection, getDocs, query, where,
-  updateDoc, writeBatch,
-} from 'firebase/firestore';
-import {
-  getAuth, onAuthStateChanged, reauthenticateWithCredential,
-  EmailAuthProvider, deleteUser, signOut,
+  reauthenticateWithCredential, EmailAuthProvider,
+  deleteUser, signOut, updateEmail, getAuth,
 } from 'firebase/auth';
+import { Timestamp } from 'firebase/firestore';
+import { useAuth } from '@/contexts/auth-context';
+import {
+  fetchGestorProfile, updateGestorEmail, deactivateGestorAccount,
+  deleteGestorAccount, recordGestorLastAccess,
+  GestorProfileData, GestorStats,
+} from '@/services/firestore/manager';
 import { sendPasswordResetEmail } from '@/services/emailService';
 import ManagerBottomNav from '@/components/managerbottomnav';
 
@@ -47,28 +49,28 @@ const infoStyles = StyleSheet.create({
   value: { fontSize: 13, color: '#111', fontWeight: '700' },
 });
 
-// ── Tipos ──────────────────────────────────────────────────────
-interface ManagerData {
-  nome: string; email: string; cargo: string;
-  orgao: string; unidade: string; matricula: string;
-  regiaoGerenciada: string; uf: string;
-}
-interface ManagerStats {
-  totalCorposHidricos: number; totalMunicipios: number; totalEquipes: number;
-}
+// ── Helpers ────────────────────────────────────────────────────
+const formatLastAccess = (ts?: Timestamp) => {
+  if (!ts) return 'Nunca registrado';
+  const date = ts.toDate();
+  if (date.toDateString() === new Date().toDateString()) return 'Hoje';
+  return date.toLocaleDateString('pt-BR');
+};
 
 // ── Tela ───────────────────────────────────────────────────────
 export default function PerfilGestorScreen() {
   const [fontsLoaded] = useFonts({ Questrial_400Regular });
   const questrial = fontsLoaded ? 'Questrial_400Regular' : undefined;
   const router = useRouter();
+  const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
-  const [managerData, setManagerData] = useState<ManagerData>({
+  const [error, setError] = useState<string | null>(null);
+  const [managerData, setManagerData] = useState<GestorProfileData>({
     nome: '', email: '', cargo: 'Gestor Ambiental',
     orgao: '', unidade: '', matricula: '', regiaoGerenciada: '', uf: 'PE',
   });
-  const [stats, setStats] = useState<ManagerStats>({
+  const [stats, setStats] = useState<GestorStats>({
     totalCorposHidricos: 0, totalMunicipios: 0, totalEquipes: 0,
   });
 
@@ -84,56 +86,27 @@ export default function PerfilGestorScreen() {
   const [pendingAction,    setPendingAction]    = useState<'EMAIL' | 'DEACTIVATE' | 'DELETE' | null>(null);
 
   useEffect(() => {
-    const auth = getAuth();
-    const unsub = onAuthStateChanged(auth, (user) => {
-      if (user) fetchManagerData(user.uid);
-      else setLoading(false);
-    });
-    return () => unsub();
-  }, []);
+    if (!user) { setLoading(false); return; }
+    fetchProfile(user.uid);
+    recordGestorLastAccess(user.uid);
+  }, [user?.uid]);
 
-  const fetchManagerData = async (uid: string) => {
+  const fetchProfile = async (uid: string) => {
     setLoading(true);
+    setError(null);
     try {
-      const userSnap = await getDoc(doc(db, 'usuarios', uid));
-      if (userSnap.exists()) {
-        const d = userSnap.data();
-        setManagerData({
-          nome:             d.nome             || 'Gestor',
-          email:            d.email            || '',
-          cargo:            d.cargo            || 'Gestor Ambiental',
-          orgao:            d.orgao            || d.organizacao || 'Não informado',
-          unidade:          d.unidade          || d.organizacao || 'Não informado',
-          matricula:        d.matricula        || '—',
-          regiaoGerenciada: d.cidade           || 'Não informada',
-          uf:               d.estado           || 'PE',
-        });
-      }
-
-      const [corposSnap, equipesSnap] = await Promise.all([
-        getDocs(query(collection(db, 'corposHidricos'), where('gestorId', '==', uid))),
-        getDocs(query(collection(db, 'equipesTecnicas'), where('gestorId', '==', uid))),
-      ]);
-
-      const municipios = new Set(
-        corposSnap.docs.map(d => d.data().cidade).filter(Boolean)
-      );
-
-      setStats({
-        totalCorposHidricos: corposSnap.size,
-        totalMunicipios:     municipios.size,
-        totalEquipes:        equipesSnap.size,
-      });
+      const { profile, stats: fetchedStats } = await fetchGestorProfile(uid);
+      setManagerData(profile);
+      setStats(fetchedStats);
     } catch (err) {
-      console.error('[AquaSense] fetchManagerData:', err);
+      console.error('[AquaSense] fetchProfile:', err);
+      setError('Não foi possível carregar o perfil. Verifique sua conexão e tente novamente.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleReauthAndSubmit = async () => {
-    const auth = getAuth();
-    const user = auth.currentUser;
     if (!user || !user.email || !currentPassword) {
       Alert.alert('Erro', 'Insira sua senha atual.');
       return;
@@ -144,19 +117,15 @@ export default function PerfilGestorScreen() {
       await reauthenticateWithCredential(user, credential);
 
       if (pendingAction === 'EMAIL') {
-        await updateDoc(doc(db, 'usuarios', user.uid), { email: newEmail });
+        await updateGestorEmail(user.uid, newEmail);
+        await updateEmail(user, newEmail);
         setManagerData(prev => ({ ...prev, email: newEmail }));
         Alert.alert('Sucesso', 'E-mail atualizado!');
       } else if (pendingAction === 'DEACTIVATE') {
-        await updateDoc(doc(db, 'usuarios', user.uid), {
-          statusConta: 'inativa',
-          desativadaEm: new Date().toISOString(),
-        });
+        await deactivateGestorAccount(user.uid);
         router.replace('/login');
       } else if (pendingAction === 'DELETE') {
-        const batch = writeBatch(db);
-        batch.delete(doc(db, 'usuarios', user.uid));
-        await batch.commit();
+        await deleteGestorAccount(user.uid);
         await deleteUser(user);
         router.replace('/login');
       }
@@ -165,17 +134,21 @@ export default function PerfilGestorScreen() {
       setCurrentPassword('');
       setPendingAction(null);
     } catch (err: any) {
-      const msg = err.code === 'auth/wrong-password' ? 'Senha incorreta.' : 'Ocorreu um erro.';
-      Alert.alert('Erro', msg);
+      const msgMap: Record<string, string> = {
+        'auth/wrong-password':    'Senha incorreta.',
+        'auth/invalid-credential':'Senha incorreta.',
+        'auth/email-already-in-use': 'Este e-mail já está em uso.',
+        'auth/invalid-email':     'E-mail inválido.',
+      };
+      Alert.alert('Erro', msgMap[err.code] ?? 'Ocorreu um erro. Tente novamente.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleSignOut = async () => {
-    const auth = getAuth();
     try {
-      await signOut(auth);
+      await signOut(getAuth());
       router.replace('/login');
     } catch {
       Alert.alert('Erro', 'Não foi possível sair da conta. Tente novamente.');
@@ -183,11 +156,9 @@ export default function PerfilGestorScreen() {
   };
 
   const handlePasswordReset = async () => {
-    const auth = getAuth();
-    const user = auth.currentUser;
     if (!user?.email) return;
     try {
-      await sendPasswordResetEmail({ email: user.email });
+      await sendPasswordResetEmail({ email: user.email! });
       setModalPasswordSentVisible(true);
     } catch {
       Alert.alert('Erro', 'Não foi possível enviar o e-mail. Tente novamente.');
@@ -264,6 +235,15 @@ export default function PerfilGestorScreen() {
 
         {/* ══ BODY ══ */}
         <ScrollView style={styles.body} contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
+          {error && (
+            <View style={styles.errorBanner}>
+              <Ionicons name="alert-circle-outline" size={16} color="#c0392b" />
+              <Text style={[styles.errorText, { fontFamily: questrial }]}>{error}</Text>
+              <TouchableOpacity onPress={() => user && fetchProfile(user.uid)}>
+                <Text style={[styles.errorRetry, { fontFamily: questrial }]}>Tentar novamente</Text>
+              </TouchableOpacity>
+            </View>
+          )}
           {loading ? (
             <ActivityIndicator size="large" color={PRIMARY} style={{ marginTop: 40 }} />
           ) : (
@@ -424,7 +404,7 @@ export default function PerfilGestorScreen() {
                 <View style={styles.securityItem}>
                   <Ionicons name="time-outline" size={13} color={TEXT_MUTED} />
                   <Text style={[styles.securityText, { color: TEXT_MUTED, fontFamily: questrial }]}>
-                    {' '}Último acesso: Hoje
+                    {' '}Último acesso: {formatLastAccess(managerData.ultimoAcessoEm)}
                   </Text>
                 </View>
               </View>
@@ -717,6 +697,15 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06, shadowRadius: 6, elevation: 3,
   },
   signOutText: { fontSize: 14, color: '#c0392b', fontWeight: '700' },
+
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#fdf0ee', borderRadius: 12, padding: 14,
+    marginHorizontal: 16, marginTop: 16,
+    borderLeftWidth: 3, borderLeftColor: '#c0392b',
+  },
+  errorText: { flex: 1, fontSize: 13, color: '#c0392b' },
+  errorRetry: { fontSize: 13, color: PRIMARY, fontWeight: '700' },
 
   securityFooter: {
     flexDirection: 'row', justifyContent: 'space-around',
