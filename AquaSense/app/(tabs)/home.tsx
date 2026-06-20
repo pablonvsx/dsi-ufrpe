@@ -255,16 +255,36 @@ export default function HomeComum() {
                         </Animated.View>
                     )}
 
-                    <Animated.View style={[styles.actionsRow, { opacity: cardFade, transform: [{ translateY: cardSlide }] }]}>
-                        <TouchableOpacity style={[styles.actionButton, styles.actionPrimary]} onPress={() => router.push("/register_observation" as any)} activeOpacity={0.82}>
-                            <Ionicons name="document-text-outline" size={28} color="#FFFFFF" style={styles.actionIcon} />
-                            <Text style={[styles.actionTextPrimary, { fontFamily: questrial }]}>{"Registrar\nobservação"}</Text>
+                    <Animated.View style={[styles.actionsRow,{opacity: cardFade,transform: [{ translateY: cardSlide }],},]}> 
+                        <TouchableOpacity style={[styles.quickActionCard, styles.observationCard]} onPress={() => router.push("/register_observation" as any)} activeOpacity={0.85}>
+                            <View style={[styles.quickActionIcon, { backgroundColor: "#0E8B6F" }]}>
+                             <Ionicons name="document-text-outline" size={28} color="#FFFFFF" /></View>
+                            <Text style={[styles.quickActionTitle, { fontFamily: questrial }]}>Registrar observação</Text>
+                            <Text style={[styles.quickActionSubtitle, { fontFamily: questrial }]}> Registre alterações observadas no ambiente
+                            </Text>
+                            <Ionicons
+                              name="arrow-forward"
+                              size={22}
+                              color="#0E8B6F"
+                              style={styles.quickActionArrow}
+                            />
                         </TouchableOpacity>
-                        <TouchableOpacity style={[styles.actionButton, styles.actionSecondary]} onPress={() => router.push("/report_complaint" as any)} activeOpacity={0.82}>
-                            <Ionicons name="megaphone-outline" size={28} color={PRIMARY} style={styles.actionIcon} />
-                            <Text style={[styles.actionTextSecondary, { fontFamily: questrial }]}>{"Fazer\ndenúncia"}</Text>
+                        <TouchableOpacity style={[styles.quickActionCard, styles.complaintCard]} onPress={() => router.push("/report_complaint" as any)} activeOpacity={0.85}>
+                            <View style={[styles.quickActionIcon, { backgroundColor: "#FF8A00" }]}>
+                              <Ionicons name="megaphone-outline" size={28} color="#FFFFFF" /></View>
+
+                            <Text style={[styles.quickActionTitle, { fontFamily: questrial }]}> Fazer denúncia
+                            </Text>
+                            <Text style={[styles.quickActionSubtitle, { fontFamily: questrial }]}> Reporte problemas ambientais
+                            </Text>
+                            <Ionicons
+                              name="arrow-forward"
+                              size={22}
+                              color="#FF8A00"
+                              style={styles.quickActionArrow}
+                            />
                         </TouchableOpacity>
-                    </Animated.View>
+                    </Animated.View> 
                 </ScrollView>
 
                 {/* ══ NAVBAR ══ */}
@@ -637,4 +657,46 @@ const styles = StyleSheet.create({
     tutorialRow: { flexDirection: "row", alignItems: "flex-start", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#f0f0f0" },
     tutorialStepTitle: { fontSize: 14, fontWeight: "700", color: PRIMARY, marginBottom: 2 },
     tutorialStepDesc: { fontSize: 12, color: TEXT_MUTED, lineHeight: 18 },
+
+    quickActionCard: {
+      flex: 1,
+      borderRadius: 20,
+      padding: 20,
+      minHeight: 190,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.08,
+      shadowRadius: 10,
+      elevation: 4,},
+
+    observationCard: {
+      backgroundColor: "#F2F8F7", },
+
+    complaintCard: {
+      backgroundColor: "#FBF6F1", },
+
+    quickActionIcon: {
+      width: 64,
+      height: 64,
+      borderRadius: 32,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: 18, },
+
+    quickActionTitle: {
+      fontSize: 22,
+      color: PRIMARY,
+      fontWeight: "700",
+      lineHeight: 30,
+      marginBottom: 10, },
+
+    quickActionSubtitle: {
+      fontSize: 16,
+      color: TEXT_MUTED,
+      lineHeight: 24, },
+
+    quickActionArrow: {
+      position: "absolute",
+      right: 20,
+      bottom: 20, },
 });
