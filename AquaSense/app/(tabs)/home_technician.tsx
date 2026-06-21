@@ -625,7 +625,14 @@ export default function HomeTechnician() {
         } as any);
     }, [router]);
 
-    const handleDetails = useCallback(() => router.push('/(tabs)/last_analysis'    as any), [router]);
+    // Navega para o Histórico técnico na aba "realizadas".
+    // O Empty State da tela de destino cuida do caso em que não há análises.
+    const handleDetails = useCallback(() => {
+        router.push({
+            pathname: '/(tabs)/history_technician',
+            params:   { tab: 'realizadas' },
+        } as any);
+    }, [router]);
     const handleViewMap = useCallback(() => router.push('/(tabs)/map_technician'   as any), [router]);
 
     if (!fontsLoaded) {

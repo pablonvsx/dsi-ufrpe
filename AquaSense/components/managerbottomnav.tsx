@@ -13,7 +13,7 @@ import { useRouter } from "expo-router";
 const PRIMARY = "#004d48";
 const INACTIVE = "#b0c4c2";
 
-export type ManagerTabKey = "home" | "validacoes" | "dashboard" | "mapa" | "perfil";
+export type ManagerTabKey = "home" | "validacoes" | "dashboard" | "alertas" | "perfil";
 
 interface ManagerBottomNavProps {
     activeTab?: ManagerTabKey;
@@ -31,15 +31,15 @@ export default function ManagerBottomNav({ activeTab, fontFamily }: ManagerBotto
             case "validacoes":
                 router.push("/(tabs)/validacoes_manager" as any);
                 break;
-            case "dashboard":
-                router.replace("/(tabs)/home_manager" as any);
+                    case "dashboard":
+                router.replace("/(tabs)/dashboard_manager" as any);
                 break;
-            case "mapa":
-                router.push("/(tabs)/map_manager" as any);                
+            case "alertas":
+                router.push("/(tabs)/alerts_manager" as any);
                 break;
             case "perfil":
-                router.push("/(tabs)/profile" as any);
-                break;
+            router.push("/(tabs)/profile_manager" as any);
+            break;
         }
     }
 
@@ -79,13 +79,13 @@ export default function ManagerBottomNav({ activeTab, fontFamily }: ManagerBotto
                     </Text>
                 </View>
 
-                <NavItem
-                    icon="map"
-                    iconOutline="map-outline"
-                    label="Mapa"
-                    active={activeTab === "mapa"}
+                                <NavItem
+                    icon="notifications"
+                    iconOutline="notifications-outline"
+                    label="Alertas"
+                    active={activeTab === "alertas"}
                     fontFamily={fontFamily}
-                    onPress={() => handleTabPress("mapa")}
+                    onPress={() => handleTabPress("alertas")}
                 />
                 <NavItem
                     icon="person"

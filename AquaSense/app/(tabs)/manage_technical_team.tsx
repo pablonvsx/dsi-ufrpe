@@ -35,6 +35,7 @@ import {
   buscarMetricasDiariasEquipe,
   buscarMetricasGlobaisHoje,
 } from "@/services/firestore/technical_teams";
+import { getPendingAnalyses } from "@/services/firestore/technicalAnalyses";
 
 import ManagerBottomNav from "@/components/managerbottomnav";
 
@@ -103,6 +104,7 @@ export default function ManageTechnicalTeamScreen() {
 
   const [analisesHoje, setAnalisesHoje] = useState(0);
   const [concluidasHoje, setConcluidasHoje] = useState(0);
+  const [pendingCount, setPendingCount] = useState(0);
 
   const [nome, setNome] = useState("");
   const [codigoEquipe, setCodigoEquipe] = useState("");
@@ -124,13 +126,15 @@ export default function ManageTechnicalTeamScreen() {
     setLoading(true);
 
     try {
-      const [equipes, globais] = await Promise.all([
+      const [equipes, globais, pendentes] = await Promise.all([
         listarEquipesTecnicas(),
         buscarMetricasGlobaisHoje(),
+        getPendingAnalyses(50),
       ]);
 
       setAnalisesHoje(globais.analisesHoje);
       setConcluidasHoje(globais.concluidasHoje);
+      setPendingCount(pendentes.length);
 
       setTeamsData(
         equipes.map((equipe) => ({
@@ -330,9 +334,13 @@ export default function ManageTechnicalTeamScreen() {
               <View style={styles.iconBtn}>
                 <Ionicons name="notifications-outline" size={22} color="#fff" />
 
-                <View style={styles.notifBadge}>
-                  <Text style={styles.notifBadgeText}>3</Text>
-                </View>
+                {pendingCount > 0 && (
+                  <View style={styles.notifBadge}>
+                    <Text style={styles.notifBadgeText}>
+                      {pendingCount > 99 ? '99+' : pendingCount}
+                    </Text>
+                  </View>
+                )}
               </View>
 
               <TouchableOpacity

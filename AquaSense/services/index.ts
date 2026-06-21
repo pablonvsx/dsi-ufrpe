@@ -4,6 +4,8 @@
 
 // Firestore Collections
 export * as coletas from "./coletas";
+export * as manager from "./firestore/manager";
+export * as technicalAnalyses from "./firestore/technicalAnalyses";
 export * as users from "./firestore/users";
 export * as waterBodies from "./firestore/water_bodies";
 export * as contributions from "./firestore/contributions";
