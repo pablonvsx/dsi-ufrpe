@@ -402,27 +402,7 @@ export default function HomeManager() {
                                         <Text style={styles.gestorBadgeText}>Gestor</Text>
                                     </View>
                                 </View>
-                                <View style={styles.headerActions}>
-                                    <TouchableOpacity style={styles.bellButton} activeOpacity={0.7}>
-                                        <Ionicons name="notifications-outline" size={24} color="#FFFFFF" />
-                                        {bellCount > 0 && (
-                                            <View style={styles.bellBadge}>
-                                                <Text style={styles.bellBadgeText}>
-                                                    {bellCount > 9 ? "9+" : bellCount}
-                                                </Text>
-                                            </View>
-                                        )}
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        style={styles.profileButton}
-                                        onPress={() => router.push("/(tabs)/profile_manager" as any)}
-                                        activeOpacity={0.7}
-                                    >
-                                        <View style={styles.profileCircle}>
-                                            <Ionicons name="person" size={18} color={PRIMARY} />
-                                        </View>
-                                    </TouchableOpacity>
-                                </View>
+                
                             </View>
 
                             {/* Linha inferior */}

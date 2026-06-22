@@ -107,7 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                             await updateDoc(docRef, { statusConta: "ativo" });
                             setUserProfile({ ...data, statusConta: "ativo" });
                         } else {
-                            setUserProfile(data);
+                            setUserProfile({ ...data, uid: freshUser.uid });
                         }
                     }
                 }
