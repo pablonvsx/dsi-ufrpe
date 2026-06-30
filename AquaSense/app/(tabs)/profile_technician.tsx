@@ -508,10 +508,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4,
   },
   headerLogoRow: { flexDirection: 'row', alignItems: 'center' },
-  headerLogo: { width: 100, height: 32 },
+  headerLogo: { width: 100, height: 60 },
   headerRoleLabel: {
     fontSize: 14, color: 'rgba(255,255,255,0.8)', marginLeft: 8,
-    borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.3)', paddingLeft: 8,
+    borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.3)', paddingLeft: 55,
   },
   headerIcons: { flexDirection: 'row', gap: 8 },
   iconBtn: {

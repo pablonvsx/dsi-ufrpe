@@ -14,7 +14,7 @@ const PRIMARY      = '#004d48';
 const BORDER_LIGHT = '#e0f2f1';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
-export type TechNavTab = 'home' | 'analises' | 'alertas' | 'profile';
+export type TechNavTab = 'home' | 'analises' | 'mapa' | 'profile';
 
 interface TechnicalBottomNavProps {
     /** Aba atualmente ativa — destaca o ícone correspondente. */
@@ -35,9 +35,10 @@ const LEFT_TABS: {
 ];
 
 const RIGHT_TABS: typeof LEFT_TABS = [
-    { key: 'alertas', icon: 'notifications-outline', label: 'Alertas', route: '/alerts'          },
-    { key: 'profile', icon: 'person-outline',        label: 'Perfil',  route: '/(tabs)/profile_technician'  },
+    { key: 'mapa',    icon: 'map-outline',     label: 'Mapa',   route: '/(tabs)/map_technician'      },
+    { key: 'profile', icon: 'person-outline',  label: 'Perfil', route: '/(tabs)/profile_technician'  },
 ];
+
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 /**
