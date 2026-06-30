@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, StatusBar, Platform, Animated, KeyboardAvoidingView,
-  ActivityIndicator, Modal,
+  ActivityIndicator, Modal, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -10,13 +10,14 @@ import { useFonts, Questrial_400Regular } from '@expo-google-fonts/questrial';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import { collection, getDocs } from 'firebase/firestore';
+import * as ImagePicker from 'expo-image-picker';
 
 import { db, auth } from '../config/firebase';
 import { salvarObservacao } from '../services/firestore/observations';
 
-// ── Opções padronizadas (mesmas do register_water_body) ──────────────────────
-const COR_OPTIONS = ['Transparente', 'Esverdeada', 'Amarelada', 'Marrom', 'Escura', 'Outra'] as const;
-const ODOR_OPTIONS = ['Sem odor', 'Cheiro leve', 'Cheiro forte', 'Cheiro químico'] as const;
+// ── Opções atualizadas ───────────────────────────────────────────────────────
+const COR_OPTIONS = ['Incolor', 'Verde', 'Turva', 'Marrom', 'Outra'] as const;
+const ODOR_OPTIONS = ['Sem odor', 'Cheiro químico', 'Cheiro de esgoto', 'Outro'] as const;
 
 type CorOption = (typeof COR_OPTIONS)[number] | null;
 type OdorOption = (typeof ODOR_OPTIONS)[number] | null;
@@ -32,7 +33,7 @@ const TEXT_MUTED = '#6b7a7a';
 type Step = 'select' | 'form';
 
 interface WaterBody {
-  id: string;       // sempre o documentId do Firestore — d.id
+  id: string;
   name: string;
   municipio?: string;
   tipo?: string;
@@ -41,20 +42,17 @@ interface WaterBody {
 
 interface FormState {
   cor: CorOption;
-  corDesc: string;
   odor: OdorOption;
-  odorDesc: string;
   animais: YesNo;
-  animaisDesc: string;
   lixo: YesNo;
-  lixoDesc: string;
+  descricao: string;
+  fotos: string[];
 }
 
 interface FormErrors {
   cor?: string;
   odor?: string;
   animais?: string;
-  animaisDesc?: string;
   lixo?: string;
 }
 
@@ -73,21 +71,21 @@ export default function RegisterObservation() {
   const [successVisible, setSuccessVisible] = useState(false);
 
   const [form, setForm] = useState<FormState>({
-    cor: null, corDesc: '',
-    odor: null, odorDesc: '',
-    animais: null, animaisDesc: '',
-    lixo: null, lixoDesc: '',
+    cor: null,
+    odor: null,
+    animais: null,
+    lixo: null,
+    descricao: '',
+    fotos: [],
   });
 
   const [errors, setErrors] = useState<FormErrors>({});
 
-  // Animações
   const fadeAnim  = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(18)).current;
   const cardFade  = useRef(new Animated.Value(0)).current;
   const cardSlide = useRef(new Animated.Value(24)).current;
 
-  // ── Carrega corpos hídricos do Firestore ─────────────────────────────────
   useEffect(() => {
     (async () => {
       try {
@@ -95,10 +93,6 @@ export default function RegisterObservation() {
         const bodies: WaterBody[] = snap.docs.map((d) => {
           const data = d.data();
           return {
-            // IMPORTANTE: id = d.id (documentId real do Firestore).
-            // Nunca usar data.id ou qualquer campo interno do documento,
-            // pois é este id que será gravado em observacoes.corpoHidricoId
-            // e depois usado em buscarObservacoesPorCorpo().
             id: d.id,
             name: data.nome ?? 'Sem nome',
             municipio: data.municipio,
@@ -145,22 +139,16 @@ export default function RegisterObservation() {
     else router.back();
   }
 
-  // ── Validação ────────────────────────────────────────────────────────────
   function validateForm(): boolean {
     const e: FormErrors = {};
-
     if (!form.cor) e.cor = 'Selecione a cor observada.';
     if (!form.odor) e.odor = 'Selecione o odor observado.';
     if (!form.animais) e.animais = 'Informe se havia animais.';
-    if (form.animais === 'sim' && !form.animaisDesc.trim())
-      e.animaisDesc = 'Descreva os animais observados.';
     if (!form.lixo) e.lixo = 'Informe se havia lixo.';
-
     setErrors(e);
     return Object.keys(e).length === 0;
   }
 
-  // ── Envio ────────────────────────────────────────────────────────────────
   async function handlePublish() {
     if (!selected) return;
     if (!validateForm()) return;
@@ -172,13 +160,11 @@ export default function RegisterObservation() {
         corpoHidricoId: selected.id,
         criadoPor: userId,
         cor: form.cor,
-        corDesc: form.corDesc,
         odor: form.odor,
-        odorDesc: form.odorDesc,
         animais: form.animais,
-        animaisDesc: form.animaisDesc,
         lixo: form.lixo,
-        lixoDesc: form.lixoDesc,
+        descricao: form.descricao,
+        fotos: form.fotos,
       });
       setSuccessVisible(true);
     } catch (e) {
@@ -193,7 +179,6 @@ export default function RegisterObservation() {
     router.replace('/(tabs)/map' as any);
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
@@ -416,7 +401,7 @@ function SelectStep({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STEP 2 — Formulário de observação
+// STEP 2 — Formulário de observação (refatorado)
 // ─────────────────────────────────────────────────────────────────────────────
 function FormStep({
   form, setForm, errors, setErrors, onPublish, saving, questrial, cardFade, cardSlide,
@@ -436,6 +421,22 @@ function FormStep({
     if (key in errors) setErrors((p) => ({ ...p, [key]: undefined }));
   }
 
+  async function handlePickPhoto() {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      quality: 0.8,
+    });
+    if (!result.canceled) {
+      const uris = result.assets.map((a) => a.uri);
+      setForm((prev) => ({ ...prev, fotos: [...prev.fotos, ...uris].slice(0, 5) }));
+    }
+  }
+
+  function handleRemovePhoto(uri: string) {
+    setForm((prev) => ({ ...prev, fotos: prev.fotos.filter((f) => f !== uri) }));
+  }
+
   return (
     <ScrollView
       style={styles.whiteBody}
@@ -445,111 +446,135 @@ function FormStep({
     >
       <Animated.View style={{ opacity: cardFade, transform: [{ translateY: cardSlide }] }}>
 
-        {/* ── COR ── */}
-        <SectionCard title="Cor *" questrial={questrial}>
-          <RadioGroup
+        {/* ── OBSERVAÇÃO VISUAL ── */}
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeaderRow}>
+            <Ionicons name="eye-outline" size={18} color={TEAL_MID} style={{ marginRight: 8 }} />
+            <Text style={[styles.sectionTitle, { fontFamily: questrial }]}>Observação visual</Text>
+          </View>
+          <View style={styles.sectionDivider} />
+
+          {/* Cor da água */}
+          <Text style={[styles.fieldLabel, { fontFamily: questrial }]}>Cor da água</Text>
+          <ChipGroup
             options={[...COR_OPTIONS]}
             selected={form.cor}
             onSelect={(v) => update('cor', v as CorOption)}
             questrial={questrial}
-            columns={3}
           />
           {errors.cor && <ErrorMsg message={errors.cor} fontFamily={questrial} />}
-          <DescriptionInput
-            value={form.corDesc}
-            onChange={(v) => update('corDesc', v)}
-            placeholder="Descreva melhor a cor observada..."
-            questrial={questrial}
-          />
-        </SectionCard>
 
-        {/* ── ODOR ── */}
-        <SectionCard title="Odor *" questrial={questrial}>
-          <RadioGroup
+          {/* Odor da água */}
+          <Text style={[styles.fieldLabel, { fontFamily: questrial, marginTop: 16 }]}>Odor da água</Text>
+          <ChipGroup
             options={[...ODOR_OPTIONS]}
             selected={form.odor}
             onSelect={(v) => update('odor', v as OdorOption)}
             questrial={questrial}
-            columns={2}
           />
           {errors.odor && <ErrorMsg message={errors.odor} fontFamily={questrial} />}
-          <DescriptionInput
-            value={form.odorDesc}
-            onChange={(v) => update('odorDesc', v)}
-            placeholder="Descreva melhor o odor observado..."
-            questrial={questrial}
-          />
-        </SectionCard>
 
-        {/* ── ANIMAIS ── */}
-        <SectionCard title="Presença de animais *" questrial={questrial}>
+          {/* Presença de animais */}
+          <Text style={[styles.fieldLabel, { fontFamily: questrial, marginTop: 16 }]}>Presença de animais</Text>
           <YesNoToggle
             value={form.animais}
-            onChange={(v) => {
-              update('animais', v);
-              if (v === 'nao') update('animaisDesc', '');
-            }}
+            onChange={(v) => update('animais', v)}
             questrial={questrial}
           />
           {errors.animais && <ErrorMsg message={errors.animais} fontFamily={questrial} />}
-          {form.animais === 'sim' && (
-            <>
-              <View style={styles.subLabelRow}>
-                <Ionicons name="paw-outline" size={16} color={TEAL_MID} style={{ marginRight: 6 }} />
-                <Text style={[styles.subLabel, { fontFamily: questrial }]}>Quais animais você observou?</Text>
-              </View>
-              <DescriptionInput
-                value={form.animaisDesc}
-                onChange={(v) => update('animaisDesc', v)}
-                placeholder="Descreva melhor os animais observados..."
-                questrial={questrial}
-              />
-              {errors.animaisDesc && <ErrorMsg message={errors.animaisDesc} fontFamily={questrial} />}
-            </>
-          )}
-        </SectionCard>
 
-        {/* ── LIXO ── */}
-        <SectionCard title="Presença de lixo *" questrial={questrial}>
+          {/* Presença de lixo */}
+          <Text style={[styles.fieldLabel, { fontFamily: questrial, marginTop: 16 }]}>Presença de lixo</Text>
           <YesNoToggle
             value={form.lixo}
-            onChange={(v) => {
-              update('lixo', v);
-              if (v === 'nao') update('lixoDesc', '');
-            }}
+            onChange={(v) => update('lixo', v)}
             questrial={questrial}
           />
           {errors.lixo && <ErrorMsg message={errors.lixo} fontFamily={questrial} />}
-          {form.lixo === 'sim' && (
-            <>
-              <View style={styles.subLabelRow}>
-                <Ionicons name="trash-outline" size={16} color={TEAL_MID} style={{ marginRight: 6 }} />
-                <Text style={[styles.subLabel, { fontFamily: questrial }]}>O que você observou?</Text>
-              </View>
-              <DescriptionInput
-                value={form.lixoDesc}
-                onChange={(v) => update('lixoDesc', v)}
-                placeholder="Descreva melhor a presença de lixo observada..."
-                questrial={questrial}
-              />
-            </>
+        </View>
+
+        {/* ── DESCRIÇÃO COMPLEMENTAR ── */}
+        <Text style={[styles.descLabel, { fontFamily: questrial }]}>
+          Descrição complementar{' '}
+          <Text style={[styles.optionalTag, { fontFamily: questrial }]}>(opcional)</Text>
+        </Text>
+        <View style={styles.descCard}>
+          <View style={styles.descInputRow}>
+            <Ionicons name="pencil-outline" size={16} color={TEXT_MUTED} style={{ marginRight: 10, marginTop: 2 }} />
+            <TextInput
+              style={[styles.descInput, { fontFamily: questrial }]}
+              placeholder="Descreva o que você observou..."
+              placeholderTextColor={TEXT_MUTED}
+              value={form.descricao}
+              onChangeText={(v) => {
+                if (v.length <= 300) update('descricao', v);
+              }}
+              multiline
+              textAlignVertical="top"
+            />
+          </View>
+          <Text style={[styles.charCount, { fontFamily: questrial }]}>{form.descricao.length}/300</Text>
+        </View>
+
+        {/* ── FOTOS ── */}
+        <View style={styles.fotosCard}>
+          <View style={styles.fotosHeader}>
+            <View style={styles.fotosIconCircle}>
+              <Ionicons name="camera-outline" size={20} color={TEAL_MID} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.fotosTitle, { fontFamily: questrial }]}>
+                Fotos{' '}
+                <Text style={[styles.optionalTag, { fontFamily: questrial }]}>(opcional)</Text>
+              </Text>
+              <Text style={[styles.fotosSubtitle, { fontFamily: questrial }]}>
+                Adicione fotos para ajudar na análise
+              </Text>
+            </View>
+            <TouchableOpacity style={styles.addPhotoButton} onPress={handlePickPhoto} activeOpacity={0.7}>
+              <Ionicons name="add" size={22} color={TEXT_MUTED} />
+            </TouchableOpacity>
+          </View>
+          {form.fotos.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12 }}>
+              {form.fotos.map((uri) => (
+                <View key={uri} style={styles.photoThumbWrapper}>
+                  <Image source={{ uri }} style={styles.photoThumb} />
+                  <TouchableOpacity style={styles.removePhotoBtn} onPress={() => handleRemovePhoto(uri)}>
+                    <Ionicons name="close-circle" size={18} color="#e57373" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
           )}
-        </SectionCard>
+        </View>
 
-        <Text style={[styles.requiredNote, { fontFamily: questrial }]}>* Campos obrigatórios</Text>
-
+        {/* ── BOTÃO ENVIAR ── */}
         <TouchableOpacity style={styles.publishButton} onPress={onPublish} activeOpacity={0.85} disabled={saving}>
           <LinearGradient
             colors={['#004d48', '#0d9080']}
             start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
             style={styles.publishGradient}
           >
-            {saving
-              ? <ActivityIndicator color="#FFFFFF" />
-              : <Text style={[styles.publishButtonText, { fontFamily: questrial }]}>Publicar registro</Text>
-            }
+            {saving ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <View style={styles.publishButtonInner}>
+                <Ionicons name="send-outline" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
+                <Text style={[styles.publishButtonText, { fontFamily: questrial }]}>Enviar contribuição</Text>
+              </View>
+            )}
           </LinearGradient>
         </TouchableOpacity>
+
+        {/* ── BANNER INFORMATIVO ── */}
+        <View style={styles.infoBanner}>
+          <Ionicons name="information-circle" size={18} color={PRIMARY} style={{ marginRight: 10, flexShrink: 0 }} />
+          <Text style={[styles.infoBannerText, { fontFamily: questrial }]}>
+            Seus dados ajudam a monitorar a qualidade da água em Pernambuco. Obrigado por contribuir!
+          </Text>
+        </View>
+
       </Animated.View>
     </ScrollView>
   );
@@ -558,37 +583,36 @@ function FormStep({
 // ─────────────────────────────────────────────────────────────────────────────
 // SUB-COMPONENTES
 // ─────────────────────────────────────────────────────────────────────────────
-function SectionCard({ title, questrial, children }: { title: string; questrial?: string; children: React.ReactNode }) {
-  return (
-    <View style={styles.sectionCard}>
-      <Text style={[styles.sectionTitle, { fontFamily: questrial }]}>{title}</Text>
-      <View style={styles.sectionDivider} />
-      {children}
-    </View>
-  );
-}
 
-function RadioGroup({ options, selected, onSelect, questrial, columns = 2 }: {
-  options: string[]; selected: string | null; onSelect: (v: string) => void;
-  questrial?: string; columns?: number;
+function ChipGroup({ options, selected, onSelect, questrial }: {
+  options: string[];
+  selected: string | null;
+  onSelect: (v: string) => void;
+  questrial?: string;
 }) {
   const rows: string[][] = [];
-  for (let i = 0; i < options.length; i += columns) rows.push(options.slice(i, i + columns));
+  for (let i = 0; i < options.length; i += 2) rows.push(options.slice(i, i + 2));
+
   return (
-    <View style={{ marginBottom: 10 }}>
+    <View style={{ marginBottom: 4 }}>
       {rows.map((row, ri) => (
-        <View key={ri} style={styles.radioRow}>
+        <View key={ri} style={styles.chipRow}>
           {row.map((opt) => {
             const active = selected === opt;
             return (
-              <TouchableOpacity key={opt} style={styles.radioItem} onPress={() => onSelect(opt)} activeOpacity={0.7}>
-                <View style={[styles.radioCircle, active && styles.radioCircleActive]}>
-                  {active && <View style={styles.radioDot} />}
-                </View>
-                <Text style={[styles.radioLabel, { fontFamily: questrial }, active && styles.radioLabelActive]}>{opt}</Text>
+              <TouchableOpacity
+                key={opt}
+                style={[styles.chip, active && styles.chipActive]}
+                onPress={() => onSelect(opt)}
+                activeOpacity={0.75}
+              >
+                <Text style={[styles.chipText, { fontFamily: questrial }, active && styles.chipTextActive]}>
+                  {opt}
+                </Text>
               </TouchableOpacity>
             );
           })}
+          {row.length === 1 && <View style={styles.chipPlaceholder} />}
         </View>
       ))}
     </View>
@@ -616,23 +640,6 @@ function YesNoToggle({ value, onChange, questrial }: {
         );
       })}
     </View>
-  );
-}
-
-function DescriptionInput({ value, onChange, placeholder, questrial }: {
-  value: string; onChange: (v: string) => void; placeholder: string; questrial?: string;
-}) {
-  return (
-    <TextInput
-      style={[styles.descInput, { fontFamily: questrial }]}
-      placeholder={placeholder}
-      placeholderTextColor={TEXT_MUTED}
-      value={value}
-      onChangeText={onChange}
-      multiline
-      numberOfLines={2}
-      textAlignVertical="top"
-    />
   );
 }
 
@@ -686,7 +693,7 @@ const styles = StyleSheet.create({
   waveWhite: { height: 28, backgroundColor: '#FFFFFF', borderTopLeftRadius: 28, borderTopRightRadius: 28 },
 
   whiteBody: { flex: 1, backgroundColor: '#FFFFFF' },
-  whiteBodyContent: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16 },
+  whiteBodyContent: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16 },
 
   listCard: {
     backgroundColor: SURFACE, borderRadius: 20, overflow: 'hidden', marginBottom: 16,
@@ -741,49 +748,96 @@ const styles = StyleSheet.create({
   primaryButtonTextDisabled: { color: '#8fafad' },
 
   sectionCard: {
-    backgroundColor: SURFACE, borderRadius: 20, padding: 20, marginBottom: 14,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.07, shadowRadius: 8, elevation: 3,
+    backgroundColor: SURFACE, borderRadius: 16, padding: 20, marginBottom: 14,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
   },
-  sectionTitle: { fontSize: 16, color: PRIMARY, fontWeight: '700', marginBottom: 10 },
-  sectionDivider: { height: 1, backgroundColor: BORDER_LIGHT, marginBottom: 14 },
+  sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  sectionTitle: { fontSize: 16, color: PRIMARY, fontWeight: '700' },
+  sectionDivider: { height: 1, backgroundColor: BORDER_LIGHT, marginBottom: 16 },
+  fieldLabel: { fontSize: 14, color: '#333', fontWeight: '600', marginBottom: 10 },
 
-  radioRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 8, gap: 8 },
-  radioItem: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 90 },
-  radioCircle: {
-    width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#b0c4c2',
+  chipRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
+  chip: {
+    flex: 1,
+    borderWidth: 1.5, borderColor: BORDER_LIGHT,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  chipActive: {
+    borderColor: TEAL_MID,
+    backgroundColor: 'rgba(31,200,180,0.08)',
+  },
+  chipText: { fontSize: 14, color: '#555' },
+  chipTextActive: { color: TEAL_MID, fontWeight: '600' },
+  chipPlaceholder: { flex: 1 },
+
+  yesNoWrapper: { flexDirection: 'row', gap: 10, marginBottom: 4 },
+  yesNoButton: {
+    flex: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center',
+    borderWidth: 1.5, borderColor: BORDER_LIGHT, backgroundColor: '#FFFFFF',
+  },
+  yesNoButtonActive: { backgroundColor: 'rgba(31,200,180,0.08)', borderColor: TEAL_MID },
+  yesNoText: { fontSize: 14, color: TEXT_MUTED, fontWeight: '600' },
+  yesNoTextActive: { color: TEAL_MID },
+
+  descLabel: { fontSize: 16, color: '#333', fontWeight: '700', marginBottom: 8 },
+  optionalTag: { fontSize: 13, color: TEXT_MUTED, fontWeight: '400' },
+  descCard: {
+    backgroundColor: SURFACE, borderRadius: 16, padding: 16, marginBottom: 14,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
+  },
+  descInputRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  descInput: {
+    flex: 1, fontSize: 14, color: '#444',
+    minHeight: 80, textAlignVertical: 'top',
+  },
+  charCount: { fontSize: 11, color: TEXT_MUTED, textAlign: 'right', marginTop: 8 },
+
+  fotosCard: {
+    backgroundColor: SURFACE, borderRadius: 16, padding: 16, marginBottom: 20,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
+  },
+  fotosHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  fotosIconCircle: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: 'rgba(31,200,180,0.15)',
     alignItems: 'center', justifyContent: 'center',
   },
-  radioCircleActive: { borderColor: PRIMARY },
-  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: PRIMARY },
-  radioLabel: { fontSize: 13, color: '#555' },
-  radioLabelActive: { color: PRIMARY, fontWeight: '600' },
-
-  yesNoWrapper: { flexDirection: 'row', gap: 10, marginBottom: 14 },
-  yesNoButton: { flex: 1, borderRadius: 50, paddingVertical: 10, alignItems: 'center', backgroundColor: '#E8F4F2' },
-  yesNoButtonActive: { backgroundColor: PRIMARY },
-  yesNoText: { fontSize: 14, color: TEXT_MUTED, fontWeight: '600' },
-  yesNoTextActive: { color: '#FFFFFF' },
-
-  subLabelRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  subLabel: { fontSize: 13, color: TEAL_MID, fontWeight: '600' },
-
-  descInput: {
-    backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: BORDER_LIGHT,
-    paddingHorizontal: 14, paddingVertical: 12, fontSize: 13, color: '#444',
-    minHeight: 48, textAlignVertical: 'top',
+  fotosTitle: { fontSize: 15, color: '#333', fontWeight: '700' },
+  fotosSubtitle: { fontSize: 12, color: TEXT_MUTED, marginTop: 2 },
+  addPhotoButton: {
+    width: 44, height: 44, borderRadius: 10,
+    borderWidth: 1.5, borderColor: BORDER_LIGHT, borderStyle: 'dashed',
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  photoThumbWrapper: { marginRight: 10, position: 'relative' },
+  photoThumb: { width: 72, height: 72, borderRadius: 10 },
+  removePhotoBtn: {
+    position: 'absolute', top: -6, right: -6,
+    backgroundColor: '#FFFFFF', borderRadius: 10,
   },
 
-  errorText: { fontSize: 11, color: '#e57373', marginTop: 4, marginBottom: 4, marginLeft: 2 },
-  requiredNote: { fontSize: 11, color: TEXT_MUTED, marginBottom: 12, marginLeft: 4 },
-
   publishButton: {
-    borderRadius: 50, marginTop: 6, overflow: 'hidden',
+    borderRadius: 50, marginBottom: 14, overflow: 'hidden',
     shadowColor: PRIMARY, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.30, shadowRadius: 10, elevation: 6,
   },
   publishGradient: { paddingVertical: 16, alignItems: 'center' },
+  publishButtonInner: { flexDirection: 'row', alignItems: 'center' },
   publishButtonText: { fontSize: 16, color: '#FFFFFF', fontWeight: '700', letterSpacing: 0.3 },
 
-  // Sucesso
+  infoBanner: {
+    flexDirection: 'row', alignItems: 'flex-start',
+    backgroundColor: 'rgba(13,144,128,0.08)',
+    borderRadius: 12, padding: 14,
+    marginBottom: 8,
+  },
+  infoBannerText: { flex: 1, fontSize: 13, color: PRIMARY, lineHeight: 20 },
+
+  errorText: { fontSize: 11, color: '#e57373', marginTop: 4, marginBottom: 4, marginLeft: 2 },
+
   successOverlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.50)',
     alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24,

@@ -18,7 +18,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Stack, router } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFonts, Questrial_400Regular } from "@expo-google-fonts/questrial";
 import * as Location from "expo-location";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
@@ -43,17 +43,19 @@ const RECIFE_FALLBACK = {
 };
 
 // 5 tipos visíveis: 3 na primeira linha (Rio / Canal / Lago) e 2 na segunda
-// (Açude / Outro). Todos os ícones usam a cor PRIMARY (verde escuro).
+// (Açude / Outro).  O  Lago usa o ícone "anchor" do MaterialCommunityIcons, já que o Ionicons
+// dessa versão não possui nenhum ícone de âncora.
 const TIPOS_VISIVEIS: {
   value: TipoCorpoHidrico;
   label: string;
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: string;
+  iconSet?: "ionicons" | "mci";
   color: string;
   wide?: boolean;
 }[] = [
   { value: "rio", label: "Rio", icon: "water-outline", color: PRIMARY },
   { value: "canal", label: "Canal", icon: "boat-outline", color: PRIMARY },
-  { value: "lago", label: "Lago", icon: "anchor-outline" as any, color: PRIMARY },
+  { value: "lago", label: "Lago", icon: "anchor", iconSet: "mci", color: PRIMARY },
   { value: "açude", label: "Açude", icon: "business-outline", color: PRIMARY, wide: true },
   { value: "outro", label: "Outro", icon: "ellipsis-horizontal", color: PRIMARY, wide: true },
 ];
@@ -514,12 +516,21 @@ export default function RegisterWaterBody() {
                           </View>
                         )}
 
-                        <Ionicons
-                          name={tipo.icon}
-                          size={28}
-                          color={tipo.color}
-                          style={styles.typeIcon}
-                        />
+                        {tipo.iconSet === "mci" ? (
+                          <MaterialCommunityIcons
+                            name={tipo.icon as any}
+                            size={28}
+                            color={tipo.color}
+                            style={styles.typeIcon}
+                          />
+                        ) : (
+                          <Ionicons
+                            name={tipo.icon as any}
+                            size={28}
+                            color={tipo.color}
+                            style={styles.typeIcon}
+                          />
+                        )}
 
                         <Text style={[styles.typeText, { fontFamily: questrial }]}>
                           {tipo.label}
@@ -1070,12 +1081,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
 
-  // IMPORTANTE: aqui está a correção do alinhamento.
-  // Em vez de usar `gap` (que soma px fixos a larguras em %, quebrando o
-  // cálculo de quantos cards cabem por linha), usamos justifyContent:
-  // "space-between" + rowGap. Assim o RN encaixa exatamente 3 cards na
-  // primeira linha (31% cada) e 2 na segunda (48% cada), sem sobra de
-  // espaço que force a quebra errada.
+
   typeGrid: {
     flexDirection: "row",
     flexWrap: "wrap",

@@ -4,7 +4,7 @@ Repositório vinculado ao componente curricular **Desenvolvimento de Sistemas de
 
 ---
 
-## 👥 Equipe e Orientação
+## Equipe e Orientação
 
 * **Docentes Orientadores:** Prof. Dr. Gabriel Alves de Albuquerque Júnior; Profa. Dra. Maria da Conceição Moraes Batista
 * **Discentes:**
@@ -16,7 +16,7 @@ Repositório vinculado ao componente curricular **Desenvolvimento de Sistemas de
 
 ---
 
-## 📝 Resumo do Projeto
+## Resumo do Projeto
 
 A água ocupa um lugar central como componente das identidades culturais e dos modos de vida das comunidades nordestinas, sendo essencial para a subsistência e memória coletiva. Alinhado ao **Objetivo de Desenvolvimento Sustentável n. 6 (ODS 6)** da Agenda 2030, o AquaSense busca a gestão sustentável da água com ênfase na participação comunitária.
 
@@ -30,13 +30,13 @@ Esta arquitetura de ciência cidadã amplia a capilaridade do monitoramento híd
 
 ---
 
-## ⚠️ O Problema
+## O Problema
 
 A gestão hídrica depende da incorporação das comunidades nos processos de monitoramento e decisão, conforme a **Lei n. 9.433/1997**, mas ainda é limitada pela fragmentação dos dados e dificuldade de comunicação entre os atores envolvidos. O AquaSense aborda a lacuna de assiduidade nas análises hídricas, permitindo que a participação dos usuários complemente as informações de fontes oficiais.
 
 ---
 
-## 🛠️ Stack Tecnológica
+## Stack Tecnológica
 
 O projeto utiliza tecnologias modernas para garantir escalabilidade e suporte a operações em campo:
 
@@ -47,7 +47,7 @@ O projeto utiliza tecnologias modernas para garantir escalabilidade e suporte a 
 
 ---
 
-## 🎯 Objetivos
+## Objetivos
 
 ### Geral
 * Desenvolver um aplicativo mobile funcional que integre ciência cidadã, georreferenciamento e persistência de dados em nuvem para ampliar o monitoramento hídrico colaborativo em Pernambuco.
@@ -60,7 +60,7 @@ O projeto utiliza tecnologias modernas para garantir escalabilidade e suporte a 
 
 ---
 
-## 📚 Referências Bibliográficas
+## Referências Bibliográficas
 
 * BONNEY, R. et al. **Citizen Science: A Developing Tool for Expanding Science Knowledge**. BioScience, 2014.
 * BRASIL. **Lei n. 9.433, de 8 de janeiro de 1997**. Institui a Política Nacional de Recursos Hídricos. Brasília, 1997.
