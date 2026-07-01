@@ -446,8 +446,8 @@ export default function HomeManager() {
                             onPress={() => router.push("/(tabs)/alerts_manager" as any)}
                             activeOpacity={0.7}
                         >
-                            <View style={[styles.quickCardIcon, { backgroundColor: "#FFE8E8" }]}>
-                                <Ionicons name="alert-circle" size={22} color="#EF4444" />
+                            <View style={[styles.quickCardIcon, { backgroundColor: "#E3F2EF" }]}>
+                                <Ionicons name="alert-circle" size={22} color="#0F766E" />
                             </View>
                             <Text style={styles.quickCardNumber}>{alertasCriticos}</Text>
                             <Text style={styles.quickCardTitle}>Alertas</Text>
@@ -459,8 +459,8 @@ export default function HomeManager() {
                             onPress={() => router.push("/(tabs)/manage_technicians" as any)}
                             activeOpacity={0.7}
                         >
-                            <View style={[styles.quickCardIcon, { backgroundColor: "#E0F7E6" }]}>
-                                <Ionicons name="build" size={22} color="#22C55E" />
+                            <View style={[styles.quickCardIcon, { backgroundColor: "#DCF3E8" }]}>
+                                <Ionicons name="build" size={22} color="#059669" />
                             </View>
                             <Text style={styles.quickCardNumber}>{equipesAtivas}</Text>
                             <Text style={styles.quickCardTitle}>Técnicos</Text>
@@ -472,8 +472,8 @@ export default function HomeManager() {
                             onPress={() => router.push("/(tabs)/manage_collaborators" as any)}
                             activeOpacity={0.7}
                         >
-                            <View style={[styles.quickCardIcon, { backgroundColor: "#E8E8F8" }]}>
-                                <Ionicons name="people" size={22} color="#7C3AED" />
+                            <View style={[styles.quickCardIcon, { backgroundColor: "#D9F0E9" }]}>
+                                <Ionicons name="people" size={22} color="#10B981" />
                             </View>
                             <Text style={styles.quickCardNumber}>{0}</Text>
                             <Text style={styles.quickCardTitle}>Colab.</Text>
@@ -485,8 +485,8 @@ export default function HomeManager() {
                             onPress={() => router.push("/(tabs)/validacoes_manager" as any)}
                             activeOpacity={0.7}
                         >
-                            <View style={[styles.quickCardIcon, { backgroundColor: "#E0E8FF" }]}>
-                                <Ionicons name="water" size={22} color="#3B82F6" />
+                            <View style={[styles.quickCardIcon, { backgroundColor: "#E5F4EF" }]}>
+                                <Ionicons name="water" size={22} color="#047857" />
                             </View>
                             <Text style={styles.quickCardNumber}>{validacoesPendentes}</Text>
                             <Text style={styles.quickCardTitle}>Registros</Text>
@@ -990,10 +990,10 @@ const styles = StyleSheet.create({
         shadowRadius: 3,
         elevation: 2,
     },
-    alertCard: { borderBottomColor: "#EF4444" },
-    techniciansCard: { borderBottomColor: "#22C55E" },
-    collaboratorsCard: { borderBottomColor: "#7C3AED" },
-    waterBodiesCard: { borderBottomColor: "#3B82F6" },
+    alertCard: { borderBottomColor: "#0F766E" },
+    techniciansCard: { borderBottomColor: "#059669" },
+    collaboratorsCard: { borderBottomColor: "#10B981" },
+    waterBodiesCard: { borderBottomColor: "#047857" },
     quickCardIcon: {
         width: 38,
         height: 38,

@@ -1,158 +1,201 @@
-# Guia de Inicialização - Projeto AquaSense
+# Guia de Inicialização – Projeto AquaSense
 
-Este guia mostra o passo a passo para iniciar o projeto AquaSense, partindo da pasta raiz `dsi-ufrpe`.
+Este guia apresenta todas as etapas necessárias para configurar e executar o projeto **AquaSense** pela primeira vez.
 
-O projeto é composto por duas partes: 
+## Pré-requisitos
 
-- **Aplicativo mobile** (Expo / React Native)
-- **Backend** (Node.js)
+Antes de iniciar, certifique-se de que você possui instalado em sua máquina:
 
-Por isso, é necessário rodar **dois terminais simultaneamente**:
-- uma para o backend
-- um para o aplicativo
+- Git
+- Node.js (utilizando o NVM)
+- npm (instalado junto com o Node.js)
+- Expo Go (Android ou iOS), caso deseje executar o aplicativo em um dispositivo físico
 
-## 1. Acesse a pasta do projeto
+---
 
-Partindo da raiz do respositório: 
+## 1. Clone o repositório
+
+Clone o repositório do projeto para sua máquina:
+
+```bash
+git clone https://github.com/pablonvsx/dsi-ufrpe.git
+```
+
+Após finalizar o download, acesse a pasta do repositório:
+
+```bash
+cd dsi-ufrpe
+```
+
+---
+
+## 2. Acesse a pasta do projeto
+
+O aplicativo está localizado dentro da pasta **AquaSense**.
+
+Entre na pasta do projeto:
 
 ```bash
 cd AquaSense
 ```
 
-## 2. Configure a versão do Node.js
+A partir deste ponto, todos os comandos deste guia deverão ser executados dentro da pasta **AquaSense**.
 
-O projeto utiliza o [NVM (Node Version Manager)](https://github.com/nvm-sh/nvm) para garantir a versão correta do Node.js.
+---
+
+## 3. Configure a versão do Node.js
+
+O projeto utiliza o **NVM (Node Version Manager)** para garantir que todos os desenvolvedores utilizem a mesma versão do Node.js.
 
 ### Linux/macOS
-1. Instale o NVM, se ainda não tiver:
-   ```bash
-   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
-   # Reinicie o terminal ou rode:
-   export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || printf %s "${XDG_CONFIG_HOME}/nvm")"
-   [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-   ```
-2. Na pasta `AquaSense`, rode:
-   ```bash
-   nvm install 22
-   nvm use 22
-   ```
-   Isso garante que você está usando a versão correta do Node (definida em `.nvmrc`).
+
+Caso ainda não possua o NVM instalado:
+
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+```
+
+Reinicie o terminal ou execute:
+
+```bash
+export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || printf %s "${XDG_CONFIG_HOME}/nvm")"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+```
+
+Depois, dentro da pasta **AquaSense**, execute:
+
+```bash
+nvm install 22
+nvm use 22
+```
 
 ### Windows
-  1. Recomenda-se usar o [nvm-windows](https://github.com/coreybutler/nvm-windows):
-  2. Baixe e instale o nvm-windows.
-     No terminal, dentro da pasta `AquaSense`, rode:
-     ```cmd
-     nvm install 22
-     nvm use 22
-     ```
-## Verificando versão
-```cmd
+
+Recomenda-se utilizar o **nvm-windows**.
+
+Após instalar o NVM, execute:
+
+```bash
+nvm install 22
+nvm use 22
+```
+
+### Verificando a versão instalada
+
+```bash
 node -v
 ```
-Deve aparecer algo como:
+
+O resultado deverá ser semelhante a:
+
+```text
 v22.x.x
-  
+```
 
-## 3. Instale as dependências
-Dentro da pasta do AquaSense, rode:
+---
+
+## 4. Instale as dependências
+
+Ainda dentro da pasta **AquaSense**, execute:
+
 ```bash
 npm install
 ```
-Este comando instala todas as dependências do projeto. 
 
-## Instalando novas bibliotecas/dependências durante o desenvolvimento
+Esse comando instalará todas as dependências necessárias para executar o projeto.
 
-Sempre instale novas dependências dentro da pasta `AquaSense`, pois é onde está o arquivo `package.json` do projeto.
-
-**Passos:**
-1. Certifique-se de estar na pasta correta:
-   ```bash
-   cd /caminho/para/dsi-ufrpe/AquaSense
-   ```
-2. Instale a biblioteca normalmente, por exemplo:
-   ```bash
-   npm install nome-da-biblioteca
-   ```
-
-**Nunca rode comandos de instalação de dependências na raiz do repositório ou fora da pasta `AquaSense`, assim, todas as dependências ficam centralizadas.**
-
-**Importante:**
-Sempre que algum membro do grupo adicionar uma nova dependência (ou atualizar o arquivo `package.json`), rode o comando abaixo dentro da pasta `AquaSense` para garantir que todas as dependências estejam instaladas corretamente no seu ambiente:
-```bash
-npm install
-```
-Assim, você evita erros de dependências faltando ao rodar ou desenvolver o projeto.
+---
 
 ## 5. Executando o projeto
-**IMPORTANTE**: O backend deve ser sempre iniciado antes do aplicativo. 
 
-**Por que isso é necessário?**
-O app depende do backend para funcionalidades como:
-- enviar e-mail de verificação de conta
-- enviar e-mail de redefinição de senha
-- utilizar o Firebse Admin para gerar links e ações relacionadas à autenticação
-
-Por isso, o backend precisa estar rodando antes de testar fluxos que envolvem envio de e-mail. 
-
-## Terminal 1 - Backend
-Abra um terminal dentro de Aquasense: 
-
-```bash
-cd backend
-npm run dev
-```
-O backend deve iniciar e mostrar os seguintes logs no terminal: 
-(atualizar os logs e colocar aqui) 
-
-**Não feche esse terminal**.
-
-## Terminal 2 - Aplicativo (Expo)
-Abra outro terminal e volta para a pasta principal:
-
-```bash
-cd AquaSense
-```
-Agora rode: 
+Com todas as dependências instaladas, execute:
 
 ```bash
 npx expo start
 ```
 
-- O padrão do projeto é rodar no aplicativo **Expo Go** (Android/iOS):
-   1. Instale o app [Expo Go](https://expo.dev/go) no seu celular.
-   2. Após rodar o comando acima, escaneie o QR Code exibido no terminal ou navegador usando o Expo Go.
-   3. O app será carregado diretamente no seu dispositivo.
- 
+Esse comando iniciará automaticamente o ambiente de desenvolvimento do AquaSense.
+
+Após alguns instantes será exibido um QR Code no terminal e também será aberta uma página no navegador com o Expo.
+
+### Executando no celular
+
+1. Instale o aplicativo **Expo Go** em seu dispositivo Android ou iOS.
+2. Certifique-se de que o computador e o celular estejam conectados à mesma rede Wi-Fi.
+3. Abra o Expo Go.
+4. Escaneie o QR Code exibido no terminal ou no navegador.
+
+O aplicativo será carregado automaticamente no dispositivo.
+
+### Executando no emulador Android
+
+Caso esteja utilizando um emulador Android aberto, pressione a tecla **A** no terminal onde o Expo está sendo executado.
+
+### Executando no simulador iOS (macOS)
+
+Caso esteja utilizando o simulador do iOS, pressione a tecla **I** no terminal.
 
 ---
 
-**Dicas:**
-- Sempre use a versão do Node indicada em `.nvmrc`.
-- Se tiver problemas, tente rodar:
-  ```bash
-  npx expo start --reset-cache
-  ```
-  ou:
-  ```bash
-  npx expo start --clear
-  ```
-- Depêndencia faltando:
-  ```bash
-  npm install
-  ```
-- Backend não responde:
-  verifique se o Terminal 1 está rodando:
-  ```bash
-  npm run dev
-  ```
+## 6. Instalando novas dependências
 
---- 
+Sempre instale novas bibliotecas dentro da pasta **AquaSense**, pois é nela que está localizado o arquivo `package.json`.
 
-**Para o projeto funcionar corretamente:
-- Backend precisa estar ativo
-- Expo precisa estar rodando
-- Dois terminais devem permanecer abertos
-  
+Exemplo:
 
+```bash
+npm install nome-da-biblioteca
+```
 
+Nunca instale dependências na raiz do repositório.
+
+Sempre que algum membro da equipe adicionar ou atualizar dependências do projeto, execute novamente:
+
+```bash
+npm install
+```
+
+Isso garante que seu ambiente permanecerá sincronizado com o restante da equipe.
+
+---
+
+## Solução de problemas
+
+### Limpar o cache do Expo
+
+Caso ocorram problemas durante a execução, tente:
+
+```bash
+npx expo start --reset-cache
+```
+
+ou
+
+```bash
+npx expo start --clear
+```
+
+### Erros de dependências
+
+Execute:
+
+```bash
+npm install
+```
+
+### Verifique a versão do Node
+
+Caso ocorram erros inesperados, confirme se está utilizando a versão definida no arquivo `.nvmrc`:
+
+```bash
+node -v
+```
+
+---
+
+## Boas práticas
+
+- Utilize sempre a versão do Node definida no arquivo `.nvmrc`.
+- Execute `npm install` sempre que houver alterações no arquivo `package.json`.
+- Mantenha o Expo Go atualizado.
+- Caso tenha problemas após atualizar dependências, limpe o cache do Expo antes de iniciar novamente o projeto.
