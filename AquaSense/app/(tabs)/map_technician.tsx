@@ -1022,7 +1022,7 @@ export default function MapaTecnico() {
             fontFamily={questrial}
             onNovaAnalise={() => {
               router.push({
-                pathname: '/technical_analysis',
+                pathname: '/analyses_union',
                 params: { corpoId: selectedCorpo.id },
               } as any);
             }}
@@ -1247,7 +1247,6 @@ const styles = StyleSheet.create({
 
   // ── Bottom nav (estilos removidos — usa TechnicalBottomNav) ─────────────────
 
-  // mantido para não quebrar refs eventuais
   menuBtn:            { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' },
   acoesRapidasRow:    { flexDirection: 'row', gap: 8, marginBottom: 12 },
   acaoCard:           { flex: 1, backgroundColor: '#f0f7f4', borderRadius: 14, padding: 12, alignItems: 'center', gap: 6, borderWidth: 1, borderColor: '#d0e8e0' },

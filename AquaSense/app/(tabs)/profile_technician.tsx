@@ -161,7 +161,7 @@ export default function PerfilTecnicoScreen() {
       }
 
       const [analisesSnap, corposSnap, alertasSnap] = await Promise.all([
-        getDocs(query(collection(db, 'analises'), where('tecnicoId', '==', uid))),
+        getDocs(query(collection(db, 'analisesTecnicas'), where('tecnicoId', '==', uid))),
         getDocs(
           equipeId
             ? query(collection(db, 'corposHidricos'), where('equipeId', '==', equipeId))
