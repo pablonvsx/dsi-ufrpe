@@ -592,7 +592,7 @@ export default function DashboardManager() {
                   </Text>
                   <TouchableOpacity
                     style={styles.expandMapBtn}
-                    onPress={() => router.push("/(tabs)/map" as any)}
+                    onPress={() => router.push("/(tabs)/map_manager" as any)}
                     activeOpacity={0.8}
                   >
                     <Text style={[styles.expandMapText, { fontFamily: questrial }]}>

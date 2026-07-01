@@ -142,6 +142,7 @@ export async function criarAlertaOperacional(data: {
   titulo: string;
   mensagem: string;
   nivel: NivelAlerta;
+  corpoHidricoId?: string;
   corpoHidricoNome?: string;
   criadorId: string;
 }): Promise<string> {
