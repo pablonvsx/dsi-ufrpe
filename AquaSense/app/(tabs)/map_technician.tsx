@@ -24,6 +24,7 @@ import { useAuth } from '@/contexts/auth-context';
 
 import stateData from '@/assets/map_layers/pe_aquasense.json';
 import municipiosData from '@/assets/map_layers/municipios_pe.json';
+import TechnicalBottomNav, { TechNavTab } from '@/components/technicalbottomnavbar';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -45,8 +46,10 @@ const STATUS_GRAY_BG   = '#f5f5f5';
 const { height: SCREEN_H } = Dimensions.get('window');
 
 // Bottom-sheet snap points
+const NAV_HEIGHT      = Platform.OS === 'ios' ? 84 : 70;
 const SHEET_COLLAPSED = SCREEN_H * 0.38;
 const SHEET_EXPANDED  = SCREEN_H * 0.82;
+const SHEET_CLOSE_THRESHOLD = SHEET_COLLAPSED * 0.6; // abaixo disso, soltar o dedo fecha o sheet
 
 const REGIAO_INICIAL = {
   latitude: -8.28,
@@ -127,28 +130,6 @@ function statusConfig(s: 'critical' | 'attention' | 'normal' | 'nodata') {
   }
 }
 
-// ─── NavItem ──────────────────────────────────────────────────────────────────
-
-function NavItem({
-  icon, iconOutline, label, active, fontFamily, onPress,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  iconOutline: keyof typeof Ionicons.glyphMap;
-  label: string;
-  active: boolean;
-  fontFamily?: string;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity style={styles.navItem} onPress={onPress} activeOpacity={0.7}>
-      <Ionicons name={active ? icon : iconOutline} size={24} color={active ? PRIMARY : '#b0c4c2'} />
-      <Text style={[styles.navLabel, { fontFamily, color: active ? PRIMARY : '#b0c4c2' }]}>
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
-}
-
 // ─── Stat item (bottom sheet) ─────────────────────────────────────────────────
 
 function StatItem({
@@ -191,7 +172,6 @@ function FilterModal({
     analises:    true,
   });
 
-  // Status chips — mobile-friendly, toda a área clicável
   const statusOptions: {
     key: StatusFilterKey;
     label: string;
@@ -229,7 +209,6 @@ function FilterModal({
             </TouchableOpacity>
           </View>
 
-          {/* ── Status: chips grandes ──────────────────────────────────── */}
           <Text style={styles.modalSectionTitle}>Exibir no mapa</Text>
           <View style={styles.chipsRow}>
             {statusOptions.map((opt) => {
@@ -256,7 +235,6 @@ function FilterModal({
 
           <View style={styles.modalDivider} />
 
-          {/* ── Tipo de registro: cards clicáveis ─────────────────────── */}
           <Text style={styles.modalSectionTitle}>Filtrar por tipo de registro</Text>
           {typeOptions.map((opt) => {
             const isChecked = checkedTypes[opt.key];
@@ -357,7 +335,6 @@ function BottomSheet({
   isExpanded,
   panHandlers,
   fontFamily,
-  onVerDetalhes,
   onNovaAnalise,
   onVerHistorico,
   onClose,
@@ -369,7 +346,6 @@ function BottomSheet({
   isExpanded: boolean;
   panHandlers: any;
   fontFamily?: string;
-  onVerDetalhes: () => void;
   onNovaAnalise: () => void;
   onVerHistorico: () => void;
   onClose: () => void;
@@ -379,7 +355,7 @@ function BottomSheet({
   const mock   = getMockDados(corpo.id);
 
   const obs       = resumo?.totalObservacoes ?? 12;
-  const medicoes  = resumo?.totalMedicoes    ?? 3;
+  const medicoes  = (resumo as any)?.totalMedicoes ?? 3;
   const denuncias = (corpo as any).denunciasRecentes ?? 4;
   const analises  = (corpo as any).analisesTecnicas  ?? 1;
 
@@ -392,13 +368,11 @@ function BottomSheet({
   const indicadores    = (corpo as any).indicadores    ?? mock.indicadores;
   const dataAtualizada = formatarDataHoraAtual();
 
-  // Cor de prioridade
   const prioridadeColor =
-    prioridade === 'Alta' || prioridade === 'alta'       ? STATUS_RED    :
-    prioridade === 'Média' || prioridade === 'media'      ? STATUS_YELLOW :
+    prioridade === 'Alta' || prioridade === 'alta'   ? STATUS_RED    :
+    prioridade === 'Média' || prioridade === 'media' ? STATUS_YELLOW :
     STATUS_GREEN;
 
-  // Cor do indicador
   const corIndicador = (val: string) => {
     const v = val.toLowerCase();
     if (v === 'forte' || v === 'presente' || v === 'escura' || v === 'visível') return STATUS_RED;
@@ -415,8 +389,10 @@ function BottomSheet({
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 24 }}
+        contentContainerStyle={{ paddingBottom: Platform.OS === 'ios' ? 100 : 80 }}
         scrollEventThrottle={8}
+        style={{ flex: 1 }}
+        bounces={false}
       >
         {/* ── Cabeçalho ──────────────────────────────────────────────── */}
         <View style={styles.bsHeaderRow}>
@@ -428,7 +404,7 @@ function BottomSheet({
             <View style={styles.bsLocRow}>
               <Ionicons name="location-outline" size={11} color={TEXT_MUTED} />
               <Text style={[styles.bsLoc, { fontFamily }]}>
-                {[corpo.municipio, corpo.estado].filter(Boolean).join(' - ') || 'Olinda - PE'}
+                {[corpo.municipio, (corpo as any).estado].filter(Boolean).join(' - ') || 'Olinda - PE'}
               </Text>
             </View>
             <Text style={[styles.bsAtualizacao, { fontFamily }]}>
@@ -438,6 +414,9 @@ function BottomSheet({
           <View style={[styles.statusBadge, { backgroundColor: cfg.color }]}>
             <Text style={styles.statusBadgeText}>{cfg.label}</Text>
           </View>
+          <TouchableOpacity style={styles.bsCloseBtn} onPress={onClose} activeOpacity={0.7}>
+            <Ionicons name="close" size={18} color={TEXT_MUTED} />
+          </TouchableOpacity>
         </View>
 
         {/* ── Alerta crítico ──────────────────────────────────────────── */}
@@ -500,82 +479,44 @@ function BottomSheet({
           </View>
         </View>
 
-        {/* ── Seção expandida ─────────────────────────────────────────── */}
+        {/* ── Seção expandida (risco + indicadores só quando expandido) ── */}
         {isExpanded && (
           <>
-            {/* Risco ambiental */}
             <Text style={[styles.bsSectionTitle, { fontFamily }]}>Risco ambiental</Text>
-            <View style={[styles.riscoBadgeRow]}>
+            <View style={styles.riscoBadgeRow}>
               <View style={[styles.riscoBadge, { backgroundColor: STATUS_RED_BG, borderColor: '#f5c6c6' }]}>
                 <Ionicons name="alert-circle" size={16} color={STATUS_RED} />
                 <Text style={[styles.riscoBadgeText, { color: STATUS_RED, fontFamily }]}>{riscoAmbiental}</Text>
               </View>
             </View>
 
-            {/* Principais indicadores */}
             <Text style={[styles.bsSectionTitle, { fontFamily }]}>Principais indicadores</Text>
             <View style={styles.indicadoresGrid}>
-              <IndicadorItem label="Odor"      valor={indicadores.odor}    cor={corIndicador(indicadores.odor)}    />
+              <IndicadorItem label="Odor"        valor={indicadores.odor}    cor={corIndicador(indicadores.odor)}    />
               <IndicadorItem label="Cor da água" valor={indicadores.corAgua} cor={corIndicador(indicadores.corAgua)} />
-              <IndicadorItem label="Espuma"    valor={indicadores.espuma}  cor={corIndicador(indicadores.espuma)}  />
-              <IndicadorItem label="Lixo"      valor={indicadores.lixo}    cor={corIndicador(indicadores.lixo)}    />
-            </View>
-
-            {/* Ações rápidas */}
-            <Text style={[styles.bsSectionTitle, { fontFamily }]}>Ações rápidas</Text>
-            <View style={styles.acoesRapidasRow}>
-              <TouchableOpacity style={styles.acaoCard} onPress={onVerDetalhes} activeOpacity={0.85}>
-                <View style={styles.acaoCardIcon}>
-                  <Ionicons name="document-text-outline" size={18} color={PRIMARY} />
-                </View>
-                <Text style={[styles.acaoCardText, { fontFamily }]}>Ver detalhes{'\n'}completos</Text>
-                <Ionicons name="arrow-forward" size={14} color={TEXT_MUTED} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.acaoCard} onPress={onNovaAnalise} activeOpacity={0.85}>
-                <View style={styles.acaoCardIcon}>
-                  <Ionicons name="flask-outline" size={18} color={PRIMARY} />
-                </View>
-                <Text style={[styles.acaoCardText, { fontFamily }]}>Nova análise{'\n'}técnica</Text>
-                <Ionicons name="arrow-forward" size={14} color={TEXT_MUTED} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.acaoCard} onPress={onVerHistorico} activeOpacity={0.85}>
-                <View style={styles.acaoCardIcon}>
-                  <Ionicons name="time-outline" size={18} color={PRIMARY} />
-                </View>
-                <Text style={[styles.acaoCardText, { fontFamily }]}>Ver histórico{'\n'}de registros</Text>
-                <Ionicons name="arrow-forward" size={14} color={TEXT_MUTED} />
-              </TouchableOpacity>
+              <IndicadorItem label="Espuma"      valor={indicadores.espuma}  cor={corIndicador(indicadores.espuma)}  />
+              <IndicadorItem label="Lixo"        valor={indicadores.lixo}    cor={corIndicador(indicadores.lixo)}    />
             </View>
           </>
         )}
 
-        {/* ── Botões de ação (estado colapsado) ──────────────────────── */}
-        {!isExpanded && (
-          <View style={styles.bsActionsCollapsed}>
-            {/* Ver detalhes — botão principal */}
-            <TouchableOpacity style={styles.bsBtnPrimary} onPress={onVerDetalhes} activeOpacity={0.85}>
-              <Ionicons name="document-text-outline" size={14} color="#fff" />
-              <Text style={[styles.bsBtnPrimaryText, { fontFamily }]}>Ver detalhes</Text>
-              <Ionicons name="arrow-forward" size={13} color="#fff" />
-            </TouchableOpacity>
-            {/* Secundários */}
-            <View style={styles.bsBtnsSecRow}>
-              <TouchableOpacity style={styles.bsBtnSec} onPress={onNovaAnalise} activeOpacity={0.85}>
-                <Ionicons name="flask-outline" size={13} color={TEXT_DARK} />
-                <Text style={[styles.bsBtnSecText, { fontFamily }]}>Nova análise</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.bsBtnSec} onPress={onVerHistorico} activeOpacity={0.85}>
-                <Ionicons name="time-outline" size={13} color={TEXT_DARK} />
-                <Text style={[styles.bsBtnSecText, { fontFamily }]}>Ver histórico</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
+        {/* ── Botões de ação — sempre iguais, independente do estado ─── */}
+        <View style={styles.bsBtnsSecRow}>
+          <TouchableOpacity style={styles.bsBtnSec} onPress={onNovaAnalise} activeOpacity={0.85}>
+            <Ionicons name="flask-outline" size={13} color={TEXT_DARK} />
+            <Text style={[styles.bsBtnSecText, { fontFamily }]}>Análise técnica</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.bsBtnSec} onPress={onVerHistorico} activeOpacity={0.85}>
+            <Ionicons name="time-outline" size={13} color={TEXT_DARK} />
+            <Text style={[styles.bsBtnSecText, { fontFamily }]}>Ver histórico</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* ── Timestamp ───────────────────────────────────────────────── */}
         <Text style={[styles.bsTimestamp, { fontFamily }]}>
           ⓘ Dados atualizados em: {dataAtualizada}
         </Text>
+
       </ScrollView>
     </Animated.View>
   );
@@ -593,11 +534,11 @@ export default function MapaTecnico() {
   const questrial = fontsLoaded ? 'Questrial_400Regular' : undefined;
 
   // ── Map state ──────────────────────────────────────────────────────────────
-  const [tipoMapa, setTipoMapa]           = useState<MapTypeKey>('satellite');
+  const [tipoMapa, setTipoMapa]               = useState<MapTypeKey>('satellite');
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [showLegendModal, setShowLegendModal] = useState(false);
   const [showLayersModal, setShowLayersModal] = useState(false);
-  const [statusFilter, setStatusFilter]   = useState<StatusFilterKey>('all');
+  const [statusFilter, setStatusFilter]       = useState<StatusFilterKey>('all');
 
   const [visibilidade, setVisibilidade] = useState({
     municipios:     true,
@@ -618,10 +559,10 @@ export default function MapaTecnico() {
   const [searchResults, setSearchResults] = useState<CorpoHidrico[]>([]);
 
   // ── Selected body ──────────────────────────────────────────────────────────
-  const [selectedCorpo, setSelectedCorpo] = useState<CorpoHidrico | null>(null);
-  const [resumo,        setResumo]        = useState<ResumoObservacoes | null>(null);
-  const [loadingResumo, setLoadingResumo] = useState(false);
-  const [detalheVisible, setDetalheVisible] = useState(false);
+  const [selectedCorpo,   setSelectedCorpo]   = useState<CorpoHidrico | null>(null);
+  const [resumo,          setResumo]          = useState<ResumoObservacoes | null>(null);
+  const [loadingResumo,   setLoadingResumo]   = useState(false);
+  const [detalheVisible,  setDetalheVisible]  = useState(false);
 
   // ── Bottom sheet animation ─────────────────────────────────────────────────
   const sheetHeight      = useRef(new Animated.Value(SHEET_COLLAPSED)).current;
@@ -648,6 +589,19 @@ export default function MapaTecnico() {
     return () => sheetHeight.removeAllListeners();
   }, []);
 
+  const fecharSheet = useCallback(() => {
+    isExpandedRef.current = false;
+    setSheetIsExpanded(false);
+    Animated.timing(sheetHeight, {
+      toValue: 0,
+      duration: 220,
+      useNativeDriver: false,
+    }).start(() => {
+      setDetalheVisible(false);
+      setSelectedCorpo(null);
+    });
+  }, [sheetHeight]);
+
   const snapSheet = (toExpanded: boolean) => {
     const toValue = toExpanded ? SHEET_EXPANDED : SHEET_COLLAPSED;
     isExpandedRef.current = toExpanded;
@@ -663,10 +617,15 @@ export default function MapaTecnico() {
       onPanResponderMove: (_: any, { dy }: any) => {
         const newVal = sheetHeightValue.current - (dy - lastGestureDy.current);
         lastGestureDy.current = dy;
-        const clamped = Math.max(SHEET_COLLAPSED * 0.5, Math.min(SHEET_EXPANDED, newVal));
+        const clamped = Math.max(0, Math.min(SHEET_EXPANDED, newVal));
         sheetHeight.setValue(clamped);
       },
       onPanResponderRelease: (_: any, { dy, vy }: any) => {
+        // Arrastou bastante pra baixo (ou soltou rápido pra baixo) → fecha o sheet
+        if (sheetHeightValue.current < SHEET_CLOSE_THRESHOLD || vy > 1.2) {
+          fecharSheet();
+          return;
+        }
         const midPoint = (SHEET_COLLAPSED + SHEET_EXPANDED) / 2;
         const goExpand = sheetHeightValue.current > midPoint || vy < -0.5;
         snapSheet(goExpand);
@@ -716,7 +675,6 @@ export default function MapaTecnico() {
           pontosSnap.docs.map((d) => ({ id: d.id, ...d.data() } as PontoDeUso)).filter(hasCoords)
         );
 
-        // Foco automático via parâmetro de rota
         if (focusCorpoId && !focusHandled.current) {
           focusHandled.current = true;
           const alvo = [...validados, ...pendentes].find((c) => c.id === focusCorpoId);
@@ -806,8 +764,8 @@ export default function MapaTecnico() {
     return corpos.filter((c) => statusFromCorpo(c) === statusFilter);
   }
 
-  const corposVisiveis   = applyStatusFilter(visibilidade.corposHidricos ? corposValidados : []);
-  const pendentesVisiveis = applyStatusFilter(visibilidade.pendentes     ? corposPendentes : []);
+  const corposVisiveis    = applyStatusFilter(visibilidade.corposHidricos ? corposValidados : []);
+  const pendentesVisiveis = applyStatusFilter(visibilidade.pendentes      ? corposPendentes : []);
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER
@@ -829,12 +787,10 @@ export default function MapaTecnico() {
             <Animated.View
               style={[styles.headerTopRow, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
             >
-              {/* Hamburger — mantido conforme protótipo */}
-              <TouchableOpacity style={styles.menuBtn} activeOpacity={0.8}>
-                <Ionicons name="menu" size={22} color="#e8f5f0" />
-              </TouchableOpacity>
+              {/* Espaçador esquerdo para equilibrar os ícones da direita */}
+              <View style={styles.headerSide} />
 
-              {/* Logo AquaSense real + role */}
+              {/* Centro: logo + label lado a lado */}
               <View style={styles.headerCenter}>
                 <Image
                   source={require('@/assets/images/aquasense.png')}
@@ -844,13 +800,15 @@ export default function MapaTecnico() {
                 <Text style={[styles.headerRole, { fontFamily: questrial }]}>TÉCNICO</Text>
               </View>
 
-              {/* Apenas notificações — perfil removido (existe na barra inferior) */}
-              <TouchableOpacity style={styles.iconBtn} activeOpacity={0.8}>
-                <Ionicons name="notifications-outline" size={21} color="#e8f5f0" />
-                <View style={styles.notifBadge}>
-                  <Text style={styles.notifBadgeText}>3</Text>
-                </View>
-              </TouchableOpacity>
+              {/* Ícones à direita */}
+              <View style={[styles.headerSide, styles.headerIcons]}>
+                <TouchableOpacity style={styles.iconBtn} activeOpacity={0.8}>
+                  <Ionicons name="notifications-outline" size={21} color="#e8f5f0" />
+                  <View style={styles.notifBadge}>
+                    <Text style={styles.notifBadgeText}>3</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
             </Animated.View>
 
             {/* Título */}
@@ -897,7 +855,7 @@ export default function MapaTecnico() {
               </TouchableOpacity>
             </Animated.View>
 
-            {/* ── Alternância de tipo de mapa — abaixo da busca, dentro do header ── */}
+            {/* Alternância de tipo de mapa */}
             <Animated.View
               style={[styles.mapTypeRow, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
             >
@@ -979,23 +937,16 @@ export default function MapaTecnico() {
           showsMyLocationButton={false}
           showsCompass
           rotateEnabled
-          onPress={() => {
-            if (searchFocused) { Keyboard.dismiss(); setSearchFocused(false); }
-          }}
         >
-          {/* Camada municípios */}
           {visibilidade.municipios && (
             <Geojson
               geojson={municipiosData as any}
-              strokeColor={
-                tipoMapa === 'standard' || tipoMapa === 'terrain' ? '#FF8C00' : '#FFFFFF'
-              }
+              strokeColor={tipoMapa === 'standard' || tipoMapa === 'terrain' ? '#FF8C00' : '#FFFFFF'}
               fillColor="rgba(255,255,255,0.08)"
               strokeWidth={1}
             />
           )}
 
-          {/* Limite do estado */}
           <Geojson
             geojson={stateData as any}
             fillColor="rgba(255,0,0,0)"
@@ -1003,7 +954,6 @@ export default function MapaTecnico() {
             strokeWidth={3}
           />
 
-          {/* Corpos hídricos validados */}
           {corposVisiveis.map((item) => {
             const s   = statusFromCorpo(item);
             const cfg = statusConfig(s);
@@ -1020,7 +970,6 @@ export default function MapaTecnico() {
             );
           })}
 
-          {/* Corpos hídricos pendentes */}
           {pendentesVisiveis.map((item) => (
             <Marker
               key={`pend-${item.id}`}
@@ -1033,7 +982,6 @@ export default function MapaTecnico() {
             </Marker>
           ))}
 
-          {/* Pontos de uso */}
           {visibilidade.pontosDeUso && pontosDeUso.map((item) => (
             <Marker
               key={`pu-${item.id}`}
@@ -1046,40 +994,17 @@ export default function MapaTecnico() {
           ))}
         </MapView>
 
-        {/* ══ SIDEBAR — lateral esquerda, centralizado verticalmente ════ */}
+        {/* ══ SIDEBAR ════════════════════════════════════════════════════ */}
         <View style={styles.sidebar}>
-          <TouchableOpacity
-            style={styles.sidebarBtn}
-            onPress={() => setShowLayersModal(true)}
-            activeOpacity={0.8}
-          >
+          <TouchableOpacity style={styles.sidebarBtn} onPress={() => setShowLayersModal(true)} activeOpacity={0.8}>
             <Ionicons name="layers-outline" size={22} color={TEXT_DARK} />
             <Text style={[styles.sidebarLabel, { fontFamily: questrial }]}>Camadas</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.sidebarBtn}
-            onPress={() => setShowFilterModal(true)}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="options-outline" size={22} color={TEXT_DARK} />
-            <Text style={[styles.sidebarLabel, { fontFamily: questrial }]}>Filtros</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.sidebarBtn}
-            onPress={() => setShowLegendModal(true)}   // Abre modal, não legenda inline
-            activeOpacity={0.8}
-          >
+          <TouchableOpacity style={styles.sidebarBtn} onPress={() => setShowLegendModal(true)} activeOpacity={0.8}>
             <Ionicons name="information-circle-outline" size={22} color={TEXT_DARK} />
             <Text style={[styles.sidebarLabel, { fontFamily: questrial }]}>Legenda</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.sidebarBtn, { borderBottomWidth: 0 }]}
-            onPress={goToMyLocation}
-            activeOpacity={0.8}
-          >
+          <TouchableOpacity style={[styles.sidebarBtn, { borderBottomWidth: 0 }]} onPress={goToMyLocation} activeOpacity={0.8}>
             <Ionicons name="locate-outline" size={22} color={TEXT_DARK} />
             <Text style={[styles.sidebarLabel, { fontFamily: questrial }]}>Localizar</Text>
           </TouchableOpacity>
@@ -1095,42 +1020,24 @@ export default function MapaTecnico() {
             isExpanded={sheetIsExpanded}
             panHandlers={panResponder.panHandlers}
             fontFamily={questrial}
-            onVerDetalhes={() => {
-              if (!sheetIsExpanded) {
-                snapSheet(true);
-              } else {
-                router.push({ pathname: '/water_body_detail', params: { id: selectedCorpo.id } } as any);
-              }
-            }}
             onNovaAnalise={() => {
-              router.push({ pathname: '/new_analysis', params: { corpoId: selectedCorpo.id } } as any);
+              router.push({
+                pathname: '/analyses_union',
+                params: { corpoId: selectedCorpo.id },
+              } as any);
             }}
             onVerHistorico={() => {
-              router.push({ pathname: '/history', params: { corpoId: selectedCorpo.id } } as any);
+              router.push({
+                pathname: '/history_technician',
+                params: { corpoId: selectedCorpo.id },
+              } as any);
             }}
-            onClose={() => {
-              setDetalheVisible(false);
-              setSelectedCorpo(null);
-            }}
+            onClose={fecharSheet}
           />
         )}
 
         {/* ══ BOTTOM NAV ═════════════════════════════════════════════════ */}
-        <View style={styles.navWrapper}>
-          <View style={styles.navBar}>
-            <NavItem icon="home"      iconOutline="home-outline"      label="Início"   active={false} fontFamily={questrial} onPress={() => router.back()} />
-            <NavItem icon="analytics" iconOutline="analytics-outline" label="Análises" active={false} fontFamily={questrial} onPress={() => {}} />
-            <View style={styles.fabSpacer}>
-              <TouchableOpacity style={styles.fab} activeOpacity={0.85}>
-                <LinearGradient colors={[TEAL_MED, PRIMARY]} style={styles.fabInner}>
-                  <Ionicons name="add" size={26} color="#fff" />
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-            <NavItem icon="map"    iconOutline="map-outline"    label="Mapa"   active={true}  fontFamily={questrial} onPress={() => {}} />
-            <NavItem icon="person" iconOutline="person-outline" label="Perfil" active={false} fontFamily={questrial} onPress={() => {}} />
-          </View>
-        </View>
+        <TechnicalBottomNav active="mapa" fontFamily={questrial} />
       </View>
 
       {/* ══ MODAIS ════════════════════════════════════════════════════════ */}
@@ -1146,7 +1053,6 @@ export default function MapaTecnico() {
         onClose={() => setShowLegendModal(false)}
       />
 
-      {/* Camadas modal */}
       <Modal visible={showLayersModal} transparent animationType="slide" onRequestClose={() => setShowLayersModal(false)}>
         <View style={styles.modalOverlayBottom}>
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowLayersModal(false)} />
@@ -1196,12 +1102,16 @@ const styles = StyleSheet.create({
   headerGradient: { zIndex: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 6 },
   headerSafe:     { paddingBottom: 10 },
 
-  headerTopRow:   { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 8, marginBottom: 10 },
-  menuBtn:        { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' },
+  headerTopRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 8, marginBottom: 10 },
 
-  headerCenter:   { flex: 1, alignItems: 'center' },
-  headerLogo:     { height: 26, width: 140 },                // logo real
-  headerRole:     { fontSize: 9, color: 'rgba(255,255,255,0.65)', letterSpacing: 2, marginTop: 2 },
+  // Espaçador: ocupa flex:1 dos dois lados → força o centro a ficar no meio
+  headerSide:   { flex: 1 },
+  headerIcons:  { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 6 },
+
+  // Logo + "TÉCNICO" lado a lado, centralizados
+  headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerLogo:   { height: 26, width: 120 },
+  headerRole:   { fontSize: 11, color: 'rgba(255,255,255,0.75)', letterSpacing: 2, fontWeight: '600' },
 
   iconBtn:        { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center', position: 'relative' },
   notifBadge:     { position: 'absolute', top: -3, right: -3, backgroundColor: '#e53935', borderRadius: 7, minWidth: 14, height: 14, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2, borderWidth: 1.5, borderColor: '#0d4a3e' },
@@ -1218,56 +1128,46 @@ const styles = StyleSheet.create({
   filterBtn:        { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.35)', borderRadius: 12, paddingHorizontal: 14, height: 42 },
   filterBtnText:    { fontSize: 13, color: '#fff', fontWeight: '600' },
 
-  // Modos do mapa — dentro do header, abaixo da busca
-  mapTypeRow:       { flexDirection: 'row', paddingHorizontal: 16, gap: 6, marginBottom: 2 },
-  mapTypeBtn:       { flex: 1, alignItems: 'center', paddingVertical: 7, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.18)' },
-  mapTypeBtnActive: { backgroundColor: '#fff', borderColor: '#fff' },
-  mapTypeText:      { fontSize: 12, color: 'rgba(255,255,255,0.75)', fontWeight: '600' },
-  mapTypeTextActive:{ color: PRIMARY, fontWeight: '700' },
+  mapTypeRow:        { flexDirection: 'row', paddingHorizontal: 16, gap: 6, marginBottom: 2 },
+  mapTypeBtn:        { flex: 1, alignItems: 'center', paddingVertical: 7, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.18)' },
+  mapTypeBtnActive:  { backgroundColor: '#fff', borderColor: '#fff' },
+  mapTypeText:       { fontSize: 12, color: 'rgba(255,255,255,0.75)', fontWeight: '600' },
+  mapTypeTextActive: { color: PRIMARY, fontWeight: '700' },
 
   // ── Search dropdown ───────────────────────────────────────────────────────
-  searchDropdown:      { position: 'absolute', left: 0, right: 0, zIndex: 100, marginTop: Platform.OS === 'ios' ? 210 : 190, backgroundColor: '#fff', marginHorizontal: 12, borderRadius: 16, maxHeight: 280, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 8, overflow: 'hidden' },
-  searchDropdownItem:  { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 14, gap: 10 },
-  searchDropdownIcon:  { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  searchDropdownName:  { fontSize: 14, color: '#333', fontWeight: '600' },
-  searchDropdownSub:   { fontSize: 12, color: TEXT_MUTED, marginTop: 1 },
-  pendentePill:        { backgroundColor: STATUS_YELLOW_BG, borderWidth: 1, borderColor: '#ffe082', borderRadius: 20, paddingHorizontal: 6, paddingVertical: 2 },
-  pendentePillText:    { fontSize: 10, color: STATUS_YELLOW, fontWeight: '700' },
+  searchDropdown:     { position: 'absolute', left: 0, right: 0, zIndex: 100, marginTop: Platform.OS === 'ios' ? 210 : 190, backgroundColor: '#fff', marginHorizontal: 12, borderRadius: 16, maxHeight: 280, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 8, overflow: 'hidden' },
+  searchDropdownItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 14, gap: 10 },
+  searchDropdownIcon: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  searchDropdownName: { fontSize: 14, color: '#333', fontWeight: '600' },
+  searchDropdownSub:  { fontSize: 12, color: TEXT_MUTED, marginTop: 1 },
+  pendentePill:       { backgroundColor: STATUS_YELLOW_BG, borderWidth: 1, borderColor: '#ffe082', borderRadius: 20, paddingHorizontal: 6, paddingVertical: 2 },
+  pendentePillText:   { fontSize: 10, color: STATUS_YELLOW, fontWeight: '700' },
 
   // ── Map ───────────────────────────────────────────────────────────────────
   mapa:         { flex: 1 },
   customMarker: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff', shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 5 },
 
-  // ── Sidebar — esquerda, centralizado verticalmente ────────────────────────
-  sidebar:      {
-    position: 'absolute',
-    left: 12,
-    top: '35%',          // centralizado verticalmente sobre o mapa
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8,
-    elevation: 5,
-    overflow: 'hidden',
-    zIndex: 5,
-    transform: [{ translateY: -80 }], // ajuste fino de centro
-  },
+  // ── Sidebar ───────────────────────────────────────────────────────────────
+  sidebar:      { position: 'absolute', left: 12, top: '35%', backgroundColor: '#fff', borderRadius: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 5, overflow: 'hidden', zIndex: 5, transform: [{ translateY: -80 }] },
   sidebarBtn:   { alignItems: 'center', paddingVertical: 11, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: '#f0f0f0', minWidth: 58 },
   sidebarLabel: { fontSize: 9, color: TEXT_DARK, marginTop: 3, fontWeight: '600', textAlign: 'center' },
 
   // ── Bottom Sheet ──────────────────────────────────────────────────────────
-  bottomSheet:      { backgroundColor: '#fff', borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 16, shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 12, zIndex: 20 },
+  bottomSheet:       { position: 'absolute', bottom: NAV_HEIGHT, left: 0, right: 0, backgroundColor: '#fff', borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 16, shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 10, zIndex: 10, overflow: 'hidden' },
   dragHandleWrapper: { alignItems: 'center', paddingVertical: 10 },
-  dragHandle:       { width: 36, height: 4, backgroundColor: '#dde5e2', borderRadius: 2 },
+  dragHandle:        { width: 36, height: 4, backgroundColor: '#dde5e2', borderRadius: 2 },
 
-  bsHeaderRow:  { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 10 },
-  bsIconCircle: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  bsNome:       { fontSize: 18, fontWeight: '700', color: TEXT_DARK },
-  bsLocRow:     { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 2 },
-  bsLoc:        { fontSize: 12, color: TEXT_MUTED },
-  bsAtualizacao:{ fontSize: 10, color: TEXT_MUTED, marginTop: 2 },
+  bsHeaderRow:   { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 10 },
+  bsIconCircle:  { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  bsNome:        { fontSize: 18, fontWeight: '700', color: TEXT_DARK },
+  bsLocRow:      { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 2 },
+  bsLoc:         { fontSize: 12, color: TEXT_MUTED },
+  bsAtualizacao: { fontSize: 10, color: TEXT_MUTED, marginTop: 2 },
 
   statusBadge:     { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 5, alignSelf: 'flex-start', marginLeft: 6 },
   statusBadgeText: { fontSize: 11, color: '#fff', fontWeight: '700', letterSpacing: 0.5 },
+
+  bsCloseBtn: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#f0f4f2', alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
 
   alertaBanner: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: STATUS_RED_BG, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 10, borderWidth: 1, borderColor: '#f5c6c6' },
   alertaText:   { flex: 1, fontSize: 13, color: STATUS_RED, fontWeight: '600' },
@@ -1275,47 +1175,34 @@ const styles = StyleSheet.create({
   bsSectionTitle: { fontSize: 11, fontWeight: '700', color: TEXT_MUTED, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6, marginTop: 4 },
   bsSectionSub:   { fontSize: 11, fontWeight: '400', textTransform: 'none', letterSpacing: 0 },
 
-  statsRow:      { flexDirection: 'row', backgroundColor: '#f8faf8', borderRadius: 14, padding: 10, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' },
-  statItem:      { flex: 1, alignItems: 'center', gap: 2 },
-  statIconCircle:{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
-  statValue:     { fontSize: 20, fontWeight: '700', color: TEXT_DARK, lineHeight: 24 },
-  statLabel:     { fontSize: 9, color: TEXT_MUTED, textAlign: 'center', lineHeight: 12 },
+  statsRow:       { flexDirection: 'row', backgroundColor: '#f8faf8', borderRadius: 14, padding: 10, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' },
+  statItem:       { flex: 1, alignItems: 'center', gap: 2 },
+  statIconCircle: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
+  statValue:      { fontSize: 20, fontWeight: '700', color: TEXT_DARK, lineHeight: 24 },
+  statLabel:      { fontSize: 9, color: TEXT_MUTED, textAlign: 'center', lineHeight: 12 },
 
-  // Situação atual — sem ícone de pessoa
   bsSituacaoBox:  { backgroundColor: '#f8faf8', borderRadius: 12, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)' },
   bsSituacaoText: { fontSize: 13, color: TEXT_DARK, lineHeight: 19 },
 
-  bsEstadoGrid:  { backgroundColor: '#f8faf8', borderRadius: 12, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)' },
-  bsEstadoRow:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  bsEstadoLabel: { fontSize: 12, color: TEXT_MUTED, flex: 1 },
-  bsEstadoVal:   { fontSize: 13, color: TEXT_DARK, textAlign: 'right', flex: 1 },
-  estadoBadge:   { alignSelf: 'flex-start', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
+  bsEstadoGrid:   { backgroundColor: '#f8faf8', borderRadius: 12, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)' },
+  bsEstadoRow:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  bsEstadoLabel:  { fontSize: 12, color: TEXT_MUTED, flex: 1 },
+  bsEstadoVal:    { fontSize: 13, color: TEXT_DARK, textAlign: 'right', flex: 1 },
+  estadoBadge:    { alignSelf: 'flex-start', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
   estadoBadgeText:{ fontSize: 12, fontWeight: '600' },
 
-  // Risco ambiental (expandido)
   riscoBadgeRow: { marginBottom: 10 },
   riscoBadge:    { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1 },
   riscoBadgeText:{ fontSize: 13, fontWeight: '700' },
 
-  // Indicadores (expandido)
   indicadoresGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
   indicadorItem:   { flex: 1, minWidth: '44%', backgroundColor: '#f8faf8', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', alignItems: 'center' },
   indicadorLabel:  { fontSize: 11, color: TEXT_MUTED, marginBottom: 4, fontWeight: '600' },
   indicadorValor:  { fontSize: 16, fontWeight: '700' },
 
-  // Ações rápidas (expandido)
-  acoesRapidasRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  acaoCard:        { flex: 1, backgroundColor: '#f0f7f4', borderRadius: 14, padding: 12, alignItems: 'center', gap: 6, borderWidth: 1, borderColor: '#d0e8e0' },
-  acaoCardIcon:    { width: 36, height: 36, borderRadius: 18, backgroundColor: '#e6f5ef', alignItems: 'center', justifyContent: 'center' },
-  acaoCardText:    { fontSize: 10, color: TEXT_DARK, fontWeight: '600', textAlign: 'center', lineHeight: 14 },
-
-  // Botões colapsados
-  bsActionsCollapsed: { marginBottom: 8, gap: 8 },
-  bsBtnPrimary:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 14 },
-  bsBtnPrimaryText:   { fontSize: 14, color: '#fff', fontWeight: '700' },
-  bsBtnsSecRow:       { flexDirection: 'row', gap: 8 },
-  bsBtnSec:           { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#f0f4f2', borderRadius: 14, paddingVertical: 12, borderWidth: 1, borderColor: '#dde8e4' },
-  bsBtnSecText:       { fontSize: 12, color: TEXT_DARK, fontWeight: '600' },
+  bsBtnsSecRow: { flexDirection: 'row', gap: 8 },
+  bsBtnSec:     { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#f0f4f2', borderRadius: 14, paddingVertical: 12, borderWidth: 1, borderColor: '#dde8e4' },
+  bsBtnSecText: { fontSize: 12, color: TEXT_DARK, fontWeight: '600' },
 
   bsTimestamp: { fontSize: 10, color: TEXT_MUTED, textAlign: 'center', marginTop: 4 },
 
@@ -1331,41 +1218,41 @@ const styles = StyleSheet.create({
   modalSectionTitle:  { fontSize: 13, fontWeight: '700', color: TEXT_DARK, marginBottom: 10 },
   modalDivider:       { height: 1, backgroundColor: '#f0f0f0', marginVertical: 14 },
 
-  // Chips de status (mobile-friendly)
-  chipsRow:   { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
-  chip:       { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 50, borderWidth: 1.5, backgroundColor: '#f8f8f8' },
-  chipDot:    { width: 8, height: 8, borderRadius: 4 },
-  chipText:   { fontSize: 13 },
+  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
+  chip:     { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 50, borderWidth: 1.5, backgroundColor: '#f8f8f8' },
+  chipDot:  { width: 8, height: 8, borderRadius: 4 },
+  chipText: { fontSize: 13 },
 
-  // Cards de tipo (mobile-friendly)
-  typeCard:        { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12, backgroundColor: '#f8faf8', marginBottom: 8, borderWidth: 1.5, borderColor: '#f0f0f0' },
-  typeCardChecked: { backgroundColor: '#e8f5ef', borderColor: '#b2dbc8' },
-  typeCardIcon:    { width: 32, height: 32, borderRadius: 16, backgroundColor: '#e8e8e8', alignItems: 'center', justifyContent: 'center' },
+  typeCard:            { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12, backgroundColor: '#f8faf8', marginBottom: 8, borderWidth: 1.5, borderColor: '#f0f0f0' },
+  typeCardChecked:     { backgroundColor: '#e8f5ef', borderColor: '#b2dbc8' },
+  typeCardIcon:        { width: 32, height: 32, borderRadius: 16, backgroundColor: '#e8e8e8', alignItems: 'center', justifyContent: 'center' },
   typeCardIconChecked: { backgroundColor: PRIMARY },
-  typeCardText:    { flex: 1, fontSize: 14, color: TEXT_MUTED, fontWeight: '500' },
+  typeCardText:        { flex: 1, fontSize: 14, color: TEXT_MUTED, fontWeight: '500' },
   typeCardTextChecked: { color: TEXT_DARK, fontWeight: '600' },
 
   applyBtn:     { backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginTop: 8 },
   applyBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 
-  legendRow:       { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 14 },
-  legendIconCircle:{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  legendTitle:     { fontSize: 14, fontWeight: '700', color: TEXT_DARK, marginBottom: 2 },
-  legendDesc:      { fontSize: 12, color: TEXT_MUTED, lineHeight: 16 },
+  legendRow:        { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 14 },
+  legendIconCircle: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  legendTitle:      { fontSize: 14, fontWeight: '700', color: TEXT_DARK, marginBottom: 2 },
+  legendDesc:       { fontSize: 12, color: TEXT_MUTED, lineHeight: 16 },
 
-  toggleRow:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 13, paddingHorizontal: 12, backgroundColor: '#f9fafa', marginBottom: 8, borderRadius: 10, borderWidth: 1, borderColor: '#f0f0f0' },
-  toggleLabel:      { fontSize: 14, fontWeight: '600', color: '#333' },
-  toggle:           { width: 48, height: 26, backgroundColor: '#ddd', borderRadius: 13, padding: 2, justifyContent: 'center' },
-  toggleAtivo:      { backgroundColor: PRIMARY },
-  toggleCircle:     { width: 22, height: 22, borderRadius: 11, backgroundColor: '#fff', alignSelf: 'flex-start' },
-  toggleCircleAtivo:{ alignSelf: 'flex-end' },
+  toggleRow:         { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 13, paddingHorizontal: 12, backgroundColor: '#f9fafa', marginBottom: 8, borderRadius: 10, borderWidth: 1, borderColor: '#f0f0f0' },
+  toggleLabel:       { fontSize: 14, fontWeight: '600', color: '#333' },
+  toggle:            { width: 48, height: 26, backgroundColor: '#ddd', borderRadius: 13, padding: 2, justifyContent: 'center' },
+  toggleAtivo:       { backgroundColor: PRIMARY },
+  toggleCircle:      { width: 22, height: 22, borderRadius: 11, backgroundColor: '#fff', alignSelf: 'flex-start' },
+  toggleCircleAtivo: { alignSelf: 'flex-end' },
 
-  // ── Bottom nav ────────────────────────────────────────────────────────────
-  navWrapper: { backgroundColor: '#fff', borderTopLeftRadius: 22, borderTopRightRadius: 22, shadowColor: '#000', shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.07, shadowRadius: 10, elevation: 12, zIndex: 30 },
-  navBar:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 4 : 10, paddingHorizontal: 8 },
-  navItem:    { width: '20%', alignItems: 'center', justifyContent: 'center', paddingVertical: 4 },
-  navLabel:   { fontSize: 12, marginTop: 3, letterSpacing: 0.1 },
-  fabSpacer:  { width: '20%', alignItems: 'center', justifyContent: 'center' },
-  fab:        { width: 56, height: 56, borderRadius: 28, marginTop: -22, shadowColor: PRIMARY, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 8 },
-  fabInner:   { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
+  // ── Bottom nav (estilos removidos — usa TechnicalBottomNav) ─────────────────
+
+  menuBtn:            { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' },
+  acoesRapidasRow:    { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  acaoCard:           { flex: 1, backgroundColor: '#f0f7f4', borderRadius: 14, padding: 12, alignItems: 'center', gap: 6, borderWidth: 1, borderColor: '#d0e8e0' },
+  acaoCardIcon:       { width: 36, height: 36, borderRadius: 18, backgroundColor: '#e6f5ef', alignItems: 'center', justifyContent: 'center' },
+  acaoCardText:       { fontSize: 10, color: TEXT_DARK, fontWeight: '600', textAlign: 'center', lineHeight: 14 },
+  bsActionsCollapsed: { marginBottom: 8, gap: 8 },
+  bsBtnPrimary:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 14 },
+  bsBtnPrimaryText:   { fontSize: 14, color: '#fff', fontWeight: '700' },
 });

@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useFonts, Questrial_400Regular } from '@expo-google-fonts/questrial';
-import { Stack, useRouter, useFocusEffect } from 'expo-router';
+import { Stack, useRouter, useFocusEffect, router } from 'expo-router';
 import * as Location from 'expo-location';
 import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
 import {
@@ -206,66 +206,33 @@ async function fetchCriticalAnalyses(): Promise<CriticalAnalysisData> {
  * ÚLTIMA ANÁLISE REALIZADA — sem alteração.
  */
 async function fetchLastAnalysis(uid: string): Promise<LastAnalysisData> {
-    const doneStatuses = ['validada', 'concluida', 'concluído', 'aprovada', 'finalizada'];
+    try {
+        const snap = await getDocs(
+            query(
+                collection(db, 'analisesTecnicas'),
+                orderBy('createdAt', 'desc'),
+                limit(1),
+            )
+        );
 
-    const attempts: Array<{ col: string; uidField: string }> = [
-        { col: 'analises',            uidField: 'tecnicoId'      },
-        { col: 'analises',            uidField: 'analisadoPorId' },
-        { col: 'analises',            uidField: 'responsavelId'  },
-        { col: 'analises',            uidField: 'usuarioId'      },
-        { col: 'medicoesColaborador', uidField: 'analisadoPorId' },
-        { col: 'medicoesColaborador', uidField: 'tecnicoId'      },
-        { col: 'medicoesColaborador', uidField: 'usuarioId'      },
-    ];
+        if (snap.empty) return EMPTY_LAST_ANALYSIS;
 
-    for (const attempt of attempts) {
-        for (const useOrderBy of [true, false]) {
-            try {
-                const constraints: any[] = [
-                    where(attempt.uidField, '==', uid),
-                    where('status', 'in', doneStatuses),
-                ];
-                if (useOrderBy) {
-                    constraints.push(orderBy('criadoEm', 'desc'));
-                    constraints.push(limit(1));
-                }
+        const d = { id: snap.docs[0].id, ...snap.docs[0].data() } as Record<string, any>;
+        const docDate = toDate(d.createdAt ?? d.updatedAt);
+        const isValidated =
+            d.validadoPeloGestor === true ||
+            d.status === 'validada'       ||
+            d.status === 'aprovada';
 
-                const snap = await getDocs(query(collection(db, attempt.col), ...constraints));
-
-                if (snap.size > 0) {
-                    const docs = snap.docs
-                        .map(d => ({ id: d.id, ...d.data() } as Record<string, any>))
-                        .sort((a, b) => {
-                            const da  = toDate(a.criadoEm  ?? a.atualizadoEm)?.getTime() ?? 0;
-                            const db2 = toDate(b.criadoEm  ?? b.atualizadoEm)?.getTime() ?? 0;
-                            return db2 - da;
-                        });
-
-                    const d       = docs[0];
-                    const docDate = toDate(d.criadoEm ?? d.atualizadoEm ?? d.dataAnalise ?? d.analisadoEm);
-                    const isValidated =
-                        d.validadoPeloGestor === true ||
-                        d.status === 'validada'        ||
-                        d.status === 'aprovada';
-
-                    const dateStr = docDate
-                        ? `${formatDate(docDate)} • ${formatTime(docDate)}`
-                        : '—';
-
-                    return { name: extractTitle(d), date: dateStr, validated: isValidated };
-                }
-
-                if (useOrderBy) continue;
-                break;
-            } catch (e: any) {
-                if (useOrderBy) { continue; }
-                console.warn(`[HomeTecnico] Última análise "${attempt.col}"/"${attempt.uidField}":`, e?.code ?? e?.message);
-                break;
-            }
-        }
+        return {
+            name:      d.nomeCorpoHidrico ?? d.coletaId ?? 'Análise',
+            date:      docDate ? `${formatDate(docDate)} • ${formatTime(docDate)}` : '—',
+            validated: isValidated,
+        };
+    } catch (e) {
+        console.error('[fetchLastAnalysis]', e);
+        return EMPTY_LAST_ANALYSIS;
     }
-
-    return EMPTY_LAST_ANALYSIS;
 }
 
 // ─── Header ────────────────────────────────────────────────────────────────────
@@ -285,14 +252,21 @@ const Header: React.FC<HeaderProps> = ({ cityLabel, loading, fontFamily }) => (
                 <Text style={[styles.headerTeam, fontFamily ? { fontFamily } : undefined]}>Equipe Técnica</Text>
             </View>
         </View>
-        <Image
-            source={require('../../assets/images/aquasense.png')}
-            style={styles.headerLogo}
-            resizeMode="contain"
-        />
+        <View style={styles.headerRight}>
+            <TouchableOpacity style={styles.notifBtn} activeOpacity={0.8} onPress={() => router.push('/alerts' as any)}>
+                <Ionicons name="notifications-outline" size={22} color="#ffffff" />
+                <View style={styles.notifBadge}>
+                    <Text style={styles.notifBadgeText}>3</Text>
+                </View>
+            </TouchableOpacity>
+            <Image
+                source={require('../../assets/images/aquasense.png')}
+                style={styles.headerLogo}
+                resizeMode="contain"
+            />
+        </View>
     </LinearGradient>
 );
-
 // ─── TitleBlock ────────────────────────────────────────────────────────────────
 interface TitleBlockProps { fontFamily?: string; }
 const TitleBlock: React.FC<TitleBlockProps> = ({ fontFamily }) => {
@@ -804,4 +778,13 @@ const styles = StyleSheet.create({
     mapLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     mapLegendDot:  { width: 9, height: 9, borderRadius: 4.5 },
     mapLegendText: { fontSize: 11, color: '#1a1a1a', fontWeight: '500' },
+        headerRight:     { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    notifBtn:        { position: 'relative' },
+    notifBadge:      {
+        position: 'absolute', top: -4, right: -4,
+        backgroundColor: '#e53935', borderRadius: 7,
+        minWidth: 14, height: 14, alignItems: 'center', justifyContent: 'center',
+        paddingHorizontal: 2, borderWidth: 1.5, borderColor: '#0d4a3e',
+    },
+    notifBadgeText:  { fontSize: 8, color: '#fff', fontWeight: '700' },
 });
