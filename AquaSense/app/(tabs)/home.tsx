@@ -21,7 +21,6 @@ import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import * as Location from "expo-location";
 
 import { useAuth } from "@/contexts/auth-context";
-import { markTutorialAsSeen } from "@/services/firestore/users";
 import { getWaterBodyById } from "@/services/firestore/water_bodies";
 import {
     buscarObservacoesPorCorpo,
@@ -55,7 +54,7 @@ function StarRating({ stars, size = 13 }: { stars: number; size?: number }) {
 export default function HomeComum() {
     const router = useRouter();
     const { tutorial } = useLocalSearchParams<{ tutorial?: string }>();
-    const { userProfile } = useAuth();
+    const { userProfile, markTutorialSeen } = useAuth();
 
     const [fontsLoaded] = useFonts({ Questrial_400Regular });
     const questrial = fontsLoaded ? "Questrial_400Regular" : undefined;
@@ -84,7 +83,6 @@ export default function HomeComum() {
     }, [tutorial]);
 
     useEffect(() => {
-        // Atualiza o relógio a cada minuto
         const interval = setInterval(() => setCurrentDateTime(new Date()), 60000);
         return () => clearInterval(interval);
     }, []);
@@ -149,10 +147,8 @@ export default function HomeComum() {
     }, [userProfile?.ultimoCorpoHidricoAcessadoId]);
 
     async function handleFinishTutorial() {
-        const uid = userProfile?.uid;
-        if (!uid) return;
         setTutorialLoading(true);
-        try { await markTutorialAsSeen(uid); } catch { /* silencioso */ }
+        try { await markTutorialSeen(); } catch { /* silencioso */ }
         finally { setTutorialLoading(false); setTutorialVisible(false); }
     }
 
@@ -161,7 +157,7 @@ export default function HomeComum() {
         switch (tab) {
             case "mapa":    router.push("/map" as any);     break;
             case "alertas": router.push("/alerts" as any);  break;
-            case "perfil":  router.push("/profile" as any); break;
+            case "perfil":  router.push("/profile_collaborator" as any); break;
             default: break;
         }
     }
@@ -174,7 +170,6 @@ export default function HomeComum() {
     const userName = userProfile?.nome ?? "Usuário";
     const isGestor = userProfile?.tipoUsuario === "gestor";
 
-    // Formata data e hora
     const formatTime = (date: Date) => {
         return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
     };
@@ -188,7 +183,6 @@ export default function HomeComum() {
             <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
             <View style={styles.root}>
-                {/* ══ HEADER NOVO ══ */}
                 <LinearGradient
                     colors={["#004d48", "#0a6b5e", "#0d9080"]}
                     start={{ x: 0, y: 0 }}
@@ -197,7 +191,6 @@ export default function HomeComum() {
                 >
                     <SafeAreaView edges={["top"]} style={styles.headerSafeArea}>
                         <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
-                            {/* Linha topo: localização + tipo + logo + sino */}
                             <View style={styles.headerTopRow}>
                                 <View>
                                     <View style={styles.locationRow}>
@@ -217,7 +210,6 @@ export default function HomeComum() {
                                 </View>
                             </View>
 
-                            {/* Saudação + frase */}
                             <View style={styles.greetingRow}>
                                 <View style={{ flex: 1 }}>
                                     <Text style={[styles.greetingName, { fontFamily: questrial }]}>Olá, {userName}</Text>
@@ -225,7 +217,6 @@ export default function HomeComum() {
                                         Sua participação faz a diferença na{"\n"}proteção da nossa comunidade.
                                     </Text>
                                 </View>
-                                {/* Card de data/hora */}
                                 <View style={styles.dateTimeCard}>
                                     <View style={styles.dateTimeRow}>
                                         <Ionicons name="time-outline" size={13} color="#FFFFFF" style={{ marginRight: 4 }} />
@@ -237,7 +228,6 @@ export default function HomeComum() {
                                 </View>
                             </View>
 
-                            {/* Card do corpo hídrico monitorado */}
                             {loadingUltimoCorpo ? (
                                 <SkeletonCorpoCard />
                             ) : ultimoCorpo ? (
@@ -259,10 +249,8 @@ export default function HomeComum() {
                     </SafeAreaView>
                 </LinearGradient>
 
-                {/* ══ CONTEÚDO ══ */}
                 <ScrollView style={styles.whiteBody} contentContainerStyle={styles.whiteBodyContent} showsVerticalScrollIndicator={false}>
                     <Animated.View style={{ opacity: cardFade, transform: [{ translateY: cardSlide }] }}>
-                        {/* Título da seção */}
                         <Text style={[styles.sectionTitle, { fontFamily: questrial }]}>Visão geral da água</Text>
                     </Animated.View>
 
@@ -318,7 +306,6 @@ export default function HomeComum() {
                     </Animated.View>
                 </ScrollView>
 
-                {/* ══ NAVBAR ══ */}
                 <SafeAreaView edges={["bottom"]} style={styles.navBarWrapper}>
                     <View style={styles.navBar}>
                         <NavBarItem icon="home" iconOutline="home-outline" label="Home" active={activeTab === "home"} fontFamily={questrial} onPress={() => handleTabPress("home")} />
@@ -343,9 +330,6 @@ export default function HomeComum() {
     );
 }
 
-// ─────────────────────────────────────────────
-// CARD DO CORPO HÍDRICO NO HEADER
-// ─────────────────────────────────────────────
 function UltimoCorpoHeaderCard({ corpo, resumo, fontFamily, onVerDetalhes }: {
     corpo: CorpoHidrico;
     resumo: ResumoObservacoes | null;
@@ -398,9 +382,6 @@ function UltimoCorpoHeaderCard({ corpo, resumo, fontFamily, onVerDetalhes }: {
     );
 }
 
-// ─────────────────────────────────────────────
-// SKELETON DO CARD NO HEADER
-// ─────────────────────────────────────────────
 function SkeletonCorpoCard() {
     return (
         <View style={[styles.corpoHeaderCard, { gap: 10 }]}>
@@ -411,9 +392,6 @@ function SkeletonCorpoCard() {
     );
 }
 
-// ─────────────────────────────────────────────
-// NAV BAR ITEM
-// ─────────────────────────────────────────────
 function NavBarItem({ icon, iconOutline, label, active, fontFamily, onPress }: {
     icon: keyof typeof Ionicons.glyphMap;
     iconOutline: keyof typeof Ionicons.glyphMap;
@@ -427,9 +405,6 @@ function NavBarItem({ icon, iconOutline, label, active, fontFamily, onPress }: {
     );
 }
 
-// ─────────────────────────────────────────────
-// MODAL: CORPO HÍDRICO
-// ─────────────────────────────────────────────
 function CorpoHidricoModal({ visible, fontFamily, onClose, onRegister }: {
     visible: boolean; fontFamily?: string; onClose: () => void; onRegister: () => void;
 }) {
@@ -457,9 +432,6 @@ function CorpoHidricoModal({ visible, fontFamily, onClose, onRegister }: {
     );
 }
 
-// ─────────────────────────────────────────────
-// MODAL: TUTORIAL
-// ─────────────────────────────────────────────
 function TutorialModal({ visible, fontFamily, loading, onFinish }: {
     visible: boolean; fontFamily?: string; loading: boolean; onFinish: () => void;
 }) {
@@ -502,13 +474,9 @@ function TutorialModal({ visible, fontFamily, loading, onFinish }: {
     );
 }
 
-// ─────────────────────────────────────────────
-// ESTILOS
-// ─────────────────────────────────────────────
 const styles = StyleSheet.create({
     root: { flex: 1, backgroundColor: "#FFFFFF" },
 
-    // Header novo
     headerGradient: { paddingBottom: 20 },
     headerSafeArea: { paddingHorizontal: 20, paddingTop: 6 },
     headerTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 },
@@ -529,7 +497,6 @@ const styles = StyleSheet.create({
     dateTimeUpdated: { fontSize: 11, color: "rgba(255,255,255,0.85)", fontWeight: "600" },
     dateTimeText: { fontSize: 12, color: "#FFFFFF", fontWeight: "700" },
 
-    // Card do corpo hídrico no header
     corpoHeaderCard: { backgroundColor: "#FFFFFF", borderRadius: 18, padding: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
     corpoHeaderCardLeft: { flex: 1, marginRight: 10 },
     corpoHeaderLabel: { fontSize: 10, fontWeight: "700", color: PRIMARY, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 },
@@ -548,20 +515,16 @@ const styles = StyleSheet.create({
     noCorpoCard: { backgroundColor: "rgba(255,255,255,0.12)", borderRadius: 14, padding: 16, flexDirection: "row", alignItems: "center", gap: 10 },
     noCorpoText: { fontSize: 13, color: "rgba(255,255,255,0.75)" },
 
-    // Conteúdo
     sectionTitle: { fontSize: 18, color: PRIMARY, fontWeight: "700", letterSpacing: 0.2, marginBottom: 16 },
     whiteBody: { flex: 1, backgroundColor: "#FFFFFF" },
     whiteBodyContent: { paddingHorizontal: 20, paddingTop: 22, paddingBottom: 16 },
 
     cardDivider: { height: 1, backgroundColor: BORDER_LIGHT, marginVertical: 12, width: "100%" },
 
-    // Skeleton
     skeletonLine: { backgroundColor: "#E8F0EF", borderRadius: 6, alignSelf: "flex-start" },
 
-    // Actions
     actionsRow: { flexDirection: "row", gap: 14 },
 
-    // Manager card
     managerCardContainer: { marginBottom: 18 },
     managerCard: { borderRadius: 16, overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 5 },
     managerCardGradient: { paddingVertical: 20, paddingHorizontal: 16 },
@@ -571,7 +534,6 @@ const styles = StyleSheet.create({
     managerCardTitle: { fontSize: 15, fontWeight: "700", color: "#FFFFFF", marginBottom: 3 },
     managerCardSubtitle: { fontSize: 12, color: "rgba(255,255,255,0.88)" },
 
-    // Navbar
     navBarWrapper: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 22, borderTopRightRadius: 22, shadowColor: "#000", shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.07, shadowRadius: 10, elevation: 12 },
     navBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-around", paddingTop: 10, paddingBottom: Platform.OS === "ios" ? 4 : 10, paddingHorizontal: 8 },
     navItem: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 4 },
@@ -579,7 +541,6 @@ const styles = StyleSheet.create({
     fabButton: { width: 56, height: 56, borderRadius: 28, marginBottom: 16, shadowColor: PRIMARY, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.40, shadowRadius: 10, elevation: 8 },
     fabInner: { width: 56, height: 56, borderRadius: 28, backgroundColor: PRIMARY, alignItems: "center", justifyContent: "center" },
 
-    // Modais
     modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.50)", alignItems: "center", justifyContent: "center", paddingHorizontal: 28 },
     modalCard: { width: "100%", backgroundColor: "#FFFFFF", borderRadius: 20, padding: 28, shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.18, shadowRadius: 20, elevation: 12 },
     modalIconCircle: { width: 64, height: 64, borderRadius: 32, backgroundColor: "rgba(63,243,231,0.15)", alignItems: "center", justifyContent: "center", alignSelf: "center", marginBottom: 16 },

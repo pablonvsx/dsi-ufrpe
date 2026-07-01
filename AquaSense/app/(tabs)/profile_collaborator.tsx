@@ -20,7 +20,6 @@ import { Stack, useRouter } from 'expo-router';
 import {
   getAuth,
   updateEmail,
-  updatePassword,
   reauthenticateWithCredential,
   EmailAuthProvider,
   deleteUser,
@@ -54,6 +53,21 @@ const maskEmail = (email: string) => {
   if (!email) return '';
   const [user, domain] = email.split('@');
   return `${user.substring(0, 3)}****@${domain}`;
+};
+
+/**
+ * Retorna o rótulo do tipo de usuário para exibição na tela.
+ *
+ * ATENÇÃO: ajuste esta função de acordo com os valores reais que o campo
+ * `tipoUsuario` assume no Firestore/contexto de autenticação.
+ * Hoje assumo que o valor pode vir como 'colaborador' ou 'comum'
+ * (com variações de maiúsculas/minúsculas). Se o valor real for diferente
+ * (ex: 'COLABORADOR', 'usuario_comum', etc.), basta alterar a comparação abaixo.
+ */
+const getTipoLabel = (tipoUsuario?: string | null): string => {
+  const tipo = (tipoUsuario ?? '').toLowerCase();
+  if (tipo.includes('colab')) return 'Colaborador';
+  return 'Comum';
 };
 
 // ── Modal de input (e-mail / reautenticação) ───────────────
@@ -172,8 +186,8 @@ const ConfigRow = ({ icon, label, onPress, fontFamily, isLast }: ConfigRowProps)
   </>
 );
 
-// ── Tela principal ─────────────────────────────────────────
-export default function PerfilColaboradorScreen() {
+// ── Tela principal (única, usada por Colaborador e Comum) ──
+export default function PerfilScreen() {
   const [fontsLoaded] = useFonts({ Questrial_400Regular });
   const questrial = fontsLoaded ? 'Questrial_400Regular' : undefined;
   const router = useRouter();
@@ -287,7 +301,8 @@ export default function PerfilColaboradorScreen() {
     }
   };
 
-  const initials = userProfile?.nome ? userProfile.nome.charAt(0).toUpperCase() : '?';
+  const initials  = userProfile?.nome ? userProfile.nome.charAt(0).toUpperCase() : '?';
+  const tipoLabel = getTipoLabel(userProfile?.tipoUsuario);
 
   if (loadingAuth) {
     return (
@@ -316,12 +331,8 @@ export default function PerfilColaboradorScreen() {
                 <Ionicons name="arrow-back-outline" size={20} color="#FFFFFF" />
               </TouchableOpacity>
 
-              <View style={styles.headerLocationRow}>
-                <Ionicons name="location-outline" size={14} color="rgba(255,255,255,0.85)" />
-                <Text style={[styles.headerLocationText, { fontFamily: questrial }]}>
-                  {userProfile?.cidade ?? '—'} • PE
-                </Text>
-              </View>
+              {/* Localização removida do header conforme solicitado */}
+              <View style={{ flex: 1 }} />
 
               <Image source={logoImg} style={styles.headerLogo} resizeMode="contain" />
             </View>
@@ -355,8 +366,9 @@ export default function PerfilColaboradorScreen() {
               <Text style={[styles.profileName, { fontFamily: questrial }]}>
                 {userProfile?.nome ?? '—'}
               </Text>
+              {/* Tipo de usuário dinâmico: Colaborador ou Comum */}
               <Text style={[styles.profileCargo, { fontFamily: questrial }]}>
-                {userProfile?.tipoUsuario ?? '—'}
+                {tipoLabel}
               </Text>
 
               <View style={styles.papelBadge}>
@@ -371,12 +383,7 @@ export default function PerfilColaboradorScreen() {
                 </Text>
               </View>
 
-              <View style={styles.profileDetailRow}>
-                <Ionicons name="location-outline" size={14} color={TEXT_MUTED} style={styles.detailIcon} />
-                <Text style={[styles.profileDetailText, { fontFamily: questrial }]}>
-                  {userProfile?.cidade ?? '—'} • PE
-                </Text>
-              </View>
+              {/* Linha de localização removida conforme solicitado */}
 
               <View style={styles.profileDetailRow}>
                 <Ionicons name="calendar-outline" size={14} color={TEXT_MUTED} style={styles.detailIcon} />
@@ -586,8 +593,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center', justifyContent: 'center',
   },
-  headerLocationRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  headerLocationText: { fontSize: 13, color: 'rgba(255,255,255,0.9)' },
   headerLogo: { width: 60, height: 60 },
   headerTitleBlock: { paddingHorizontal: 24, paddingTop: 10, paddingBottom: 32 },
   headerTitle: { fontSize: 30, color: '#FFFFFF', fontWeight: '700', letterSpacing: 0.2 },
